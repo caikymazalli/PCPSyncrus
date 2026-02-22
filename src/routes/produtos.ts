@@ -127,9 +127,10 @@ app.get('/', (c) => {
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
             <div style="flex:1;min-width:0;padding-right:8px;">
               <div style="font-size:15px;font-weight:700;color:#1B4F72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</div>
-              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
                 <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${p.code}</span>
                 <span class="chip" style="background:#f1f5f9;color:#374151;">${p.unit}</span>
+                ${(p as any).serialControlled ? `<span class="badge" style="background:${(p as any).controlType==='serie'?'#ede9fe':'#fef3c7'};color:${(p as any).controlType==='serie'?'#7c3aed':'#d97706'};font-size:10px;"><i class="fas ${(p as any).controlType==='serie'?'fa-barcode':'fa-layer-group'}" style="font-size:9px;"></i> ${(p as any).controlType==='serie'?'Série':'Lote'}</span>` : ''}
               </div>
             </div>
             <span class="badge" style="background:${si.bg};color:${si.color};white-space:nowrap;flex-shrink:0;">
@@ -167,7 +168,7 @@ app.get('/', (c) => {
 
           <div style="display:flex;gap:6px;">
             <a href="/engenharia" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" title="Ver lista de materiais BOM"><i class="fas fa-list-ul"></i> Ver BOM</a>
-            <div class="tooltip-wrap" data-tooltip="Editar produto"><button class="btn btn-secondary btn-sm" onclick="openEditProd('${p.id}','${p.name}','${p.code}','${p.unit}',${p.stockMin},${p.stockCurrent},'${p.stockStatus}')"><i class="fas fa-edit"></i></button></div>
+            <div class="tooltip-wrap" data-tooltip="Editar produto"><button class="btn btn-secondary btn-sm" onclick="openEditProd('${p.id}','${p.name}','${p.code}','${p.unit}',${p.stockMin},${p.stockCurrent},'${p.stockStatus}','${(p as any).serialControlled}','${(p as any).controlType||''}')"><i class="fas fa-edit"></i></button></div>
             <div class="tooltip-wrap" data-tooltip="Excluir produto"><button class="btn btn-danger btn-sm" onclick="if(confirm('Excluir ${p.name}?')) alert('Produto removido.')"><i class="fas fa-trash"></i></button></div>
           </div>
         </div>
@@ -188,6 +189,27 @@ app.get('/', (c) => {
           <div class="form-group"><label class="form-label">Código *</label><input class="form-control" type="text" placeholder="ENG-001"></div>
           <div class="form-group"><label class="form-label">Unidade *</label>
             <select class="form-control"><option value="un">un</option><option value="kg">kg</option><option value="m">m</option><option value="l">l</option></select>
+          </div>
+          <!-- Controle de Série / Lote -->
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label"><i class="fas fa-barcode" style="margin-right:5px;color:#7c3aed;"></i>Controla por Série/Lote?</label>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;" id="slCtrl_no">
+                <input type="radio" name="newProdSerial" value="none" checked onchange="toggleSerialType(this.value)"> Não controla
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;" id="slCtrl_serie">
+                <input type="radio" name="newProdSerial" value="serie" onchange="toggleSerialType(this.value)">
+                <i class="fas fa-barcode" style="color:#7c3aed;"></i> Número de Série
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:500;" id="slCtrl_lote">
+                <input type="radio" name="newProdSerial" value="lote" onchange="toggleSerialType(this.value)">
+                <i class="fas fa-layer-group" style="color:#d97706;"></i> Número de Lote
+              </label>
+            </div>
+            <div id="serialTypeHint" style="display:none;margin-top:8px;font-size:11px;color:#6c757d;background:#f5f3ff;padding:8px 12px;border-radius:6px;border-left:3px solid #7c3aed;">
+              <i class="fas fa-info-circle" style="margin-right:4px;color:#7c3aed;"></i>
+              <span id="serialTypeHintText"></span>
+            </div>
           </div>
           <!-- Estoque mínimo -->
           <div class="form-group">
@@ -242,6 +264,23 @@ app.get('/', (c) => {
           <div class="form-group"><label class="form-label">Código</label><input class="form-control" id="ep_code" type="text"></div>
           <div class="form-group"><label class="form-label">Unidade</label>
             <select class="form-control" id="ep_unit"><option>un</option><option>kg</option><option>m</option><option>l</option></select>
+          </div>
+          <!-- Controle de Série / Lote -->
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label"><i class="fas fa-barcode" style="margin-right:5px;color:#7c3aed;"></i>Controla por Série/Lote?</label>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;" id="epSlCtrl_no">
+                <input type="radio" name="editProdSerial" id="ep_serial_none" value="none" onchange="toggleEditSerialHint(this.value)"> Não controla
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;" id="epSlCtrl_serie">
+                <input type="radio" name="editProdSerial" id="ep_serial_serie" value="serie" onchange="toggleEditSerialHint(this.value)">
+                <i class="fas fa-barcode" style="color:#7c3aed;"></i> Número de Série
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;" id="epSlCtrl_lote">
+                <input type="radio" name="editProdSerial" id="ep_serial_lote" value="lote" onchange="toggleEditSerialHint(this.value)">
+                <i class="fas fa-layer-group" style="color:#d97706;"></i> Número de Lote
+              </label>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label"><i class="fas fa-layer-group" style="margin-right:5px;color:#2980B9;"></i>Estoque Mínimo</label>
@@ -356,14 +395,50 @@ app.get('/', (c) => {
     });
   }
 
-  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus) {
+  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType) {
     document.getElementById('ep_name').value = name;
     document.getElementById('ep_code').value = code;
     document.getElementById('ep_unit').value = unit;
     document.getElementById('ep_stockMin').value = stockMin;
     document.getElementById('ep_stockCurrent').value = stockCurrent;
+    // Set serial control
+    const serialVal = serialControlled === 'true' ? (controlType || 'serie') : 'none';
+    const radio = document.querySelector('input[name="editProdSerial"][value="' + serialVal + '"]');
+    if (radio) radio.checked = true;
+    toggleEditSerialHint(serialVal);
     calcEditStatus();
     openModal('editProdModal');
+  }
+
+  function toggleEditSerialHint(val) {
+    ['epSlCtrl_no','epSlCtrl_serie','epSlCtrl_lote'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.borderColor = '#d1d5db';
+    });
+    if (val === 'serie') document.getElementById('epSlCtrl_serie').style.borderColor = '#7c3aed';
+    else if (val === 'lote') document.getElementById('epSlCtrl_lote').style.borderColor = '#d97706';
+    else document.getElementById('epSlCtrl_no').style.borderColor = '#16a34a';
+  }
+
+  function toggleSerialType(val) {
+    const hint = document.getElementById('serialTypeHint');
+    const hintText = document.getElementById('serialTypeHintText');
+    ['slCtrl_no','slCtrl_serie','slCtrl_lote'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.borderColor = '#d1d5db';
+    });
+    if (val === 'serie') {
+      hint.style.display = 'block';
+      hintText.textContent = 'Cada unidade terá um número de série único. O número deve ser informado nos apontamentos e ao importar via planilha.';
+      document.getElementById('slCtrl_serie').style.borderColor = '#7c3aed';
+    } else if (val === 'lote') {
+      hint.style.display = 'block';
+      hintText.textContent = 'Peças serão agrupadas por lote. O número do lote deve ser informado nos apontamentos e ao importar via planilha (quantidades somadas por lote).';
+      document.getElementById('slCtrl_lote').style.borderColor = '#d97706';
+    } else {
+      hint.style.display = 'none';
+      document.getElementById('slCtrl_no').style.borderColor = '#16a34a';
+    }
   }
 
   function calcEditStatus() {

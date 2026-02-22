@@ -5,7 +5,7 @@ import { mockData } from '../data'
 const app = new Hono()
 
 app.get('/', (c) => {
-  const { stockItems, separationOrders, stockExits, products } = mockData
+  const { stockItems, separationOrders, stockExits, products, serialNumbers, kardexMovements } = mockData as any
 
   const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
     critical:          { label: 'Crítico',         color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle' },
@@ -26,11 +26,68 @@ app.get('/', (c) => {
     descarte:    { label: 'Descarte',     icon: 'fa-trash-alt',           color: '#E74C3C' },
   }
 
-  const critCount = stockItems.filter(s => s.status === 'critical').length
-  const normalCount = stockItems.filter(s => s.status === 'normal').length
-  const purchaseCount = stockItems.filter(s => s.status === 'purchase_needed').length
+  const critCount = stockItems.filter((s: any) => s.status === 'critical').length
+  const normalCount = stockItems.filter((s: any) => s.status === 'normal').length
+  const purchaseCount = stockItems.filter((s: any) => s.status === 'purchase_needed').length
+
+  // Merge all items (stockItems + products) for serial number lookup
+  const allSerialItems = [
+    ...stockItems.map((s: any) => ({ code: s.code, name: s.name, serialControlled: s.serialControlled, controlType: s.controlType })),
+    ...products.map((p: any) => ({ code: p.code, name: p.name, serialControlled: p.serialControlled, controlType: p.controlType }))
+  ]
+
+  // Kardex: sort by date desc
+  const sortedKardex = [...kardexMovements].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  // Items that have serials
+  const serialItemCodes = [...new Set(serialNumbers.map((sn: any) => sn.itemCode))]
 
   const content = `
+  <!-- Modal: Lista de Números de Série/Lote -->
+  <div class="modal-overlay" id="serialListModal">
+    <div class="modal" style="max-width:700px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="serialListTitle">
+          <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Lista de Números de Série/Lote
+        </h3>
+        <button onclick="closeModal('serialListModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:16px 24px;">
+        <div id="serialListSubtitle" style="font-size:13px;color:#6c757d;margin-bottom:14px;"></div>
+        <div class="table-wrapper" style="max-height:380px;overflow-y:auto;">
+          <table id="serialListTable">
+            <thead><tr>
+              <th>Número</th><th>Tipo</th><th>Qtd</th><th>Status</th><th>Origem</th><th>OP / Ref.</th><th>Criado em</th><th>Usuário</th>
+            </tr></thead>
+            <tbody id="serialListBody"></tbody>
+          </table>
+        </div>
+        <div id="serialListEmpty" style="display:none;text-align:center;padding:32px;color:#9ca3af;">
+          <i class="fas fa-barcode" style="font-size:32px;margin-bottom:8px;"></i><div>Nenhum número de série/lote cadastrado para este item.</div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('serialListModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Detalhe Kardex -->
+  <div class="modal-overlay" id="kardexDetailModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-history" style="margin-right:8px;color:#2980B9;"></i>Detalhe da Movimentação
+        </h3>
+        <button onclick="closeModal('kardexDetailModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;" id="kardexDetailBody"></div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('kardexDetailModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <div class="section-header">
     <div>
@@ -60,9 +117,12 @@ app.get('/', (c) => {
       <button class="tab-btn active" onclick="switchTab('tabEstoqueGeral','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Estoque Geral</button>
       <button class="tab-btn" onclick="switchTab('tabProdutosAcabados','estoque')"><i class="fas fa-box-open" style="margin-right:6px;"></i>Produtos Acabados</button>
       <button class="tab-btn" onclick="switchTab('tabSeparacao','estoque')"><i class="fas fa-dolly" style="margin-right:6px;"></i>Separação
-        <span style="background:#E67E22;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${separationOrders.filter(s => s.status === 'pending').length}</span>
+        <span style="background:#E67E22;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${separationOrders.filter((s: any) => s.status === 'pending').length}</span>
       </button>
       <button class="tab-btn" onclick="switchTab('tabBaixas','estoque')"><i class="fas fa-minus-circle" style="margin-right:6px;"></i>Baixas</button>
+      <button class="tab-btn" onclick="switchTab('tabKardex','estoque')"><i class="fas fa-history" style="margin-right:6px;"></i>Kardex
+        <span style="background:#2980B9;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${kardexMovements.length}</span>
+      </button>
     </div>
 
     <!-- ESTOQUE GERAL TAB -->
@@ -116,12 +176,21 @@ app.get('/', (c) => {
               <th>Código</th><th>Item</th><th>Categoria</th><th>Qtd Atual</th><th>Qtd Mínima</th><th>% Cobertura</th><th>Localização</th><th>Última Atualiz.</th><th>Status</th><th>Ações</th>
             </tr></thead>
             <tbody id="estoqueBody">
-              ${stockItems.map(s => {
+              ${stockItems.map((s: any) => {
                 const si = stockStatusInfo[s.status] || stockStatusInfo.normal
                 const pct = s.minQuantity > 0 ? Math.min(100, Math.round((s.quantity / s.minQuantity) * 100)) : 100
+                const hasSerial = s.serialControlled === true
+                const snCount = serialNumbers.filter((sn: any) => sn.itemCode === s.code).length
                 return `
                 <tr data-status="${s.status}" data-search="${s.code.toLowerCase()} ${s.name.toLowerCase()} ${s.location.toLowerCase()}">
-                  <td><span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${s.code}</span></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${s.code}</span>
+                      ${hasSerial ? `<span class="badge" style="background:${s.controlType==='serie'?'#ede9fe':'#fef3c7'};color:${s.controlType==='serie'?'#7c3aed':'#d97706'};font-size:9px;padding:2px 5px;">
+                        <i class="fas ${s.controlType==='serie'?'fa-barcode':'fa-layer-group'}" style="font-size:8px;"></i> ${s.controlType==='serie'?'S/N':'Lote'}
+                      </span>` : ''}
+                    </div>
+                  </td>
                   <td>
                     <div style="font-weight:600;color:#374151;">${s.name}</div>
                     <div style="font-size:11px;color:#9ca3af;">${s.unit}</div>
@@ -142,8 +211,14 @@ app.get('/', (c) => {
                   <td><span class="badge" style="background:${si.bg};color:${si.color};"><i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}</span></td>
                   <td>
                     <div style="display:flex;gap:4px;">
+                      ${hasSerial ? `<div class="tooltip-wrap" data-tooltip="Ver lista de Nº de Série/Lote (${snCount})">
+                        <button class="btn btn-sm" style="background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="openSerialList('${s.code}','${s.name}','${s.controlType||'serie'}')">
+                          <i class="fas ${s.controlType==='lote'?'fa-layer-group':'fa-barcode'}"></i> ${snCount}
+                        </button>
+                      </div>` : ''}
                       <div class="tooltip-wrap" data-tooltip="Ajustar quantidade"><button class="btn btn-secondary btn-sm" onclick="openModal('ajusteModal')"><i class="fas fa-edit"></i></button></div>
                       <div class="tooltip-wrap" data-tooltip="Registrar baixa"><button class="btn btn-warning btn-sm" onclick="openBaixaModal('${s.code}','${s.name}')"><i class="fas fa-minus"></i></button></div>
+                      <div class="tooltip-wrap" data-tooltip="Ver Kardex deste item"><button class="btn btn-secondary btn-sm" onclick="filterKardexByItem('${s.code}','${s.name}')"><i class="fas fa-history"></i></button></div>
                     </div>
                   </td>
                 </tr>`
@@ -157,15 +232,22 @@ app.get('/', (c) => {
     <!-- PRODUTOS ACABADOS TAB -->
     <div class="tab-content" id="tabProdutosAcabados">
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
-        ${products.map(p => {
+        ${products.map((p: any) => {
           const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
           const pct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
+          const hasSerial = p.serialControlled === true
+          const snCount = serialNumbers.filter((sn: any) => sn.itemCode === p.code).length
           return `
           <div class="card" style="padding:16px;border-top:3px solid ${si.color};">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
               <div style="flex:1;padding-right:8px;">
                 <div style="font-size:14px;font-weight:700;color:#1B4F72;">${p.name}</div>
-                <div style="font-family:monospace;font-size:11px;color:#9ca3af;margin-top:3px;">${p.code}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
+                  <span style="font-family:monospace;font-size:11px;color:#9ca3af;">${p.code}</span>
+                  ${hasSerial ? `<span class="badge" style="background:${p.controlType==='serie'?'#ede9fe':'#fef3c7'};color:${p.controlType==='serie'?'#7c3aed':'#d97706'};font-size:9px;">
+                    <i class="fas ${p.controlType==='serie'?'fa-barcode':'fa-layer-group'}" style="font-size:8px;"></i> ${p.controlType==='serie'?'Série':'Lote'}
+                  </span>` : ''}
+                </div>
               </div>
               <span class="badge" style="background:${si.bg};color:${si.color};white-space:nowrap;">
                 <i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}
@@ -183,10 +265,11 @@ app.get('/', (c) => {
                 <span style="font-size:16px;font-weight:800;color:${si.color};">${p.stockCurrent} <span style="font-size:10px;font-weight:400;color:#9ca3af;">${p.unit}</span></span>
               </div>
             </div>
-            <div style="display:flex;gap:6px;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn btn-success btn-sm" style="flex:1;" onclick="openSeparacaoModal('${p.code}','${p.name}','${p.unit}')" title="Criar ordem de separação">
                 <i class="fas fa-dolly"></i> Separar
               </button>
+              ${hasSerial ? `<div class="tooltip-wrap" data-tooltip="Ver lista de Série/Lote (${snCount})"><button class="btn btn-sm" style="background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="openSerialList('${p.code}','${p.name}','${p.controlType||'serie'}')"><i class="fas fa-barcode"></i> ${snCount}</button></div>` : ''}
               <div class="tooltip-wrap" data-tooltip="Registrar baixa"><button class="btn btn-warning btn-sm" onclick="openBaixaModal('${p.code}','${p.name}')"><i class="fas fa-minus"></i></button></div>
             </div>
           </div>`
@@ -207,10 +290,10 @@ app.get('/', (c) => {
         <div class="table-wrapper">
           <table>
             <thead><tr>
-              <th>Código OS</th><th>Pedido Venda</th><th>Cliente</th><th>Produtos</th><th>Nº Série</th><th>Data Sep.</th><th>Responsável</th><th>Status</th><th>Ações</th>
+              <th>Código OS</th><th>Pedido Venda</th><th>Cliente</th><th>Produtos</th><th>Nº Série/Lote</th><th>Data Sep.</th><th>Responsável</th><th>Status</th><th>Ações</th>
             </tr></thead>
             <tbody>
-              ${separationOrders.map(so => {
+              ${separationOrders.map((so: any) => {
                 const si = sepStatusInfo[so.status]
                 return `
                 <tr>
@@ -220,11 +303,11 @@ app.get('/', (c) => {
                   </td>
                   <td style="font-size:12px;color:#374151;">${so.cliente}</td>
                   <td>
-                    ${so.items.map(it => `
+                    ${so.items.map((it: any) => `
                     <div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;color:#1B4F72;">${it.productCode}</span> ${it.productName} <strong style="color:#374151;">(${it.quantity} un)</strong></div>`).join('')}
                   </td>
                   <td>
-                    ${so.items.map(it => `<div style="font-family:monospace;font-size:11px;color:#6c757d;">${it.serialNumber || '—'}</div>`).join('')}
+                    ${so.items.map((it: any) => `<div style="font-family:monospace;font-size:11px;color:#7c3aed;font-weight:600;">${it.serialNumber || '—'}</div>`).join('')}
                   </td>
                   <td style="font-size:12px;color:#6c757d;">${new Date(so.dataSeparacao + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                   <td style="font-size:12px;color:#6c757d;">${so.responsavel}</td>
@@ -262,7 +345,7 @@ app.get('/', (c) => {
               <th>Código</th><th>Tipo</th><th>Pedido/Ref.</th><th>Itens</th><th>Data</th><th>Responsável</th><th>Observações</th><th>Ações</th>
             </tr></thead>
             <tbody>
-              ${stockExits.map(ex => {
+              ${stockExits.map((ex: any) => {
                 const ti = exitTypeInfo[ex.type] || exitTypeInfo.requisicao
                 return `
                 <tr>
@@ -276,7 +359,7 @@ app.get('/', (c) => {
                     <div style="font-size:12px;font-weight:600;color:#2980B9;">${ex.pedido}</div>
                   </td>
                   <td>
-                    ${ex.items.map(it => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.code}</span> ${it.name} <strong>(${it.quantity})</strong></div>`).join('')}
+                    ${ex.items.map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.code}</span> ${it.name} <strong>(${it.quantity})</strong></div>`).join('')}
                   </td>
                   <td style="font-size:12px;color:#6c757d;">${new Date(ex.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                   <td style="font-size:12px;color:#6c757d;">${ex.responsavel}</td>
@@ -291,11 +374,126 @@ app.get('/', (c) => {
         </div>
       </div>
     </div>
+
+    <!-- KARDEX TAB -->
+    <div class="tab-content" id="tabKardex">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-history" style="margin-right:8px;color:#2980B9;"></i>Kardex — Rastreabilidade de Série/Lote</div>
+          <div style="font-size:13px;color:#6c757d;margin-top:3px;">Registro completo de todas as movimentações por número de série ou lote</div>
+        </div>
+      </div>
+
+      <!-- KPIs Kardex -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card">
+          <div style="font-size:24px;font-weight:800;color:#2980B9;">${kardexMovements.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Total Movimentações</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #27AE60;">
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">${kardexMovements.filter((k: any) => k.movType === 'entrada').length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-arrow-down" style="color:#27AE60;"></i> Entradas</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #E74C3C;">
+          <div style="font-size:24px;font-weight:800;color:#E74C3C;">${kardexMovements.filter((k: any) => k.movType === 'saida').length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-arrow-up" style="color:#E74C3C;"></i> Saídas</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #7c3aed;">
+          <div style="font-size:24px;font-weight:800;color:#7c3aed;">${serialItemCodes.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-barcode" style="color:#7c3aed;"></i> Itens Rastreados</div>
+        </div>
+      </div>
+
+      <!-- Filtros Kardex -->
+      <div class="card" style="padding:12px 16px;margin-bottom:14px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div class="search-box" style="flex:1;min-width:180px;">
+            <i class="fas fa-search icon"></i>
+            <input class="form-control" type="text" id="kardexSearch" placeholder="Nº de série, código do item, pedido..." oninput="filterKardex()">
+          </div>
+          <select class="form-control" id="kardexTypeFilter" style="width:auto;" onchange="filterKardex()">
+            <option value="">Todos os tipos</option>
+            <option value="entrada">Entradas</option>
+            <option value="saida">Saídas</option>
+          </select>
+          <select class="form-control" id="kardexItemFilter" style="width:auto;" onchange="filterKardex()">
+            <option value="">Todos os itens</option>
+            ${[...new Set([...stockItems, ...products].map((i: any) => i.code))].map((code: any) => {
+              const item = [...stockItems, ...products].find((i: any) => i.code === code)
+              return `<option value="${code}">${code} — ${item?.name||''}</option>`
+            }).join('')}
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="clearKardexFilters()">
+            <i class="fas fa-times"></i> Limpar
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Kardex -->
+      <div class="card" id="kardexFilterBanner" style="display:none;padding:10px 16px;margin-bottom:10px;background:#e8f4fd;border-left:4px solid #2980B9;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:13px;color:#1B4F72;"><i class="fas fa-filter" style="margin-right:6px;"></i>Filtrando por item: <strong id="kardexFilterLabel"></strong></span>
+          <button class="btn btn-secondary btn-sm" onclick="clearKardexFilters()"><i class="fas fa-times"></i> Remover filtro</button>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Data/Hora</th><th>Nº Série / Lote</th><th>Item</th><th>Tipo</th><th>Qtd</th><th>Descrição</th><th>OP / Referência</th><th>Pedido</th><th>NF</th><th>Usuário</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="kardexBody">
+              ${sortedKardex.map((k: any) => {
+                const isEntrada = k.movType === 'entrada'
+                const dt = new Date(k.date)
+                const dtStr = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                return `
+                <tr data-movtype="${k.movType}" data-itemcode="${k.itemCode}" data-search="${k.serialNumber.toLowerCase()} ${k.itemCode.toLowerCase()} ${(k.pedido||'').toLowerCase()} ${(k.orderCode||'').toLowerCase()}">
+                  <td style="font-size:12px;color:#6c757d;white-space:nowrap;">${dtStr}</td>
+                  <td>
+                    <span style="font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:2px 8px;border-radius:4px;">${k.serialNumber}</span>
+                  </td>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:#374151;">${k.itemName}</div>
+                    <div style="font-family:monospace;font-size:10px;color:#9ca3af;">${k.itemCode}</div>
+                  </td>
+                  <td>
+                    <span class="badge" style="background:${isEntrada?'#f0fdf4':'#fef2f2'};color:${isEntrada?'#16a34a':'#dc2626'};">
+                      <i class="fas ${isEntrada?'fa-arrow-down':'fa-arrow-up'}" style="font-size:9px;"></i> ${isEntrada?'Entrada':'Saída'}
+                    </span>
+                  </td>
+                  <td style="font-weight:700;color:${isEntrada?'#16a34a':'#dc2626'};">${isEntrada?'+':'−'}${k.quantity}</td>
+                  <td style="font-size:12px;color:#374151;max-width:160px;">${k.description}</td>
+                  <td style="font-size:12px;">
+                    ${k.orderCode ? `<span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:1px 6px;border-radius:3px;color:#1B4F72;">${k.orderCode}</span>` : '<span style="color:#9ca3af;">—</span>'}
+                  </td>
+                  <td style="font-size:12px;">
+                    ${k.pedido ? `<span style="font-weight:600;color:#2980B9;">${k.pedido}</span>` : '<span style="color:#9ca3af;">—</span>'}
+                  </td>
+                  <td style="font-size:12px;">
+                    ${k.nf ? `<span style="font-weight:600;color:#27AE60;">${k.nf}</span>` : '<span style="color:#9ca3af;">—</span>'}
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${k.user}</td>
+                  <td>
+                    <div class="tooltip-wrap" data-tooltip="Ver detalhes da movimentação">
+                      <button class="btn btn-secondary btn-sm" onclick="openKardexDetail(${JSON.stringify(JSON.stringify(k)).replace(/</g,'\\u003c')})">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Upload Planilha Modal -->
   <div class="modal-overlay" id="uploadPlanilhaModal">
-    <div class="modal" style="max-width:560px;">
+    <div class="modal" style="max-width:580px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-file-upload" style="margin-right:8px;"></i>Importar Planilha de Estoque</h3>
         <button onclick="closeModal('uploadPlanilhaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
@@ -304,7 +502,11 @@ app.get('/', (c) => {
         <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:20px;">
           <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;"><i class="fas fa-info-circle" style="margin-right:6px;"></i>Formato da Planilha Padrão</div>
           <div style="font-size:12px;color:#374151;line-height:1.6;">A planilha deve ter as colunas na seguinte ordem:<br>
-            <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">Código | Nome | Categoria | Unidade | Qtd Atual | Qtd Mínima | Localização</code>
+            <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">Código | Nome | Categoria | Unidade | Qtd Atual | Qtd Mínima | Localização | Nº Série/Lote (opcional)</code>
+          </div>
+          <div style="font-size:11px;color:#374151;margin-top:8px;background:#fff;border-radius:6px;padding:8px;border-left:3px solid #7c3aed;">
+            <i class="fas fa-barcode" style="color:#7c3aed;margin-right:4px;"></i>
+            <strong>Itens com controle de série/lote:</strong> Inclua uma linha por série ou uma linha por lote com a respectiva quantidade. As quantidades do mesmo código serão somadas automaticamente.
           </div>
           <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="alert('Download do modelo...')">
             <i class="fas fa-download"></i> Baixar Planilha Modelo (.xlsx)
@@ -343,7 +545,7 @@ app.get('/', (c) => {
 
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;">
           <div style="font-size:12px;color:#92400e;"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
-          <strong>Atenção:</strong> Após a importação, o estoque será atualizado automaticamente no MRP. Certifique-se de que os códigos dos itens correspondem ao cadastro.</div>
+          <strong>Atenção:</strong> Após a importação, o estoque será atualizado automaticamente no MRP. Para itens controlados por série/lote, cada linha da planilha gerará um registro no Kardex.</div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
@@ -398,10 +600,10 @@ app.get('/', (c) => {
             <div class="sep-item" style="display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:8px;align-items:center;">
               <select class="form-control" style="font-size:12px;">
                 <option value="">Selecionar produto...</option>
-                ${products.map(p => `<option value="${p.code}">${p.name} (${p.code})</option>`).join('')}
+                ${products.map((p: any) => `<option value="${p.code}">${p.name} (${p.code})</option>`).join('')}
               </select>
               <input class="form-control" type="number" placeholder="Qtd" min="1">
-              <input class="form-control" type="text" placeholder="Nº Série / Lote (opcional)">
+              <input class="form-control" type="text" placeholder="Nº Série / Lote (obrig. se controlado)">
               <button class="btn btn-danger btn-sm" onclick="this.closest('.sep-item').remove()" title="Remover item"><i class="fas fa-trash"></i></button>
             </div>
           </div>
@@ -435,11 +637,15 @@ app.get('/', (c) => {
           <input class="form-control" id="baixa_pedido" type="text" placeholder="PV-2024-XXXX ou REQ-ENG-XXX">
         </div>
         <div class="form-group">
+          <label class="form-label">Número NF-e (quando faturamento)</label>
+          <input class="form-control" id="baixa_nf" type="text" placeholder="NF-00000">
+        </div>
+        <div class="form-group">
           <label class="form-label">Item *</label>
           <select class="form-control" id="baixa_item">
             <option value="">Selecionar item...</option>
-            ${stockItems.map(s => `<option value="${s.code}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
-            ${products.map(p => `<option value="${p.code}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
+            ${stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
+            ${products.map((p: any) => `<option value="${p.code}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
           </select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -495,7 +701,11 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Serial Numbers Data (JSON for JS) -->
   <script>
+  const serialNumbersData = ${JSON.stringify(serialNumbers)};
+  const kardexData = ${JSON.stringify(kardexMovements)};
+
   // Filter estoque table
   function filterEstoque() {
     const search = document.getElementById('estoqueSearch').value.toLowerCase();
@@ -523,11 +733,8 @@ app.get('/', (c) => {
         if (sel.options[i].value === code) { sel.selectedIndex = i; break; }
       }
     }
-    switchTab('tabSeparacao', 'estoque');
-    document.querySelector('.tab-btn:nth-child(3)').classList.add('active');
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById('tabSeparacao').classList.add('active');
     document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 2));
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 2));
   }
 
   function addSepItem() {
@@ -535,9 +742,10 @@ app.get('/', (c) => {
     const div = document.createElement('div');
     div.className = 'sep-item';
     div.style.cssText = 'display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:8px;align-items:center;';
-    div.innerHTML = '<select class="form-control" style="font-size:12px;"><option value="">Selecionar produto...</option>' +
-      ${JSON.stringify(products.map(p => `<option value="${p.code}">${p.name} (${p.code})</option>`).join(''))}.split('').reduce((a,c)=>a+c,'') +
-      '</select><input class="form-control" type="number" placeholder="Qtd" min="1"><input class="form-control" type="text" placeholder="Nº Série / Lote"><button class="btn btn-danger btn-sm" onclick="this.closest(\\'.sep-item\\').remove()" title="Remover"><i class="fas fa-trash"></i></button>';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;"><option value="">Selecionar produto...</option></select>' +
+      '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
+      '<input class="form-control" type="text" placeholder="Nº Série / Lote">' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.sep-item\\').remove()" title="Remover"><i class="fas fa-trash"></i></button>';
     container.appendChild(div);
   }
 
@@ -545,7 +753,7 @@ app.get('/', (c) => {
     const pedido = document.getElementById('sep_pedido').value;
     const cliente = document.getElementById('sep_cliente').value;
     if (!pedido || !cliente) { alert('Preencha o Pedido de Venda e o Cliente!'); return; }
-    alert('✅ Ordem de Separação OS-2024-003 criada!\\n\\nPedido: ' + pedido + '\\nCliente: ' + cliente);
+    alert('✅ Ordem de Separação OS-2024-003 criada!\\n\\nPedido: ' + pedido + '\\nCliente: ' + cliente + '\\n\\nA movimentação será registrada no Kardex automaticamente.');
     closeModal('novaSeparacaoModal');
   }
 
@@ -581,8 +789,110 @@ app.get('/', (c) => {
   }
 
   function importarPlanilha() {
-    alert('✅ Planilha importada com sucesso!\\n\\n7 itens atualizados\\n2 itens novos adicionados\\n\\nO MRP será recalculado automaticamente.');
+    alert('✅ Planilha importada com sucesso!\\n\\n7 itens atualizados\\n2 itens novos adicionados\\n3 números de série/lote registrados no Kardex\\n\\nO MRP será recalculado automaticamente.');
     closeModal('uploadPlanilhaModal');
+  }
+
+  // ---- SERIAL LIST ----
+  function openSerialList(itemCode, itemName, controlType) {
+    const serials = serialNumbersData.filter(sn => sn.itemCode === itemCode);
+    document.getElementById('serialListTitle').innerHTML =
+      '<i class="fas ' + (controlType==='lote'?'fa-layer-group':'fa-barcode') + '" style="margin-right:8px;color:#7c3aed;"></i>' +
+      'Lista de ' + (controlType==='lote'?'Números de Lote':'Números de Série');
+    document.getElementById('serialListSubtitle').textContent = itemName + ' (' + itemCode + ') — ' + serials.length + ' registro(s)';
+
+    const tbody = document.getElementById('serialListBody');
+    const empty = document.getElementById('serialListEmpty');
+
+    if (serials.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      const statusLabel = { em_estoque: '<span class="badge badge-success">Em Estoque</span>', separado: '<span class="badge badge-warning">Separado</span>', baixado: '<span class="badge badge-danger">Baixado</span>' };
+      const originLabel = { apontamento: '🔧 Apontamento', planilha: '📋 Planilha' };
+      tbody.innerHTML = serials.map(sn => {
+        const dt = new Date(sn.createdAt + 'T00:00:00').toLocaleDateString('pt-BR');
+        return '<tr>' +
+          '<td style="font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">' + sn.number + '</td>' +
+          '<td><span class="badge" style="background:' + (sn.type==='serie'?'#ede9fe':'#fef3c7') + ';color:' + (sn.type==='serie'?'#7c3aed':'#d97706') + ';">' + (sn.type==='serie'?'Série':'Lote') + '</span></td>' +
+          '<td style="font-weight:700;color:#374151;">' + sn.quantity + '</td>' +
+          '<td>' + (statusLabel[sn.status] || sn.status) + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (originLabel[sn.origin] || sn.origin) + '</td>' +
+          '<td style="font-family:monospace;font-size:11px;color:#1B4F72;">' + (sn.orderCode || '—') + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + dt + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + sn.createdBy + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    openModal('serialListModal');
+  }
+
+  // ---- KARDEX ----
+  function filterKardex() {
+    const search = document.getElementById('kardexSearch').value.toLowerCase();
+    const movType = document.getElementById('kardexTypeFilter').value;
+    const itemCode = document.getElementById('kardexItemFilter').value;
+    document.querySelectorAll('#kardexBody tr').forEach(row => {
+      const matchSearch = !search || (row.dataset.search || '').includes(search);
+      const matchType = !movType || row.dataset.movtype === movType;
+      const matchItem = !itemCode || row.dataset.itemcode === itemCode;
+      row.style.display = (matchSearch && matchType && matchItem) ? '' : 'none';
+    });
+  }
+
+  function filterKardexByItem(itemCode, itemName) {
+    // Switch to kardex tab
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 4));
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 4));
+    // Set filter
+    const sel = document.getElementById('kardexItemFilter');
+    if (sel) { for (let i=0; i<sel.options.length; i++) { if (sel.options[i].value===itemCode) { sel.selectedIndex=i; break; } } }
+    // Show banner
+    document.getElementById('kardexFilterBanner').style.display = 'block';
+    document.getElementById('kardexFilterLabel').textContent = itemName + ' (' + itemCode + ')';
+    filterKardex();
+    document.getElementById('tabKardex')?.scrollIntoView({ behavior:'smooth' });
+  }
+
+  function clearKardexFilters() {
+    document.getElementById('kardexSearch').value = '';
+    document.getElementById('kardexTypeFilter').value = '';
+    document.getElementById('kardexItemFilter').value = '';
+    document.getElementById('kardexFilterBanner').style.display = 'none';
+    filterKardex();
+  }
+
+  function openKardexDetail(jsonStr) {
+    let k;
+    try { k = JSON.parse(jsonStr); } catch(e) { return; }
+    const isEntrada = k.movType === 'entrada';
+    const dt = new Date(k.date);
+    const dtStr = dt.toLocaleDateString('pt-BR') + ' às ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const body = document.getElementById('kardexDetailBody');
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+      '<div style="grid-column:span 2;background:' + (isEntrada?'#f0fdf4':'#fef2f2') + ';border-radius:8px;padding:12px;text-align:center;border-left:4px solid ' + (isEntrada?'#16a34a':'#dc2626') + ';">' +
+        '<div style="font-size:28px;font-weight:800;color:' + (isEntrada?'#16a34a':'#dc2626') + ';">' + (isEntrada?'+':'-') + k.quantity + '</div>' +
+        '<div style="font-size:13px;color:' + (isEntrada?'#16a34a':'#dc2626') + ';font-weight:600;">' + (isEntrada?'ENTRADA':'SAÍDA') + '</div>' +
+      '</div>' +
+      row('Nº Série / Lote', '<span style="font-family:monospace;font-weight:700;color:#7c3aed;">' + k.serialNumber + '</span>') +
+      row('Item', k.itemName + ' <span style="font-family:monospace;font-size:11px;color:#9ca3af;">(' + k.itemCode + ')</span>') +
+      row('Data / Hora', dtStr) +
+      row('Usuário', '<i class="fas fa-user" style="margin-right:4px;color:#6c757d;"></i>' + k.user) +
+      row('Descrição', k.description) +
+      (k.orderCode ? row('Ordem de Produção', '<span style="font-family:monospace;font-size:12px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;">' + k.orderCode + '</span>') : '') +
+      (k.pedido ? row('Pedido de Venda', '<span style="font-weight:600;color:#2980B9;">' + k.pedido + '</span>') : '') +
+      (k.nf ? row('Nota Fiscal', '<span style="font-weight:600;color:#27AE60;">' + k.nf + '</span>') : '') +
+      '</div>';
+    openModal('kardexDetailModal');
+  }
+
+  function row(label, value) {
+    return '<div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;">' +
+      '<div style="font-size:11px;color:#9ca3af;font-weight:600;margin-bottom:3px;">' + label.toUpperCase() + '</div>' +
+      '<div style="font-size:13px;color:#374151;">' + value + '</div>' +
+    '</div>';
   }
   </script>
   `

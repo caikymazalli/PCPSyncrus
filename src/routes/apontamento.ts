@@ -67,6 +67,21 @@ app.get('/', (c) => {
             </select>
           </div>
         </div>
+
+        <!-- Campo Nº Série / Lote (visível somente quando produto exige controle) -->
+        <div id="serialLoteGroup" style="display:none;background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <i class="fas fa-barcode" style="color:#7c3aed;font-size:16px;"></i>
+            <span style="font-size:13px;font-weight:700;color:#7c3aed;" id="serialLoteLabel">Número de Série / Lote *</span>
+            <span class="badge" style="background:#ede9fe;color:#7c3aed;font-size:10px;" id="serialLoteTypeBadge">Série</span>
+          </div>
+          <div style="font-size:11px;color:#6c757d;margin-bottom:8px;" id="serialLoteHint">
+            O produto desta ordem requer controle por número de série. Informe o número de série da(s) unidade(s) produzida(s).
+          </div>
+          <input class="form-control" id="apt_serial" type="text" placeholder="Ex: SN-EXT-0035" style="border-color:#c4b5fd;">
+          <div style="font-size:11px;color:#7c3aed;margin-top:6px;"><i class="fas fa-info-circle" style="margin-right:3px;"></i>Para múltiplas séries, separe por vírgula (ex: SN-001, SN-002). Para lote, informe o número do lote e a quantidade total.</div>
+        </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
           <div class="form-group">
             <label class="form-label">Qtd Produzida *</label>
@@ -363,6 +378,14 @@ app.get('/', (c) => {
   let selectedNCImages = [];
   const NC_LIMIT = parseInt(document.getElementById('ncLimitInput').value) || 3;
 
+  // Products data with serial control info
+  const productsSerialData = ${JSON.stringify(mockData.products.map(p => ({
+    code: p.code,
+    name: p.productName || p.name,
+    serialControlled: (p as any).serialControlled || false,
+    controlType: (p as any).controlType || null
+  })))};
+
   function updateOrderInfo() {
     const sel = document.getElementById('apt_ordem');
     const opt = sel.options[sel.selectedIndex];
@@ -375,8 +398,34 @@ app.get('/', (c) => {
       document.getElementById('infoCompleted').textContent = completed + ' un';
       document.getElementById('infoBalance').textContent = balance + ' un';
       card.style.display = 'block';
+      // Check serial control for product of this order
+      const productName = opt.dataset.product || '';
+      checkSerialRequirement(productName);
     } else {
       card.style.display = 'none';
+      document.getElementById('serialLoteGroup').style.display = 'none';
+    }
+  }
+
+  function checkSerialRequirement(productName) {
+    // Match by product name (in production orders, product name is used, not code)
+    const prod = productsSerialData.find(p => p.name === productName || p.code === productName);
+    const group = document.getElementById('serialLoteGroup');
+    if (prod && prod.serialControlled) {
+      group.style.display = 'block';
+      const isLote = prod.controlType === 'lote';
+      document.getElementById('serialLoteTypeBadge').textContent = isLote ? 'Lote' : 'Série';
+      document.getElementById('serialLoteTypeBadge').style.background = isLote ? '#fef3c7' : '#ede9fe';
+      document.getElementById('serialLoteTypeBadge').style.color = isLote ? '#d97706' : '#7c3aed';
+      document.getElementById('serialLoteLabel').textContent = isLote ? 'Número do Lote *' : 'Número(s) de Série *';
+      document.getElementById('apt_serial').placeholder = isLote ? 'Ex: LT-2024-001' : 'Ex: SN-EXT-0035';
+      if (isLote) {
+        document.getElementById('serialLoteHint').textContent = 'O produto desta ordem requer controle por lote. Informe o número do lote — a quantidade será somada ao total do lote informado.';
+      } else {
+        document.getElementById('serialLoteHint').textContent = 'O produto desta ordem requer controle por número de série. Informe o(s) número(s) de série da(s) unidade(s) produzida(s). Para múltiplas séries, separe por vírgula.';
+      }
+    } else {
+      group.style.display = 'none';
     }
   }
 
@@ -461,6 +510,19 @@ app.get('/', (c) => {
 
     if (!ordem.value) { alert('Selecione a ordem de produção!'); return; }
     if (!produzida || produzida == 0) { alert('Informe a quantidade produzida!'); return; }
+
+    // Validate serial/lote if required
+    const serialGroup = document.getElementById('serialLoteGroup');
+    if (serialGroup.style.display !== 'none') {
+      const serialVal = document.getElementById('apt_serial').value.trim();
+      if (!serialVal) {
+        document.getElementById('apt_serial').style.borderColor = '#E74C3C';
+        const label = document.getElementById('serialLoteLabel').textContent.replace(' *','');
+        alert('⚠ ' + label + ' é obrigatório para este produto!');
+        document.getElementById('apt_serial').focus();
+        return;
+      }
+    }
 
     const opt = ordem.options[ordem.selectedIndex];
     const orderCode = opt.dataset.code;

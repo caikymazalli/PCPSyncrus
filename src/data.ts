@@ -29,12 +29,12 @@ export const mockData = {
   ],
   // Products with stock status
   products: [
-    { id: 'pr1', name: 'Tampa de Alumínio A200', code: 'TAM-A200', description: 'Tampa de fechamento em alumínio anodizado', unit: 'un', stockMin: 50, stockCurrent: 12, stockStatus: 'critical' },
-    { id: 'pr2', name: 'Eixo Transmissão T500', code: 'EXT-T500', description: 'Eixo de transmissão em aço SAE 1045', unit: 'un', stockMin: 30, stockCurrent: 35, stockStatus: 'normal' },
-    { id: 'pr3', name: 'Suporte Lateral SL100', code: 'SLT-SL100', description: 'Suporte lateral em chapa dobrada', unit: 'un', stockMin: 40, stockCurrent: 18, stockStatus: 'purchase_needed' },
-    { id: 'pr4', name: 'Carcaça Motor CM300', code: 'CRC-CM300', description: 'Carcaça do motor em ferro fundido', unit: 'un', stockMin: 20, stockCurrent: 8, stockStatus: 'manufacture_needed' },
-    { id: 'pr5', name: 'Engrenagem Cônica EC-45', code: 'ENG-EC45', description: 'Engrenagem cônica módulo 3, 45 dentes', unit: 'un', stockMin: 100, stockCurrent: 250, stockStatus: 'normal' },
-    { id: 'pr6', name: 'Pino Elástico PE-12', code: 'PIN-PE12', description: 'Pino elástico DIN 1481, diâm 12mm', unit: 'un', stockMin: 200, stockCurrent: 5, stockStatus: 'critical' },
+    { id: 'pr1', name: 'Tampa de Alumínio A200', code: 'TAM-A200', description: 'Tampa de fechamento em alumínio anodizado', unit: 'un', stockMin: 50, stockCurrent: 12, stockStatus: 'critical', serialControlled: true, controlType: 'serie' },
+    { id: 'pr2', name: 'Eixo Transmissão T500', code: 'EXT-T500', description: 'Eixo de transmissão em aço SAE 1045', unit: 'un', stockMin: 30, stockCurrent: 35, stockStatus: 'normal', serialControlled: true, controlType: 'serie' },
+    { id: 'pr3', name: 'Suporte Lateral SL100', code: 'SLT-SL100', description: 'Suporte lateral em chapa dobrada', unit: 'un', stockMin: 40, stockCurrent: 18, stockStatus: 'purchase_needed', serialControlled: false, controlType: null },
+    { id: 'pr4', name: 'Carcaça Motor CM300', code: 'CRC-CM300', description: 'Carcaça do motor em ferro fundido', unit: 'un', stockMin: 20, stockCurrent: 8, stockStatus: 'manufacture_needed', serialControlled: true, controlType: 'lote' },
+    { id: 'pr5', name: 'Engrenagem Cônica EC-45', code: 'ENG-EC45', description: 'Engrenagem cônica módulo 3, 45 dentes', unit: 'un', stockMin: 100, stockCurrent: 250, stockStatus: 'normal', serialControlled: false, controlType: null },
+    { id: 'pr6', name: 'Pino Elástico PE-12', code: 'PIN-PE12', description: 'Pino elástico DIN 1481, diâm 12mm', unit: 'un', stockMin: 200, stockCurrent: 5, stockStatus: 'critical', serialControlled: true, controlType: 'lote' },
   ],
   // Production orders with "pedido" and "cliente" fields
   productionOrders: [
@@ -61,13 +61,49 @@ export const mockData = {
   ],
   // Stock items (raw materials / components)
   stockItems: [
-    { id: 'st1', code: 'MAT-001', name: 'Barra Aço SAE 1045 Ø50', unit: 'm', quantity: 80, minQuantity: 100, location: 'Armazém A - Prateleira 3', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'critical' },
-    { id: 'st2', code: 'ROL-001', name: 'Rolamento 6205-2RS', unit: 'un', quantity: 250, minQuantity: 200, location: 'Armazém B - Caixa 12', category: 'Componente', lastUpdate: '2024-02-14', status: 'normal' },
-    { id: 'st3', code: 'ANL-001', name: 'Anel de Retenção', unit: 'un', quantity: 180, minQuantity: 300, location: 'Armazém B - Caixa 15', category: 'Componente', lastUpdate: '2024-02-13', status: 'purchase_needed' },
-    { id: 'st4', code: 'MAT-010', name: 'Lingote Ferro Fundido GG-25', unit: 'kg', quantity: 320, minQuantity: 200, location: 'Pátio Externo - Lote 2', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'normal' },
-    { id: 'st5', code: 'PAR-001', name: 'Parafuso M8x25', unit: 'un', quantity: 1200, minQuantity: 500, location: 'Armazém C - Caixa 8', category: 'Fixador', lastUpdate: '2024-02-12', status: 'normal' },
-    { id: 'st6', code: 'MAT-005', name: 'Chapa Al 6061 3mm', unit: 'kg', quantity: 200, minQuantity: 150, location: 'Armazém A - Prateleira 7', category: 'Matéria-Prima', lastUpdate: '2024-02-11', status: 'normal' },
-    { id: 'st7', code: 'MAT-015', name: 'Bloco Aço 8620', unit: 'kg', quantity: 200, minQuantity: 400, location: 'Armazém A - Prateleira 5', category: 'Matéria-Prima', lastUpdate: '2024-02-10', status: 'purchase_needed' },
+    { id: 'st1', code: 'MAT-001', name: 'Barra Aço SAE 1045 Ø50', unit: 'm', quantity: 80, minQuantity: 100, location: 'Armazém A - Prateleira 3', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'critical', serialControlled: false, controlType: null },
+    { id: 'st2', code: 'ROL-001', name: 'Rolamento 6205-2RS', unit: 'un', quantity: 250, minQuantity: 200, location: 'Armazém B - Caixa 12', category: 'Componente', lastUpdate: '2024-02-14', status: 'normal', serialControlled: true, controlType: 'serie' },
+    { id: 'st3', code: 'ANL-001', name: 'Anel de Retenção', unit: 'un', quantity: 180, minQuantity: 300, location: 'Armazém B - Caixa 15', category: 'Componente', lastUpdate: '2024-02-13', status: 'purchase_needed', serialControlled: true, controlType: 'lote' },
+    { id: 'st4', code: 'MAT-010', name: 'Lingote Ferro Fundido GG-25', unit: 'kg', quantity: 320, minQuantity: 200, location: 'Pátio Externo - Lote 2', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'normal', serialControlled: false, controlType: null },
+    { id: 'st5', code: 'PAR-001', name: 'Parafuso M8x25', unit: 'un', quantity: 1200, minQuantity: 500, location: 'Armazém C - Caixa 8', category: 'Fixador', lastUpdate: '2024-02-12', status: 'normal', serialControlled: false, controlType: null },
+    { id: 'st6', code: 'MAT-005', name: 'Chapa Al 6061 3mm', unit: 'kg', quantity: 200, minQuantity: 150, location: 'Armazém A - Prateleira 7', category: 'Matéria-Prima', lastUpdate: '2024-02-11', status: 'normal', serialControlled: false, controlType: null },
+    { id: 'st7', code: 'MAT-015', name: 'Bloco Aço 8620', unit: 'kg', quantity: 200, minQuantity: 400, location: 'Armazém A - Prateleira 5', category: 'Matéria-Prima', lastUpdate: '2024-02-10', status: 'purchase_needed', serialControlled: false, controlType: null },
+  ],
+  // Serial/Lot numbers per item (for items with serialControlled = true)
+  serialNumbers: [
+    // TAM-A200 - série
+    { id: 'sn1', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', number: 'SN-TAM-0001', type: 'serie', status: 'em_estoque', quantity: 1, createdAt: '2024-02-10', createdBy: 'Ana Lima', origin: 'apontamento', orderCode: 'OP-2024-001' },
+    { id: 'sn2', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', number: 'SN-TAM-0002', type: 'serie', status: 'em_estoque', quantity: 1, createdAt: '2024-02-10', createdBy: 'Ana Lima', origin: 'apontamento', orderCode: 'OP-2024-001' },
+    { id: 'sn3', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', number: 'SN-TAM-0012', type: 'serie', status: 'separado', quantity: 1, createdAt: '2024-02-10', createdBy: 'Ana Lima', origin: 'apontamento', orderCode: 'OP-2024-001' },
+    // EXT-T500 - série
+    { id: 'sn4', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', number: 'SN-EXT-0030', type: 'serie', status: 'em_estoque', quantity: 1, createdAt: '2024-02-07', createdBy: 'Maria Santos', origin: 'apontamento', orderCode: 'OP-2024-002' },
+    { id: 'sn5', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', number: 'SN-EXT-0031', type: 'serie', status: 'em_estoque', quantity: 1, createdAt: '2024-02-07', createdBy: 'Maria Santos', origin: 'apontamento', orderCode: 'OP-2024-002' },
+    { id: 'sn6', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', number: 'SN-EXT-0034', type: 'serie', status: 'separado', quantity: 1, createdAt: '2024-02-07', createdBy: 'Maria Santos', origin: 'apontamento', orderCode: 'OP-2024-002' },
+    // CRC-CM300 - lote
+    { id: 'sn7', itemCode: 'CRC-CM300', itemName: 'Carcaça Motor CM300', number: 'LT-CM-2024-001', type: 'lote', status: 'em_estoque', quantity: 8, createdAt: '2024-02-05', createdBy: 'Carlos Silva', origin: 'planilha', orderCode: null },
+    // ROL-001 - série
+    { id: 'sn8', itemCode: 'ROL-001', itemName: 'Rolamento 6205-2RS', number: 'SN-ROL-0100', type: 'serie', status: 'em_estoque', quantity: 1, createdAt: '2024-02-01', createdBy: 'Carlos Silva', origin: 'planilha', orderCode: null },
+    { id: 'sn9', itemCode: 'ROL-001', itemName: 'Rolamento 6205-2RS', number: 'SN-ROL-0101', type: 'serie', status: 'em_estoque', quantity: 1, createdAt: '2024-02-01', createdBy: 'Carlos Silva', origin: 'planilha', orderCode: null },
+    // ANL-001 - lote
+    { id: 'sn10', itemCode: 'ANL-001', itemName: 'Anel de Retenção', number: 'LT-ANL-2024-001', type: 'lote', status: 'em_estoque', quantity: 180, createdAt: '2024-02-13', createdBy: 'Ana Souza', origin: 'planilha', orderCode: null },
+    // PIN-PE12 - lote
+    { id: 'sn11', itemCode: 'PIN-PE12', itemName: 'Pino Elástico PE-12', number: 'LT-PIN-2024-007', type: 'lote', status: 'em_estoque', quantity: 5, createdAt: '2024-02-08', createdBy: 'João Ferreira', origin: 'apontamento', orderCode: 'OP-2024-006' },
+  ],
+  // Kardex – all stock movements
+  kardexMovements: [
+    { id: 'kx1', serialNumber: 'SN-TAM-0001', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', movType: 'entrada', description: 'Criado via apontamento OP-2024-001', orderCode: 'OP-2024-001', pedido: null, nf: null, quantity: 1, date: '2024-02-10T14:32:00', user: 'Ana Lima' },
+    { id: 'kx2', serialNumber: 'SN-TAM-0002', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', movType: 'entrada', description: 'Criado via apontamento OP-2024-001', orderCode: 'OP-2024-001', pedido: null, nf: null, quantity: 1, date: '2024-02-10T14:33:00', user: 'Ana Lima' },
+    { id: 'kx3', serialNumber: 'SN-TAM-0012', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', movType: 'entrada', description: 'Criado via apontamento OP-2024-001', orderCode: 'OP-2024-001', pedido: null, nf: null, quantity: 1, date: '2024-02-10T14:45:00', user: 'Ana Lima' },
+    { id: 'kx4', serialNumber: 'SN-TAM-0012', itemCode: 'TAM-A200', itemName: 'Tampa de Alumínio A200', movType: 'saida', description: 'Separado para pedido PV-2024-0045', orderCode: null, pedido: 'PV-2024-0045', nf: 'NF-00542', quantity: 1, date: '2024-02-12T09:10:00', user: 'Carlos Silva' },
+    { id: 'kx5', serialNumber: 'SN-EXT-0030', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', movType: 'entrada', description: 'Criado via apontamento OP-2024-002', orderCode: 'OP-2024-002', pedido: null, nf: null, quantity: 1, date: '2024-02-07T16:00:00', user: 'Maria Santos' },
+    { id: 'kx6', serialNumber: 'SN-EXT-0031', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', movType: 'entrada', description: 'Criado via apontamento OP-2024-002', orderCode: 'OP-2024-002', pedido: null, nf: null, quantity: 1, date: '2024-02-07T16:01:00', user: 'Maria Santos' },
+    { id: 'kx7', serialNumber: 'SN-EXT-0034', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', movType: 'entrada', description: 'Criado via apontamento OP-2024-002', orderCode: 'OP-2024-002', pedido: null, nf: null, quantity: 1, date: '2024-02-07T16:02:00', user: 'Maria Santos' },
+    { id: 'kx8', serialNumber: 'SN-EXT-0034', itemCode: 'EXT-T500', itemName: 'Eixo Transmissão T500', movType: 'saida', description: 'Separado para pedido PV-2024-0052', orderCode: null, pedido: 'PV-2024-0052', nf: null, quantity: 1, date: '2024-02-18T10:30:00', user: 'Ana Souza' },
+    { id: 'kx9', serialNumber: 'LT-CM-2024-001', itemCode: 'CRC-CM300', itemName: 'Carcaça Motor CM300', movType: 'entrada', description: 'Importado via planilha', orderCode: null, pedido: null, nf: null, quantity: 8, date: '2024-02-05T08:00:00', user: 'Carlos Silva' },
+    { id: 'kx10', serialNumber: 'SN-ROL-0100', itemCode: 'ROL-001', itemName: 'Rolamento 6205-2RS', movType: 'entrada', description: 'Importado via planilha', orderCode: null, pedido: null, nf: null, quantity: 1, date: '2024-02-01T08:00:00', user: 'Carlos Silva' },
+    { id: 'kx11', serialNumber: 'SN-ROL-0101', itemCode: 'ROL-001', itemName: 'Rolamento 6205-2RS', movType: 'entrada', description: 'Importado via planilha', orderCode: null, pedido: null, nf: null, quantity: 1, date: '2024-02-01T08:01:00', user: 'Carlos Silva' },
+    { id: 'kx12', serialNumber: 'LT-ANL-2024-001', itemCode: 'ANL-001', itemName: 'Anel de Retenção', movType: 'entrada', description: 'Importado via planilha', orderCode: null, pedido: null, nf: null, quantity: 180, date: '2024-02-13T08:00:00', user: 'Ana Souza' },
+    { id: 'kx13', serialNumber: 'LT-PIN-2024-007', itemCode: 'PIN-PE12', itemName: 'Pino Elástico PE-12', movType: 'entrada', description: 'Criado via apontamento OP-2024-006', orderCode: 'OP-2024-006', pedido: null, nf: null, quantity: 5, date: '2024-02-08T11:20:00', user: 'João Ferreira' },
   ],
   // Separation orders (picking for finished products)
   separationOrders: [
