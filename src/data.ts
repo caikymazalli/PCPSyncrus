@@ -29,12 +29,12 @@ export const mockData = {
   ],
   // Products with stock status
   products: [
-    { id: 'pr1', name: 'Tampa de Alumínio A200', code: 'TAM-A200', description: 'Tampa de fechamento em alumínio anodizado', unit: 'un', stockMin: 50, stockCurrent: 12, stockStatus: 'critical', serialControlled: true, controlType: 'serie' },
-    { id: 'pr2', name: 'Eixo Transmissão T500', code: 'EXT-T500', description: 'Eixo de transmissão em aço SAE 1045', unit: 'un', stockMin: 30, stockCurrent: 35, stockStatus: 'normal', serialControlled: true, controlType: 'serie' },
-    { id: 'pr3', name: 'Suporte Lateral SL100', code: 'SLT-SL100', description: 'Suporte lateral em chapa dobrada', unit: 'un', stockMin: 40, stockCurrent: 18, stockStatus: 'purchase_needed', serialControlled: false, controlType: null },
-    { id: 'pr4', name: 'Carcaça Motor CM300', code: 'CRC-CM300', description: 'Carcaça do motor em ferro fundido', unit: 'un', stockMin: 20, stockCurrent: 8, stockStatus: 'manufacture_needed', serialControlled: true, controlType: 'lote' },
-    { id: 'pr5', name: 'Engrenagem Cônica EC-45', code: 'ENG-EC45', description: 'Engrenagem cônica módulo 3, 45 dentes', unit: 'un', stockMin: 100, stockCurrent: 250, stockStatus: 'normal', serialControlled: false, controlType: null },
-    { id: 'pr6', name: 'Pino Elástico PE-12', code: 'PIN-PE12', description: 'Pino elástico DIN 1481, diâm 12mm', unit: 'un', stockMin: 200, stockCurrent: 5, stockStatus: 'critical', serialControlled: true, controlType: 'lote' },
+    { id: 'pr1', name: 'Tampa de Alumínio A200', code: 'TAM-A200', description: 'Tampa de fechamento em alumínio anodizado', unit: 'un', stockMin: 50, stockCurrent: 12, stockStatus: 'critical', serialControlled: true, controlType: 'serie', productionType: 'internal', leadTimeDays: 5, supplierIds: [], criticalAlertSent: false },
+    { id: 'pr2', name: 'Eixo Transmissão T500', code: 'EXT-T500', description: 'Eixo de transmissão em aço SAE 1045', unit: 'un', stockMin: 30, stockCurrent: 35, stockStatus: 'normal', serialControlled: true, controlType: 'serie', productionType: 'internal', leadTimeDays: 7, supplierIds: [], criticalAlertSent: false },
+    { id: 'pr3', name: 'Suporte Lateral SL100', code: 'SLT-SL100', description: 'Suporte lateral em chapa dobrada', unit: 'un', stockMin: 40, stockCurrent: 18, stockStatus: 'purchase_needed', serialControlled: false, controlType: null, productionType: 'external', leadTimeDays: 10, supplierIds: ['sup4'], criticalAlertSent: false },
+    { id: 'pr4', name: 'Carcaça Motor CM300', code: 'CRC-CM300', description: 'Carcaça do motor em ferro fundido', unit: 'un', stockMin: 20, stockCurrent: 8, stockStatus: 'manufacture_needed', serialControlled: true, controlType: 'lote', productionType: 'internal', leadTimeDays: 14, supplierIds: [], criticalAlertSent: false },
+    { id: 'pr5', name: 'Engrenagem Cônica EC-45', code: 'ENG-EC45', description: 'Engrenagem cônica módulo 3, 45 dentes', unit: 'un', stockMin: 100, stockCurrent: 250, stockStatus: 'normal', serialControlled: false, controlType: null, productionType: 'external', leadTimeDays: 12, supplierIds: ['sup1'], criticalAlertSent: false },
+    { id: 'pr6', name: 'Pino Elástico PE-12', code: 'PIN-PE12', description: 'Pino elástico DIN 1481, diâm 12mm', unit: 'un', stockMin: 200, stockCurrent: 5, stockStatus: 'critical', serialControlled: true, controlType: 'lote', productionType: 'external', leadTimeDays: 45, supplierIds: ['sup3'], criticalAlertSent: true },
   ],
   // Production orders with "pedido" and "cliente" fields
   productionOrders: [
@@ -61,13 +61,13 @@ export const mockData = {
   ],
   // Stock items (raw materials / components)
   stockItems: [
-    { id: 'st1', code: 'MAT-001', name: 'Barra Aço SAE 1045 Ø50', unit: 'm', quantity: 80, minQuantity: 100, location: 'Armazém A - Prateleira 3', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'critical', serialControlled: false, controlType: null },
-    { id: 'st2', code: 'ROL-001', name: 'Rolamento 6205-2RS', unit: 'un', quantity: 250, minQuantity: 200, location: 'Armazém B - Caixa 12', category: 'Componente', lastUpdate: '2024-02-14', status: 'normal', serialControlled: true, controlType: 'serie' },
-    { id: 'st3', code: 'ANL-001', name: 'Anel de Retenção', unit: 'un', quantity: 180, minQuantity: 300, location: 'Armazém B - Caixa 15', category: 'Componente', lastUpdate: '2024-02-13', status: 'purchase_needed', serialControlled: true, controlType: 'lote' },
-    { id: 'st4', code: 'MAT-010', name: 'Lingote Ferro Fundido GG-25', unit: 'kg', quantity: 320, minQuantity: 200, location: 'Pátio Externo - Lote 2', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'normal', serialControlled: false, controlType: null },
-    { id: 'st5', code: 'PAR-001', name: 'Parafuso M8x25', unit: 'un', quantity: 1200, minQuantity: 500, location: 'Armazém C - Caixa 8', category: 'Fixador', lastUpdate: '2024-02-12', status: 'normal', serialControlled: false, controlType: null },
-    { id: 'st6', code: 'MAT-005', name: 'Chapa Al 6061 3mm', unit: 'kg', quantity: 200, minQuantity: 150, location: 'Armazém A - Prateleira 7', category: 'Matéria-Prima', lastUpdate: '2024-02-11', status: 'normal', serialControlled: false, controlType: null },
-    { id: 'st7', code: 'MAT-015', name: 'Bloco Aço 8620', unit: 'kg', quantity: 200, minQuantity: 400, location: 'Armazém A - Prateleira 5', category: 'Matéria-Prima', lastUpdate: '2024-02-10', status: 'purchase_needed', serialControlled: false, controlType: null },
+    { id: 'st1', code: 'MAT-001', name: 'Barra Aço SAE 1045 Ø50', unit: 'm', quantity: 80, minQuantity: 100, location: 'Armazém A - Prateleira 3', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'critical', serialControlled: false, controlType: null, leadTimeDays: 7, supplierIds: ['sup1'], productionType: 'external' },
+    { id: 'st2', code: 'ROL-001', name: 'Rolamento 6205-2RS', unit: 'un', quantity: 250, minQuantity: 200, location: 'Armazém B - Caixa 12', category: 'Componente', lastUpdate: '2024-02-14', status: 'normal', serialControlled: true, controlType: 'serie', leadTimeDays: 5, supplierIds: ['sup2','sup4'], productionType: 'external' },
+    { id: 'st3', code: 'ANL-001', name: 'Anel de Retenção', unit: 'un', quantity: 180, minQuantity: 300, location: 'Armazém B - Caixa 15', category: 'Componente', lastUpdate: '2024-02-13', status: 'purchase_needed', serialControlled: true, controlType: 'lote', leadTimeDays: 5, supplierIds: ['sup2'], productionType: 'external' },
+    { id: 'st4', code: 'MAT-010', name: 'Lingote Ferro Fundido GG-25', unit: 'kg', quantity: 320, minQuantity: 200, location: 'Pátio Externo - Lote 2', category: 'Matéria-Prima', lastUpdate: '2024-02-15', status: 'normal', serialControlled: false, controlType: null, leadTimeDays: 10, supplierIds: ['sup1'], productionType: 'external' },
+    { id: 'st5', code: 'PAR-001', name: 'Parafuso M8x25', unit: 'un', quantity: 1200, minQuantity: 500, location: 'Armazém C - Caixa 8', category: 'Fixador', lastUpdate: '2024-02-12', status: 'normal', serialControlled: false, controlType: null, leadTimeDays: 45, supplierIds: ['sup3','sup1'], productionType: 'external' },
+    { id: 'st6', code: 'MAT-005', name: 'Chapa Al 6061 3mm', unit: 'kg', quantity: 200, minQuantity: 150, location: 'Armazém A - Prateleira 7', category: 'Matéria-Prima', lastUpdate: '2024-02-11', status: 'normal', serialControlled: false, controlType: null, leadTimeDays: 60, supplierIds: ['sup5'], productionType: 'external' },
+    { id: 'st7', code: 'MAT-015', name: 'Bloco Aço 8620', unit: 'kg', quantity: 200, minQuantity: 400, location: 'Armazém A - Prateleira 5', category: 'Matéria-Prima', lastUpdate: '2024-02-10', status: 'purchase_needed', serialControlled: false, controlType: null, leadTimeDays: 7, supplierIds: ['sup1'], productionType: 'external' },
   ],
   // Serial/Lot numbers per item (for items with serialControlled = true)
   serialNumbers: [
@@ -191,11 +191,11 @@ export const mockData = {
     ]},
   ],
   mrpEntries: [
-    { id: 'mrp1', productName: 'Eixo Transmissão T500', componentName: 'Barra Aço SAE 1045 Ø50', requiredQuantity: 200, availableQuantity: 80, shortfall: 120, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'critical' },
-    { id: 'mrp2', productName: 'Eixo Transmissão T500', componentName: 'Rolamento 6205-2RS', requiredQuantity: 400, availableQuantity: 250, shortfall: 150, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'purchase_needed' },
-    { id: 'mrp3', productName: 'Carcaça Motor CM300', componentName: 'Lingote Ferro Fundido GG-25', requiredQuantity: 500, availableQuantity: 320, shortfall: 180, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'purchase_needed' },
-    { id: 'mrp4', productName: 'Tampa de Alumínio A200', componentName: 'Chapa Al 6061 3mm', requiredQuantity: 150, availableQuantity: 200, shortfall: 0, suggestedAction: 'manufacture', generatedAt: '2024-02-15', stockStatus: 'normal' },
-    { id: 'mrp5', productName: 'Engrenagem Cônica EC-45', componentName: 'Bloco Aço 8620', requiredQuantity: 800, availableQuantity: 200, shortfall: 600, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'critical' },
+    { id: 'mrp1', productName: 'Eixo Transmissão T500', componentName: 'Barra Aço SAE 1045 Ø50', requiredQuantity: 200, availableQuantity: 80, shortfall: 120, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'critical', leadTimeDays: 7, shortageDate: '2024-02-22', alertSent: true },
+    { id: 'mrp2', productName: 'Eixo Transmissão T500', componentName: 'Rolamento 6205-2RS', requiredQuantity: 400, availableQuantity: 250, shortfall: 150, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'purchase_needed', leadTimeDays: 5, shortageDate: '2024-02-25', alertSent: true },
+    { id: 'mrp3', productName: 'Carcaça Motor CM300', componentName: 'Lingote Ferro Fundido GG-25', requiredQuantity: 500, availableQuantity: 320, shortfall: 180, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'purchase_needed', leadTimeDays: 10, shortageDate: '2024-03-05', alertSent: false },
+    { id: 'mrp4', productName: 'Tampa de Alumínio A200', componentName: 'Chapa Al 6061 3mm', requiredQuantity: 150, availableQuantity: 200, shortfall: 0, suggestedAction: 'manufacture', generatedAt: '2024-02-15', stockStatus: 'normal', leadTimeDays: 60, shortageDate: null, alertSent: false },
+    { id: 'mrp5', productName: 'Engrenagem Cônica EC-45', componentName: 'Bloco Aço 8620', requiredQuantity: 800, availableQuantity: 200, shortfall: 600, suggestedAction: 'purchase', generatedAt: '2024-02-15', stockStatus: 'critical', leadTimeDays: 7, shortageDate: '2024-02-20', alertSent: true },
   ],
   workbenches: [
     { id: 'wb1', name: 'Bancada de Inspeção 01', plantName: 'Planta Alpha', function: 'Inspeção Dimensional', status: 'available' },
@@ -208,6 +208,57 @@ export const mockData = {
     { id: 'u2', name: 'Ana Souza', email: 'ana@empresa.com', role: 'gestor_pcp', avatar: null },
     { id: 'u3', name: 'João Ferreira', email: 'joao@empresa.com', role: 'operador', avatar: null },
     { id: 'u4', name: 'Maria Santos', email: 'maria@empresa.com', role: 'qualidade', avatar: null },
+    { id: 'u5', name: 'Roberto Lima', email: 'roberto@empresa.com', role: 'compras', avatar: null },
+  ],
+  // Suppliers / Fornecedores
+  suppliers: [
+    { id: 'sup1', name: 'Aços Especiais Nacionais Ltda', tradeName: 'Aços Nacionais', cnpj: '12.345.678/0001-90', email: 'vendas@acosnacionais.com.br', phone: '(11) 3456-7890', contact: 'Marcos Vieira', city: 'São Paulo', state: 'SP', country: 'Brasil', type: 'nacional', category: 'Matéria-Prima', paymentTerms: '30/60/90 dias', deliveryLeadDays: 7, rating: 4.5, active: true, notes: 'Fornecedor homologado desde 2019' },
+    { id: 'sup2', name: 'Rolamentos Premium S.A.', tradeName: 'RolPremium', cnpj: '98.765.432/0001-10', email: 'compras@rolpremium.com.br', phone: '(11) 4567-8901', contact: 'Fernanda Costa', city: 'Campinas', state: 'SP', country: 'Brasil', type: 'nacional', category: 'Componente', paymentTerms: '28 dias', deliveryLeadDays: 5, rating: 4.8, active: true, notes: 'Distribuidor autorizado SKF' },
+    { id: 'sup3', name: 'Fasteners & Fixings Co.', tradeName: 'FastFix', cnpj: null, email: 'sales@fastfix.com', phone: '+1 555-234-5678', contact: 'John Smith', city: 'Chicago', state: 'IL', country: 'EUA', type: 'importado', category: 'Fixador', paymentTerms: 'L/C 60 dias', deliveryLeadDays: 45, rating: 4.2, active: true, notes: 'Importação via trading; NCM 7318.15.00' },
+    { id: 'sup4', name: 'Componentes Industriais Sul Ltda', tradeName: 'CIS', cnpj: '55.111.222/0001-33', email: 'vendas@cis.com.br', phone: '(51) 3333-4444', contact: 'Paulo Menezes', city: 'Porto Alegre', state: 'RS', country: 'Brasil', type: 'nacional', category: 'Componente', paymentTerms: '30 dias', deliveryLeadDays: 10, rating: 3.9, active: true, notes: 'Segundo fornecedor para rolamentos' },
+    { id: 'sup5', name: 'Alumínio & Ligas GmbH', tradeName: 'AluminGmbH', cnpj: null, email: 'export@alumingmbh.de', phone: '+49 89 1234-5678', contact: 'Klaus Müller', city: 'München', state: 'Bayern', country: 'Alemanha', type: 'importado', category: 'Matéria-Prima', paymentTerms: 'L/C 90 dias', deliveryLeadDays: 60, rating: 4.7, active: true, notes: 'Liga AL6061; NCM 7604.10.00' },
+  ],
+  // Product-Supplier links com prioridade
+  productSuppliers: [
+    { id: 'ps1', productCode: 'MAT-001', supplierIds: ['sup1'], priorities: { sup1: 1 }, internalProduction: false },
+    { id: 'ps2', productCode: 'ROL-001', supplierIds: ['sup2', 'sup4'], priorities: { sup2: 1, sup4: 2 }, internalProduction: false },
+    { id: 'ps3', productCode: 'ANL-001', supplierIds: ['sup2'], priorities: { sup2: 1 }, internalProduction: false },
+    { id: 'ps4', productCode: 'MAT-010', supplierIds: ['sup1'], priorities: { sup1: 1 }, internalProduction: false },
+    { id: 'ps5', productCode: 'PAR-001', supplierIds: ['sup3', 'sup1'], priorities: { sup3: 1, sup1: 2 }, internalProduction: false },
+    { id: 'ps6', productCode: 'MAT-005', supplierIds: ['sup5'], priorities: { sup5: 1 }, internalProduction: false },
+    { id: 'ps7', productCode: 'MAT-015', supplierIds: ['sup1'], priorities: { sup1: 1 }, internalProduction: false },
+    // Produtos acabados: maioria internos
+    { id: 'ps8', productCode: 'TAM-A200', supplierIds: [], priorities: {}, internalProduction: true },
+    { id: 'ps9', productCode: 'EXT-T500', supplierIds: [], priorities: {}, internalProduction: true },
+    { id: 'ps10', productCode: 'SLT-SL100', supplierIds: ['sup4'], priorities: { sup4: 1 }, internalProduction: false },
+    { id: 'ps11', productCode: 'CRC-CM300', supplierIds: [], priorities: {}, internalProduction: true },
+    { id: 'ps12', productCode: 'ENG-EC45', supplierIds: ['sup1'], priorities: { sup1: 1 }, internalProduction: false },
+    { id: 'ps13', productCode: 'PIN-PE12', supplierIds: ['sup3'], priorities: { sup3: 1 }, internalProduction: false },
+  ],
+  // Cotações de compra
+  quotations: [
+    { id: 'cot1', code: 'COT-2024-001', status: 'pending_approval', createdAt: '2024-02-15', createdBy: 'Roberto Lima', items: [{ productCode: 'MAT-001', productName: 'Barra Aço SAE 1045 Ø50', quantity: 120, unit: 'm' }], supplierResponses: [{ supplierId: 'sup1', supplierName: 'Aços Nacionais', unitPrice: 48.50, totalPrice: 5820.00, deliveryDays: 7, paymentTerms: '30 dias', respondedAt: '2024-02-16', notes: 'Preço válido por 15 dias' }], approvedBy: null, approvedAt: null, purchaseOrderId: null },
+    { id: 'cot2', code: 'COT-2024-002', status: 'awaiting_responses', createdAt: '2024-02-14', createdBy: 'Roberto Lima', items: [{ productCode: 'ROL-001', productName: 'Rolamento 6205-2RS', quantity: 100, unit: 'un' }], supplierResponses: [{ supplierId: 'sup2', supplierName: 'RolPremium', unitPrice: 22.90, totalPrice: 2290.00, deliveryDays: 5, paymentTerms: '28 dias', respondedAt: '2024-02-15', notes: 'Disponível em estoque' }], approvedBy: null, approvedAt: null, purchaseOrderId: null },
+    { id: 'cot3', code: 'COT-2024-003', status: 'approved', createdAt: '2024-02-10', createdBy: 'Roberto Lima', items: [{ productCode: 'MAT-005', productName: 'Chapa Al 6061 3mm', quantity: 200, unit: 'kg' }], supplierResponses: [{ supplierId: 'sup5', supplierName: 'AluminGmbH', unitPrice: 18.75, totalPrice: 3750.00, deliveryDays: 60, paymentTerms: 'L/C 90 dias', respondedAt: '2024-02-12', notes: 'CIF Santos' }], approvedBy: 'Carlos Silva', approvedAt: '2024-02-13', purchaseOrderId: 'PC-2024-001' },
+    { id: 'cot4', code: 'COT-2024-004', status: 'sent', createdAt: '2024-02-16', createdBy: 'Sistema', items: [{ productCode: 'MAT-015', productName: 'Bloco Aço 8620', quantity: 500, unit: 'kg' }, { productCode: 'ANL-001', productName: 'Anel de Retenção', quantity: 300, unit: 'un' }], supplierResponses: [], approvedBy: null, approvedAt: null, purchaseOrderId: null },
+  ],
+  // Pedidos de compra
+  purchaseOrders: [
+    { id: 'pc1', code: 'PC-2024-001', quotationId: 'cot3', supplierId: 'sup5', supplierName: 'AluminGmbH', items: [{ productCode: 'MAT-005', productName: 'Chapa Al 6061 3mm', quantity: 200, unit: 'kg', unitPrice: 18.75, totalPrice: 3750.00 }], totalValue: 3750.00, currency: 'EUR', isImport: true, status: 'in_transit', expectedDelivery: '2024-04-15', createdAt: '2024-02-13', createdBy: 'Carlos Silva', notes: 'Importação; Invoice: INV-2024-001' },
+    { id: 'pc2', code: 'PC-2024-002', quotationId: null, supplierId: 'sup1', supplierName: 'Aços Nacionais', items: [{ productCode: 'MAT-001', productName: 'Barra Aço SAE 1045 Ø50', quantity: 50, unit: 'm', unitPrice: 48.50, totalPrice: 2425.00 }], totalValue: 2425.00, currency: 'BRL', isImport: false, status: 'delivered', expectedDelivery: '2024-02-10', createdAt: '2024-02-03', createdBy: 'Roberto Lima', notes: 'Entrega confirmada' },
+  ],
+  // Importações
+  imports: [
+    { id: 'imp1', code: 'IMP-2024-001', purchaseOrderId: 'pc1', supplierId: 'sup5', supplierName: 'Alumínio & Ligas GmbH', invoiceNumber: 'INV-2024-001', invoiceDate: '2024-02-13', invoiceValueUSD: 0, invoiceValueEUR: 3750.00, exchangeRate: 5.52, invoiceValueBRL: 20700.00, incoterm: 'CIF', portOfOrigin: 'Hamburg', portOfDestination: 'Santos', ncm: '7604.10.00', description: 'Chapa de Alumínio Liga 6061 espessura 3mm', netWeight: 200, grossWeight: 210, status: 'in_transit', expectedArrival: '2024-04-10',
+      taxes: { ii: 12, ipi: 5, pis: 1.65, cofins: 7.6, icms: 12, afrmm: 25, siscomex: 185, taxBRL: 7420.00 },
+      numerario: { invoiceBRL: 20700.00, freightBRL: 1500.00, insuranceBRL: 300.00, taxesBRL: 7420.00, brokerageBRL: 1200.00, portFeesBRL: 800.00, storageBRL: 400.00, totalLandedCostBRL: 32320.00, unitCostBRL: 161.60 },
+      timeline: [
+        { date: '2024-02-13', event: 'Invoice emitida', user: 'Carlos Silva' },
+        { date: '2024-02-20', event: 'Embarque confirmado', user: 'Carlos Silva' },
+        { date: '2024-03-25', event: 'Chegada prevista no porto', user: null },
+        { date: '2024-04-10', event: 'Liberação alfandegária prevista', user: null },
+      ]
+    },
   ],
   chartData: {
     ordersPerWeek: [8, 12, 9, 15, 11, 14, 12],

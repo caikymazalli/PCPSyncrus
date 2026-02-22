@@ -6,7 +6,7 @@ const app = new Hono()
 
 // Produtos page
 app.get('/', (c) => {
-  const { products, bomItems } = mockData
+  const { products, bomItems, suppliers, productSuppliers } = mockData as any
 
   // Count stock status
   const criticalCount = products.filter(p => p.stockStatus === 'critical').length
@@ -241,12 +241,59 @@ app.get('/', (c) => {
               <i class="fas fa-info-circle" style="margin-right:4px;"></i>Ao informar Estoque Mínimo e Atual, o status será calculado automaticamente (Atual &lt; 50% do mínimo = Crítico).
             </div>
           </div>
+          <!-- Tipo de Produto -->
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label"><i class="fas fa-industry" style="margin-right:5px;color:#7c3aed;"></i>Tipo de Produto</label>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;" id="ptype_ext">
+                <input type="radio" name="newProdType" value="external" checked onchange="onProdTypeChange('new',this.value)">
+                <i class="fas fa-truck" style="color:#2980B9;"></i> Produto Externo (compra)
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;" id="ptype_int">
+                <input type="radio" name="newProdType" value="internal" onchange="onProdTypeChange('new',this.value)">
+                <i class="fas fa-cogs" style="color:#7c3aed;"></i> Produto Interno (fabricado)
+              </label>
+            </div>
+          </div>
+          <!-- Fornecedores (visível só se externo) -->
+          <div class="form-group" style="grid-column:span 2;" id="newProdSupplierSection">
+            <label class="form-label"><i class="fas fa-truck" style="margin-right:5px;color:#27AE60;"></i>Fornecedor(es) Principal(is)</label>
+            <select class="form-control" id="newProdSupplier1" style="margin-bottom:6px;">
+              <option value="">Selecionar fornecedor principal...</option>
+              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
+            </select>
+            <select class="form-control" id="newProdSupplier2">
+              <option value="">2º Fornecedor (backup, opcional)...</option>
+              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type})</option>`).join('')}
+            </select>
+            <div style="font-size:11px;color:#6c757d;margin-top:6px;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Ao atingir estoque crítico, cotação será gerada automaticamente por fornecedor.</div>
+          </div>
+          <!-- Produção Interna (visível só se interno) -->
+          <div class="form-group" style="grid-column:span 2;display:none;" id="newProdInternalSection">
+            <div style="background:#f5f3ff;border-radius:8px;padding:14px;border-left:3px solid #7c3aed;">
+              <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:10px;"><i class="fas fa-cogs" style="margin-right:6px;"></i>Configuração de Produto Interno</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Lead Time de Produção (dias)</label>
+                  <input class="form-control" type="number" id="newProdLeadTime" value="5" min="1" placeholder="Ex: 5">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">% Crítico para gerar OP automática</label>
+                  <input class="form-control" type="number" id="newProdCritPct" value="50" min="1" max="100" placeholder="50">
+                </div>
+              </div>
+              <div style="margin-top:10px;font-size:11px;color:#7c3aed;background:white;padding:8px 12px;border-radius:6px;">
+                <i class="fas fa-robot" style="margin-right:4px;"></i>
+                Quando o estoque atingir esse percentual do mínimo, uma <strong>Ordem de Produção automática</strong> será gerada (status: Pendente Aprovação) e o gestor será notificado.
+              </div>
+            </div>
+          </div>
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" rows="3" placeholder="Descrição detalhada..."></textarea></div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novoProdModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Produto criado!');closeModal('novoProdModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button onclick="salvarNovoProduto()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -296,11 +343,78 @@ app.get('/', (c) => {
               <i class="fas fa-check-circle"></i> Normal
             </div>
           </div>
+          <!-- Tipo de Produto (edição) -->
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label"><i class="fas fa-industry" style="margin-right:5px;color:#7c3aed;"></i>Tipo de Produto</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;" id="ep_ptype_ext">
+                <input type="radio" name="editProdType" id="ep_type_ext" value="external" onchange="onProdTypeChange('edit',this.value)">
+                <i class="fas fa-truck" style="color:#2980B9;"></i> Externo
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;" id="ep_ptype_int">
+                <input type="radio" name="editProdType" id="ep_type_int" value="internal" onchange="onProdTypeChange('edit',this.value)">
+                <i class="fas fa-cogs" style="color:#7c3aed;"></i> Interno (fabricado)
+              </label>
+            </div>
+          </div>
+          <div class="form-group" style="grid-column:span 2;" id="editProdSupplierSection">
+            <label class="form-label"><i class="fas fa-truck" style="margin-right:5px;color:#27AE60;"></i>Fornecedor Principal</label>
+            <select class="form-control" id="ep_supplier">
+              <option value="">Selecionar fornecedor...</option>
+              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:span 2;display:none;" id="editProdInternalSection">
+            <div style="background:#f5f3ff;border-radius:8px;padding:12px;border-left:3px solid #7c3aed;">
+              <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;"><i class="fas fa-cogs" style="margin-right:5px;"></i>Produto Interno</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><label class="form-label">Lead Time (dias)</label><input class="form-control" type="number" id="ep_leadtime" value="5" min="1"></div>
+                <div><label class="form-label">% Crítico → OP auto</label><input class="form-control" type="number" id="ep_critpct" value="50" min="1" max="100"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('editProdModal')" class="btn btn-secondary">Cancelar</button>
         <button onclick="alert('Produto atualizado!');closeModal('editProdModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popup: OP Automática para Produto Interno Crítico -->
+  <div id="autoOPPopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:600;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:slideIn 0.3s ease;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="width:64px;height:64px;background:#f5f3ff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+          <i class="fas fa-robot" style="font-size:28px;color:#7c3aed;"></i>
+        </div>
+        <div style="font-size:18px;font-weight:800;color:#1B4F72;">OP Automática Gerada!</div>
+        <div style="font-size:13px;color:#6c757d;margin-top:6px;">Produto interno atingiu estoque crítico</div>
+      </div>
+      <div style="background:#f5f3ff;border-radius:10px;padding:16px;margin-bottom:20px;">
+        <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px;"><i class="fas fa-cogs" style="margin-right:6px;"></i>Produto</div>
+        <div style="font-size:15px;font-weight:800;color:#1B4F72;" id="autoOPProdName">Tampa de Alumínio A200</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Qtd a Produzir</div>
+            <div style="font-size:22px;font-weight:800;color:#7c3aed;" id="autoOPQty">38</div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Status OP</div>
+            <div style="font-size:13px;font-weight:700;color:#d97706;">⏳ Pend. Aprovação</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:20px;font-size:12px;color:#92400e;">
+        <i class="fas fa-bell" style="margin-right:6px;"></i>
+        <strong>Gestor notificado:</strong> Ana Souza (gestor_pcp) foi notificada via e-mail sobre a geração automática desta OP. A aprovação é necessária para iniciar a produção.
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="document.getElementById('autoOPPopup').style.display='none'" class="btn btn-secondary" style="flex:1;justify-content:center;">Fechar</button>
+        <a href="/ordens" class="btn btn-primary" style="flex:1;justify-content:center;text-decoration:none;" onclick="document.getElementById('autoOPPopup').style.display='none'">
+          <i class="fas fa-eye"></i> Ver Ordens
+        </a>
       </div>
     </div>
   </div>
@@ -456,6 +570,42 @@ app.get('/', (c) => {
     el.style.background = s.bg;
     el.style.color = s.color;
     el.innerHTML = '<i class="fas ' + s.icon + '"></i> ' + s.label;
+  }
+
+  // ── Tipo de Produto (interno/externo) ────────────────────────────────────
+  function onProdTypeChange(ctx, val) {
+    const isNew = ctx === 'new';
+    const supSect = document.getElementById(isNew ? 'newProdSupplierSection' : 'editProdSupplierSection');
+    const intSect = document.getElementById(isNew ? 'newProdInternalSection' : 'editProdInternalSection');
+    if (supSect) supSect.style.display = val === 'external' ? '' : 'none';
+    if (intSect) intSect.style.display = val === 'internal' ? '' : 'none';
+    // Highlight border
+    const extLabel = document.getElementById(isNew ? 'ptype_ext' : 'ep_ptype_ext');
+    const intLabel = document.getElementById(isNew ? 'ptype_int' : 'ep_ptype_int');
+    if (extLabel) extLabel.style.borderColor = val === 'external' ? '#2980B9' : '#d1d5db';
+    if (intLabel) intLabel.style.borderColor = val === 'internal' ? '#7c3aed' : '#d1d5db';
+  }
+
+  function salvarNovoProduto() {
+    const type = document.querySelector('input[name="newProdType"]:checked')?.value || 'external';
+    const nome = document.querySelector('#novoProdModal input[placeholder="Nome do produto"]')?.value;
+    if (!nome) { alert('⚠ Informe o nome do produto!'); return; }
+    const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
+    const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
+    const critPct = parseInt(document.getElementById('newProdCritPct')?.value) || 50;
+    closeModal('novoProdModal');
+    // Verificar se já é crítico ao criar
+    if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
+      setTimeout(() => showAutoOPPopup(nome || 'Novo Produto', stockCurrent, stockMin), 400);
+    } else {
+      alert('✅ Produto criado com sucesso!');
+    }
+  }
+
+  function showAutoOPPopup(prodName, stockCurrent, stockMin) {
+    document.getElementById('autoOPPopup').style.display = 'flex';
+    document.getElementById('autoOPProdName').textContent = prodName;
+    document.getElementById('autoOPQty').textContent = stockMin - stockCurrent;
   }
 
   // Auto-close popup after 8 seconds

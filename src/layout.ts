@@ -172,6 +172,14 @@ export function layout(title: string, content: string, activePage: string = '') 
     <a href="/produtos" class="nav-item ${activePage === 'produtos' ? 'active' : ''}" title="Produtos e Estoque Mínimo">
       <span class="icon"><i class="fas fa-box"></i></span> Produtos
     </a>
+    <a href="/cadastros" class="nav-item ${activePage === 'cadastros' ? 'active' : ''}" title="Fornecedores e Vínculos">
+      <span class="icon"><i class="fas fa-truck"></i></span> Fornecedores
+    </a>
+
+    <div class="nav-section-title">Compras</div>
+    <a href="/suprimentos" class="nav-item ${activePage === 'suprimentos' ? 'active' : ''}" title="Suprimentos, Cotações e Importações">
+      <span class="icon"><i class="fas fa-shopping-cart"></i></span> Suprimentos
+    </a>
 
     <div class="nav-section-title">Gestão</div>
     <a href="/admin" class="nav-item ${activePage === 'admin' ? 'active' : ''}" title="Administração de Usuários e Empresa">

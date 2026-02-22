@@ -5,9 +5,47 @@ import { mockData } from '../data'
 const app = new Hono()
 
 app.get('/', (c) => {
-  const { mrpEntries, productionOrders, chartData, plants } = mockData
+  const { mrpEntries, productionOrders, chartData, plants } = mockData as any
+
+  // Itens em shortfall com data de falta
+  const shortageAlerts = (mrpEntries as any[]).filter((m: any) => m.shortfall > 0 && m.shortageDate)
 
   const content = `
+  <!-- Pop-up: Alerta MRP — datas de possível falta -->
+  ${shortageAlerts.length > 0 ? `
+  <div id="mrpAlertPopup" style="position:fixed;top:80px;right:20px;z-index:500;width:360px;background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.18);border-top:4px solid #E74C3C;animation:slideInRight 0.3s ease;">
+    <div style="padding:14px 16px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-calendar-times" style="color:#E74C3C;font-size:14px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#dc2626;">Alerta MRP: Falta de Material!</div>
+          <div style="font-size:11px;color:#6c757d;">${shortageAlerts.length} item(ns) com data de possível falta</div>
+        </div>
+      </div>
+      <button onclick="document.getElementById('mrpAlertPopup').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;">×</button>
+    </div>
+    <div style="padding:10px 16px;">
+      ${shortageAlerts.slice(0,4).map((m: any) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f8f9fa;">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#374151;">${m.componentName}</div>
+          <div style="font-size:11px;color:#9ca3af;">${m.productName} · Déficit: ${m.shortfall}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px;font-weight:700;color:#dc2626;">Falta em: ${new Date(m.shortageDate+'T12:00:00').toLocaleDateString('pt-BR')}</div>
+          <div style="font-size:10px;color:#9ca3af;">${m.leadTimeDays}d prazo entrega</div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div style="padding:10px 16px;">
+      <button class="btn btn-danger btn-sm" style="width:100%;justify-content:center;" onclick="document.getElementById('mrpAlertPopup').style.display='none';switchTab('tabMRP','plan')">
+        <i class="fas fa-list"></i> Ver MRP Completo
+      </button>
+    </div>
+  </div>
+  <style>@keyframes slideInRight{from{opacity:0;transform:translateX(40px);}to{opacity:1;transform:translateX(0);}}</style>` : ''}
   <!-- Header -->
   <div class="section-header">
     <div style="font-size:14px;color:#6c757d;">MRP, Capacidade e Sequenciamento de Produção</div>
@@ -55,11 +93,13 @@ app.get('/', (c) => {
         <div class="table-wrapper">
           <table>
             <thead><tr>
-              <th>Produto</th><th>Componente</th><th>Qtd Necessária</th><th>Qtd Disponível</th><th>Déficit</th><th>Status</th><th>Ação Sugerida</th><th>Gerado em</th>
+              <th>Produto</th><th>Componente</th><th>Qtd Necess.</th><th>Qtd Disponível</th><th>Déficit</th><th>Prazo Entrega</th><th>Data Possível Falta</th><th>Status</th><th>Ação Sugerida</th><th>Ações</th>
             </tr></thead>
             <tbody>
-              ${mrpEntries.map(m => `
-              <tr>
+              ${(mrpEntries as any[]).map((m: any) => {
+                const isUrgent = m.shortfall > 0 && m.shortageDate && new Date(m.shortageDate) <= new Date(Date.now() + 7*24*3600*1000)
+                return `
+              <tr style="${isUrgent ? 'background:#fff5f5;' : ''}">
                 <td style="font-size:12px;color:#6c757d;">${m.productName}</td>
                 <td style="font-weight:600;color:#374151;">${m.componentName}</td>
                 <td style="font-weight:700;color:#374151;">${m.requiredQuantity.toLocaleString('pt-BR')}</td>
@@ -68,6 +108,14 @@ app.get('/', (c) => {
                   ${m.shortfall > 0
                     ? `<span style="font-weight:700;color:#E74C3C;"><i class="fas fa-exclamation-triangle" style="font-size:11px;"></i> ${m.shortfall.toLocaleString('pt-BR')}</span>`
                     : `<span style="font-weight:700;color:#27AE60;"><i class="fas fa-check-circle" style="font-size:11px;"></i> OK</span>`}
+                </td>
+                <td style="font-size:12px;color:${m.leadTimeDays <= 7 ? '#27AE60' : m.leadTimeDays <= 14 ? '#d97706' : '#dc2626'};font-weight:600;">
+                  ${m.leadTimeDays ? m.leadTimeDays + ' dias' : '—'}
+                </td>
+                <td>
+                  ${m.shortageDate
+                    ? `<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:700;color:${isUrgent ? '#dc2626' : '#d97706'};">${new Date(m.shortageDate+'T12:00:00').toLocaleDateString('pt-BR')}</span>${isUrgent ? '<i class="fas fa-fire" style="color:#dc2626;font-size:11px;" title="Urgente!"></i>' : ''}</div>`
+                    : '<span style="color:#27AE60;font-size:12px;"><i class="fas fa-check"></i> OK</span>'}
                 </td>
                 <td>
                   ${m.shortfall > 0
@@ -80,8 +128,17 @@ app.get('/', (c) => {
                     ${m.suggestedAction === 'purchase' ? 'Comprar' : 'Manufaturar'}
                   </span>
                 </td>
-                <td style="font-size:12px;color:#9ca3af;">${new Date(m.generatedAt + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-              </tr>`).join('')}
+                <td>
+                  <div style="display:flex;gap:4px;">
+                    ${m.shortfall > 0 && m.suggestedAction === 'purchase' ? `
+                    <button class="btn btn-sm" style="background:#fffbeb;color:#d97706;border:1px solid #fde68a;" onclick="alert('Cotação gerada para ${m.componentName}!\\n\\n📧 E-mail enviado ao fornecedor vinculado.\\nAcompanhe em Suprimentos.')" title="Gerar cotação">
+                      <i class="fas fa-file-invoice-dollar"></i>
+                    </button>` : ''}
+                    ${m.alertSent ? '<span title="Gestor notificado" style="font-size:16px;">🔔</span>' : ''}
+                  </div>
+                </td>
+              </tr>`
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -296,6 +353,8 @@ app.get('/', (c) => {
       scales: { y: { beginAtZero: true } }
     }
   });
+  // Auto-close MRP alert after 12s
+  setTimeout(() => { const el = document.getElementById('mrpAlertPopup'); if(el) el.style.display='none'; }, 12000);
   </script>
   `
   return c.html(layout('Planejamento & MRP', content, 'planejamento'))
