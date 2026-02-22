@@ -134,7 +134,7 @@ app.get('/', (c) => {
           <div style="font-size:13px;color:#6c757d;margin-top:6px;">${plan.description}</div>
         </div>
 
-        <button onclick="${plan.name === 'Enterprise' ? 'alert(\'Abrindo formulário de contato Enterprise...\')' : plan.name === 'Starter' ? 'alert(\'Iniciando trial de 14 dias do plano Starter!\\n\\nSem cartão de crédito necessário.\')' : 'alert(\'Iniciando assinatura do plano Professional!\')'}" style="width:100%;padding:12px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:8px;background:${plan.badge === 'Mais Popular' ? plan.color : 'transparent'};color:${plan.badge === 'Mais Popular' ? 'white' : plan.color};${plan.badge !== 'Mais Popular' ? `border:2px solid ${plan.color};` : ''}" title="${plan.name === 'Enterprise' ? 'Falar com consultor' : plan.name === 'Starter' ? 'Iniciar trial 14 dias grátis — Starter' : 'Assinar plano Professional'}">
+        <button onclick="${plan.name === 'Enterprise' ? 'window.open(\'https://api.whatsapp.com/send/?phone=5516997923007\',\'_blank\')' : plan.name === 'Starter' ? 'alert(\'Iniciando trial de 14 dias do plano Starter!\\n\\nSem cartão de crédito necessário.\')' : 'alert(\'Iniciando assinatura do plano Professional!\')'}" style="width:100%;padding:12px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:8px;background:${plan.badge === 'Mais Popular' ? plan.color : 'transparent'};color:${plan.badge === 'Mais Popular' ? 'white' : plan.color};${plan.badge !== 'Mais Popular' ? `border:2px solid ${plan.color};` : ''}" title="${plan.name === 'Enterprise' ? 'Falar com consultor via WhatsApp' : plan.name === 'Starter' ? 'Iniciar trial 14 dias grátis — Starter' : 'Assinar plano Professional'}">
           ${plan.name === 'Enterprise' ? 'Falar com Consultor' : plan.name === 'Starter' ? 'Começar — 14 dias grátis' : 'Assinar Agora'}
         </button>
         ${plan.name === 'Starter' ? `<div style="text-align:center;font-size:11px;color:#9ca3af;margin-bottom:16px;"><i class="fas fa-lock" style="margin-right:4px;"></i>Sem cartão de crédito</div>` : '<div style="margin-bottom:16px;"></div>'}
@@ -158,9 +158,9 @@ app.get('/', (c) => {
       <div style="font-size:18px;font-weight:800;margin-bottom:6px;">Precisa de uma solução customizada?</div>
       <div style="font-size:14px;opacity:0.85;">O plano Enterprise é totalmente flexível — fale com nossa equipe para personalizar sua proposta.</div>
     </div>
-    <button onclick="alert('Abrindo formulário de contato Enterprise...')" style="padding:12px 28px;background:white;color:#E67E22;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;" title="Solicitar proposta Enterprise">
-      <i class="fas fa-phone" style="margin-right:8px;"></i>Falar com Consultor
-    </button>
+    <a href="https://api.whatsapp.com/send/?phone=5516997923007" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;background:white;color:#E67E22;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;text-decoration:none;" title="Falar com consultor via WhatsApp">
+      <i class="fab fa-whatsapp" style="font-size:18px;"></i>Falar com Consultor
+    </a>
   </div>
 
   <!-- Current plan details -->
