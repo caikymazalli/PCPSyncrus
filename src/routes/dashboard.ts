@@ -6,6 +6,12 @@ const app = new Hono()
 
 app.get('/', (c) => {
   const { kpis, productionOrders, chartData, machines, products, stockItems } = mockData
+  // Import data from mock
+  const imports = (mockData as any).imports || []
+  const inTransit = imports.filter((imp: any) => ['waiting_ship','in_transit','customs'].includes(imp.status)).length
+  const pendingCustoms = imports.filter((imp: any) => imp.status === 'customs').length
+  const deliveredThisMonth = imports.filter((imp: any) => imp.status === 'delivered').length
+  const totalLandedCostBRL = imports.reduce((acc: number, imp: any) => acc + (imp.landedCost?.totalBRL || imp.valueBRL || 0), 0)
 
   const recentOrders = productionOrders.slice(0, 5)
 
@@ -123,6 +129,23 @@ app.get('/', (c) => {
         </a>
       </div>
     </div>
+
+    <div class="kpi-card" style="${inTransit > 0 ? 'border:1px solid #bee3f8;' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div class="kpi-value" style="color:#2980B9;">${inTransit}</div>
+          <div class="kpi-label">Importações Ativas</div>
+        </div>
+        <div style="width:42px;height:42px;border-radius:10px;background:#e8f4fd;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-ship" style="color:#2980B9;font-size:18px;"></i>
+        </div>
+      </div>
+      <div class="kpi-trend" style="color:#6c757d;">
+        <a href="/suprimentos" style="color:#2980B9;text-decoration:none;">
+          ${pendingCustoms > 0 ? `<i class="fas fa-exclamation-circle" style="color:#E67E22;"></i> ${pendingCustoms} em desembaraço` : `<i class="fas fa-anchor"></i> Ver importações`}
+        </a>
+      </div>
+    </div>
   </div>
 
   <!-- Charts Row -->
@@ -168,7 +191,88 @@ app.get('/', (c) => {
   </div>
 
   <!-- Bottom Row -->
-  <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;">
+  <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;margin-bottom:20px;">
+    <!-- Import Overview Card -->
+    <div class="card" style="padding:20px;border-top:3px solid #2980B9;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0;"><i class="fas fa-ship" style="margin-right:8px;color:#2980B9;"></i>Painel de Importações</h3>
+        <a href="/suprimentos" class="btn btn-secondary btn-sm" title="Ver importações">Ver Importações <i class="fas fa-arrow-right"></i></a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+        ${[
+          { label: 'Em Trânsito', val: inTransit, color: '#2980B9', bg: '#e8f4fd', icon: 'fa-ship' },
+          { label: 'Desembaraço', val: pendingCustoms, color: '#E67E22', bg: '#fef3e8', icon: 'fa-file-alt' },
+          { label: 'Entregues', val: deliveredThisMonth, color: '#27AE60', bg: '#f0fdf4', icon: 'fa-check-circle' },
+          { label: 'Total (mês)', val: imports.length, color: '#1B4F72', bg: '#f0f4f8', icon: 'fa-globe' },
+        ].map(imp => `
+        <div style="background:${imp.bg};border-radius:10px;padding:10px;text-align:center;">
+          <i class="fas ${imp.icon}" style="color:${imp.color};font-size:16px;margin-bottom:4px;"></i>
+          <div style="font-size:20px;font-weight:800;color:${imp.color};">${imp.val}</div>
+          <div style="font-size:10px;color:${imp.color};font-weight:600;">${imp.label}</div>
+        </div>`).join('')}
+      </div>
+      <!-- Import status list -->
+      <div style="border-top:1px solid #f1f3f5;padding-top:12px;">
+        <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;">Processos Recentes</div>
+        ${imports.length > 0 ? imports.slice(0,3).map((imp: any) => {
+          const statusMap: Record<string,{label:string,color:string,bg:string,icon:string}> = {
+            draft:        {label:'Rascunho',    color:'#6c757d',bg:'#f8f9fa',  icon:'fa-edit'},
+            waiting_ship: {label:'Aguard. Emb.',color:'#d97706',bg:'#fffbeb',  icon:'fa-clock'},
+            in_transit:   {label:'Em Trânsito', color:'#2980B9',bg:'#e8f4fd',  icon:'fa-ship'},
+            customs:      {label:'Desembaraço', color:'#E67E22',bg:'#fef3e8',  icon:'fa-file-alt'},
+            delivered:    {label:'Entregue',    color:'#27AE60',bg:'#f0fdf4',  icon:'fa-check-circle'},
+            cancelled:    {label:'Cancelado',   color:'#E74C3C',bg:'#fef2f2',  icon:'fa-times-circle'},
+          }
+          const si = statusMap[imp.status] || statusMap.draft
+          return `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f8f9fa;">
+            <div style="width:28px;height:28px;border-radius:6px;background:${si.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fas ${si.icon}" style="color:${si.color};font-size:11px;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:600;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${imp.invoiceNumber || imp.id}</div>
+              <div style="font-size:11px;color:#9ca3af;">${imp.supplier || 'Fornecedor'} · ${imp.incoterm || 'FOB'}</div>
+            </div>
+            <span style="font-size:10px;background:${si.bg};color:${si.color};padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap;">${si.label}</span>
+          </div>`
+        }).join('') : `
+        <div style="text-align:center;padding:20px;color:#9ca3af;">
+          <i class="fas fa-ship" style="font-size:28px;margin-bottom:8px;opacity:0.4;"></i>
+          <div style="font-size:13px;">Nenhuma importação registrada este mês</div>
+          <a href="/suprimentos" style="font-size:12px;color:#2980B9;text-decoration:none;margin-top:6px;display:block;">Iniciar nova importação →</a>
+        </div>`}
+        ${imports.length > 0 ? `
+        <div style="margin-top:10px;background:#f0f4f8;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:12px;color:#6c757d;">Custo Total Desembaraçado (mês)</div>
+          <div style="font-size:15px;font-weight:800;color:#1B4F72;">R$ ${totalLandedCostBRL.toLocaleString('pt-BR', {minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>` : ''}
+      </div>
+    </div>
+
+    <!-- Machine Status -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:16px 20px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0;">Status das Máquinas</h3>
+        <a href="/recursos" class="btn btn-secondary btn-sm" title="Ver todas as máquinas">Ver todas</a>
+      </div>
+      <div style="padding:8px 0;">
+        ${machines.map((m: any) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid #f8f9fa;">
+          <div style="width:8px;height:8px;border-radius:50%;background:${m.status === 'operational' ? '#27AE60' : m.status === 'maintenance' ? '#F39C12' : '#E74C3C'};flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.name}</div>
+            <div style="font-size:11px;color:#9ca3af;">${m.type} • ${m.plantName}</div>
+          </div>
+          <span class="badge ${m.status === 'operational' ? 'badge-success' : m.status === 'maintenance' ? 'badge-warning' : 'badge-secondary'}" style="font-size:10px;">
+            ${m.status === 'operational' ? 'OK' : m.status === 'maintenance' ? 'Mnt' : 'Off'}
+          </span>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- Old Bottom Row (Orders + original machine status removed, now below) -->
+  <div style="display:grid;grid-template-columns:1fr;gap:20px;">
     <!-- Recent Orders -->
     <div class="card" style="padding:0;overflow:hidden;">
       <div style="padding:16px 20px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
@@ -193,27 +297,6 @@ app.get('/', (c) => {
             </tr>`).join('')}
           </tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- Machine Status -->
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div style="padding:16px 20px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0;">Status das Máquinas</h3>
-        <a href="/recursos" class="btn btn-secondary btn-sm" title="Ver todas as máquinas">Ver todas</a>
-      </div>
-      <div style="padding:8px 0;">
-        ${machines.map(m => `
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid #f8f9fa;">
-          <div style="width:8px;height:8px;border-radius:50%;background:${m.status === 'operational' ? '#27AE60' : m.status === 'maintenance' ? '#F39C12' : '#E74C3C'};flex-shrink:0;"></div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.name}</div>
-            <div style="font-size:11px;color:#9ca3af;">${m.type} • ${m.plantName}</div>
-          </div>
-          <span class="badge ${m.status === 'operational' ? 'badge-success' : m.status === 'maintenance' ? 'badge-warning' : 'badge-secondary'}" style="font-size:10px;">
-            ${m.status === 'operational' ? 'OK' : m.status === 'maintenance' ? 'Mnt' : 'Off'}
-          </span>
-        </div>`).join('')}
       </div>
     </div>
   </div>

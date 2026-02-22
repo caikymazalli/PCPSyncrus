@@ -319,6 +319,26 @@ app.get('/', (c) => {
             <label class="form-label"><i class="fas fa-ship" style="margin-right:4px;color:#2980B9;"></i>NCM Principal (importação)</label>
             <input class="form-control" type="text" placeholder="Ex: 7318.15.00">
           </div>
+          <!-- Campos de descrição PT/EN para importados -->
+          <div id="fDescImpGroup" style="display:none;grid-column:span 2;">
+            <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:4px;">
+              <div style="font-size:12px;font-weight:700;color:#2980B9;margin-bottom:10px;"><i class="fas fa-language" style="margin-right:6px;"></i>Descrições para LI / DI (obrigatórias para fornecedores importados)</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Descrição em Português *</label>
+                  <input class="form-control" id="fDescPT" type="text" placeholder="Ex: Parafuso sextavado aço carbono M8x25">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Descrição em Inglês * (para LI/DI)</label>
+                  <input class="form-control" id="fDescEN" type="text" placeholder="Ex: Hexagon head bolt carbon steel M8x25">
+                </div>
+                <div class="form-group" style="margin:0;grid-column:span 2;">
+                  <label class="form-label">Detalhamento técnico (composição, aplicação, norma)</label>
+                  <textarea class="form-control" id="fDescTech" rows="2" placeholder="Ex: Aço carbono grau 8.8, rosca métrica M8, comprimento 25mm, DIN 931, galvanizado, utilizado em fixação de equipamentos industriais..."></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" rows="2" placeholder="Informações adicionais, certificações, condições especiais..."></textarea></div>
         </div>
       </div>
@@ -430,6 +450,7 @@ app.get('/', (c) => {
     document.getElementById('fType_imp').style.borderColor = val==='importado'?'#2980B9':'#d1d5db';
     document.getElementById('fCnpjGroup').querySelector('label').textContent = val==='importado'?'Tax ID / Registration':'CNPJ *';
     document.getElementById('fNcmGroup').style.display = val==='importado'?'block':'none';
+    document.getElementById('fDescImpGroup').style.display = val==='importado'?'grid':'none';
   }
 
   function toggleVincType(val) {

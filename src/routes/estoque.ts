@@ -123,6 +123,10 @@ app.get('/', (c) => {
       <button class="tab-btn" onclick="switchTab('tabKardex','estoque')"><i class="fas fa-history" style="margin-right:6px;"></i>Kardex
         <span style="background:#2980B9;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${kardexMovements.length}</span>
       </button>
+      <button class="tab-btn" onclick="switchTab('tabAlmoxarifados','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Almoxarifados</button>
+      <button class="tab-btn" onclick="switchTab('tabTransferencias','estoque')"><i class="fas fa-exchange-alt" style="margin-right:6px;"></i>Transferências
+        <span style="background:#7c3aed;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">2</span>
+      </button>
     </div>
 
     <!-- ESTOQUE GERAL TAB -->
@@ -487,6 +491,279 @@ app.get('/', (c) => {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ALMOXARIFADOS TAB -->
+    <div class="tab-content" id="tabAlmoxarifados">
+      <!-- KPIs Almoxarifados -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card" style="border-left:3px solid #1B4F72;">
+          <div style="font-size:24px;font-weight:800;color:#1B4F72;">3</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-warehouse" style="color:#1B4F72;"></i> Almoxarifados</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #27AE60;">
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">2</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-check-circle" style="color:#27AE60;"></i> Ativos</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #E67E22;">
+          <div style="font-size:24px;font-weight:800;color:#E67E22;">1</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-tools" style="color:#E67E22;"></i> Em Manutenção</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #7c3aed;">
+          <div style="font-size:24px;font-weight:800;color:#7c3aed;">R$ 0,00</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-box" style="color:#7c3aed;"></i> Valor Total em Estoque</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openModal('novoAlmoxarifadoModal')"><i class="fas fa-plus"></i> Novo Almoxarifado</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
+        ${[
+          { id: 'alm1', name: 'Almoxarifado Central', code: 'ALM-001', empresa: 'Empresa Alpha (Matriz)', city: 'São Paulo', state: 'SP', responsavel: 'Carlos Silva', custodio: 'Ana Souza', items: 7, status: 'ativo', color: '#27AE60' },
+          { id: 'alm2', name: 'Almoxarifado Nordeste', code: 'ALM-002', empresa: 'Alpha Nordeste (Filial)', city: 'Fortaleza', state: 'CE', responsavel: 'Fernanda Costa', custodio: 'Fernanda Costa', items: 4, status: 'ativo', color: '#27AE60' },
+          { id: 'alm3', name: 'Almoxarifado Sul', code: 'ALM-003', empresa: 'Alpha Sul (Filial)', city: 'Porto Alegre', state: 'RS', responsavel: 'Ricardo Mendes', custodio: 'Ricardo Mendes', items: 3, status: 'manutencao', color: '#E67E22' },
+        ].map(alm => `
+        <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${alm.color};">
+          <div style="padding:16px 20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:44px;height:44px;border-radius:10px;background:${alm.status==='ativo'?'#f0fdf4':'#fffbeb'};display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-warehouse" style="color:${alm.color};font-size:18px;"></i>
+                </div>
+                <div>
+                  <div style="font-size:14px;font-weight:800;color:#1B4F72;">${alm.name}</div>
+                  <div style="font-size:11px;color:#9ca3af;">${alm.code} · ${alm.city}/${alm.state}</div>
+                </div>
+              </div>
+              <span class="badge" style="background:${alm.status==='ativo'?'#f0fdf4':'#fffbeb'};color:${alm.color};">${alm.status==='ativo'?'Ativo':'Manutenção'}</span>
+            </div>
+            <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-building" style="margin-right:4px;"></i>${alm.empresa}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+              <div style="background:#f8f9fa;border-radius:8px;padding:8px;">
+                <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Responsável</div>
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.responsavel}</div>
+              </div>
+              <div style="background:#f8f9fa;border-radius:8px;padding:8px;">
+                <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Custodiante</div>
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.custodio}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${alm.items} itens</span>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-secondary btn-sm" onclick="alert('Ver estoque de ${alm.name}')"><i class="fas fa-eye"></i> Estoque</button>
+                <button class="btn btn-secondary btn-sm" onclick="openModal('editAlmoxarifadoModal')"><i class="fas fa-edit"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- TRANSFERÊNCIAS TAB -->
+    <div class="tab-content" id="tabTransferencias">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1B4F72;">Transferências entre Almoxarifados / Filiais</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:2px;">Movimentações internas de materiais entre unidades do grupo</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('novaTransferenciaModal')"><i class="fas fa-exchange-alt"></i> Nova Transferência</button>
+      </div>
+
+      <!-- KPIs Transferências -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card" style="border-left:3px solid #E67E22;">
+          <div style="font-size:24px;font-weight:800;color:#E67E22;">2</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Pendentes</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #2980B9;">
+          <div style="font-size:24px;font-weight:800;color:#2980B9;">1</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Em Trânsito</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #27AE60;">
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">5</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Concluídas</div>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Nº Transfer.</th><th>Item</th><th>Qtd</th><th>Origem</th><th>Destino</th><th>Solicitante</th><th>Separador</th><th>Custodiante</th><th>Data</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody>
+              ${[
+                { id: 'TRF-001', item: 'Barra de Aço SAE 1020', code: 'MAT-001', qty: 50, unit: 'kg', origem: 'ALM-001 (Alpha)', destino: 'ALM-002 (Nordeste)', solicitante: 'Fernanda Costa', separador: 'Carlos Silva', custodio: 'Ana Souza', date: '2024-02-10', status: 'pendente', sc: '#E67E22', sb: '#fffbeb' },
+                { id: 'TRF-002', item: 'Rolamento 6205-2RS', code: 'ROL-001', qty: 20, unit: 'un', origem: 'ALM-001 (Alpha)', destino: 'ALM-003 (Sul)', solicitante: 'Ricardo Mendes', separador: 'Carlos Silva', custodio: 'Carlos Silva', date: '2024-02-11', status: 'em_transito', sc: '#2980B9', sb: '#e8f4fd' },
+                { id: 'TRF-003', item: 'Anel de Retenção', code: 'ANL-001', qty: 100, unit: 'un', origem: 'ALM-002 (Nordeste)', destino: 'ALM-001 (Alpha)', solicitante: 'Carlos Silva', separador: 'Fernanda Costa', custodio: 'Carlos Silva', date: '2024-02-08', status: 'concluida', sc: '#27AE60', sb: '#f0fdf4' },
+              ].map(t => `
+              <tr>
+                <td><span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${t.id}</span></td>
+                <td>
+                  <div style="font-weight:600;font-size:13px;color:#374151;">${t.item}</div>
+                  <div style="font-size:11px;color:#9ca3af;font-family:monospace;">${t.code}</div>
+                </td>
+                <td style="font-weight:700;color:#1B4F72;">${t.qty.toLocaleString('pt-BR')} ${t.unit}</td>
+                <td style="font-size:12px;"><i class="fas fa-arrow-right" style="color:#6c757d;margin-right:4px;"></i>${t.origem}</td>
+                <td style="font-size:12px;"><i class="fas fa-map-marker-alt" style="color:#27AE60;margin-right:4px;"></i>${t.destino}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-user" style="color:#9ca3af;margin-right:4px;"></i>${t.solicitante}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-user-cog" style="color:#9ca3af;margin-right:4px;"></i>${t.separador}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-shield-alt" style="color:#9ca3af;margin-right:4px;"></i>${t.custodio}</td>
+                <td style="font-size:12px;color:#9ca3af;">${new Date(t.date+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                <td><span class="badge" style="background:${t.sb};color:${t.sc};">${t.status==='pendente'?'Pendente':t.status==='em_transito'?'Em Trânsito':'Concluída'}</span></td>
+                <td>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn btn-secondary btn-sm" onclick="openTransfDetail('${t.id}')"><i class="fas fa-eye"></i></button>
+                    ${t.status==='pendente'?`<button class="btn btn-success btn-sm" onclick="alert('Transferência ${t.id} confirmada!')"><i class="fas fa-check"></i></button>`:''}
+                  </div>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal: Novo Almoxarifado -->
+  <div class="modal-overlay" id="novoAlmoxarifadoModal">
+    <div class="modal" style="max-width:560px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-warehouse" style="margin-right:8px;"></i>Novo Almoxarifado</h3>
+        <button onclick="closeModal('novoAlmoxarifadoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Almoxarifado *</label><input class="form-control" type="text" placeholder="Ex: Almoxarifado Filial Sul"></div>
+          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" type="text" placeholder="Ex: ALM-004"></div>
+          <div class="form-group"><label class="form-label">Empresa / Filial *</label>
+            <select class="form-control">
+              <option>Empresa Alpha (Matriz)</option>
+              <option>Alpha Nordeste (Filial)</option>
+              <option>Alpha Sul (Filial)</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" type="text" placeholder="Ex: Curitiba"></div>
+          <div class="form-group"><label class="form-label">Estado</label><input class="form-control" type="text" placeholder="Ex: PR"></div>
+          <div class="form-group"><label class="form-label">Responsável *</label>
+            <select class="form-control">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Custodiante *</label>
+            <select class="form-control">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" rows="2" placeholder="Instruções especiais, localização física, etc."></textarea></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novoAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="alert('✅ Almoxarifado criado com sucesso!');closeModal('novoAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Transferência -->
+  <div class="modal-overlay" id="novaTransferenciaModal">
+    <div class="modal" style="max-width:620px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-exchange-alt" style="margin-right:8px;"></i>Nova Transferência entre Almoxarifados</h3>
+        <button onclick="closeModal('novaTransferenciaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group"><label class="form-label">Almoxarifado Origem *</label>
+            <select class="form-control">
+              <option value="">Selecionar...</option>
+              <option value="alm1">ALM-001 — Almoxarifado Central (Alpha)</option>
+              <option value="alm2">ALM-002 — Almoxarifado Nordeste</option>
+              <option value="alm3">ALM-003 — Almoxarifado Sul</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Almoxarifado Destino *</label>
+            <select class="form-control">
+              <option value="">Selecionar...</option>
+              <option value="alm1">ALM-001 — Almoxarifado Central (Alpha)</option>
+              <option value="alm2">ALM-002 — Almoxarifado Nordeste</option>
+              <option value="alm3">ALM-003 — Almoxarifado Sul</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Solicitante *</label>
+            <select class="form-control" id="trfSolicitante">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Separador *</label>
+            <select class="form-control" id="trfSeparador">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Custodiante (Destino) *</label>
+            <select class="form-control" id="trfCustodio">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Data Prevista</label>
+            <input class="form-control" type="date" value="2024-02-15">
+          </div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><input class="form-control" type="text" placeholder="Motivo da transferência, urgência, etc."></div>
+        </div>
+
+        <!-- Itens a transferir -->
+        <div style="border-top:1px solid #f1f3f5;padding-top:16px;margin-top:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <label class="form-label" style="margin:0;font-size:14px;font-weight:700;">Itens a Transferir *</label>
+            <button class="btn btn-secondary btn-sm" onclick="addTrfItem()"><i class="fas fa-plus"></i> Adicionar Item</button>
+          </div>
+          <div id="trfItemsList">
+            <div class="trf-item" style="display:grid;grid-template-columns:3fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;">
+              <select class="form-control" style="font-size:12px;">
+                <option value="">Selecionar item...</option>
+                ${mockData.stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Qtd: ${s.quantity} ${s.unit}</option>`).join('')}
+              </select>
+              <input class="form-control" type="number" placeholder="Qtd" min="1">
+              <input class="form-control" type="text" placeholder="Nº Série / Lote">
+              <button class="btn btn-danger btn-sm" onclick="this.closest('.trf-item').remove()"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaTransferenciaModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveTransferencia()" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Solicitar Transferência</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Editar Almoxarifado -->
+  <div class="modal-overlay" id="editAlmoxarifadoModal">
+    <div class="modal" style="max-width:480px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-edit" style="margin-right:8px;"></i>Editar Almoxarifado</h3>
+        <button onclick="closeModal('editAlmoxarifadoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div class="form-group"><label class="form-label">Nome</label><input class="form-control" type="text" value="Almoxarifado Central"></div>
+        <div class="form-group"><label class="form-label">Responsável</label>
+          <select class="form-control">${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Custodiante</label>
+          <select class="form-control">${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-control"><option>Ativo</option><option>Manutenção</option><option>Inativo</option></select>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('editAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="alert('✅ Almoxarifado atualizado!');closeModal('editAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -893,6 +1170,30 @@ app.get('/', (c) => {
       '<div style="font-size:11px;color:#9ca3af;font-weight:600;margin-bottom:3px;">' + label.toUpperCase() + '</div>' +
       '<div style="font-size:13px;color:#374151;">' + value + '</div>' +
     '</div>';
+  }
+
+  // ---- TRANSFERÊNCIAS ----
+  function addTrfItem() {
+    const list = document.getElementById('trfItemsList');
+    const div = document.createElement('div');
+    div.className = 'trf-item';
+    div.style.cssText = 'display:grid;grid-template-columns:3fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;">' +
+      '<option value="">Selecionar item...</option>' +
+      '</select>' +
+      '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
+      '<input class="form-control" type="text" placeholder="Nº Série / Lote">' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\'.trf-item\').remove()"><i class="fas fa-trash"></i></button>';
+    list.appendChild(div);
+  }
+
+  function saveTransferencia() {
+    alert('✅ Solicitação de transferência criada com sucesso!\\n\\nO separador responsável será notificado por e-mail.\\nA transferência ficará com status "Pendente" até a confirmação.');
+    closeModal('novaTransferenciaModal');
+  }
+
+  function openTransfDetail(id) {
+    alert('Detalhes da transferência ' + id + '\\n\\nEm uma implementação completa, abrirá um modal com:\\n- Itens detalhados\\n- Histórico de status\\n- Documentos anexos\\n- Assinatura digital do custodiante');
   }
   </script>
   `

@@ -137,6 +137,26 @@ export function layout(title: string, content: string, activePage: string = '') 
     </div>
   </div>
 
+  <!-- Filtro de Empresa/Grupo (visível para admins) -->
+  <div id="sidebarEmpresaFilter" style="margin:10px 8px 0;padding:10px 12px;background:rgba(255,255,255,0.07);border-radius:8px;border:1px solid rgba(255,255,255,0.1);">
+    <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px;">
+      <i class="fas fa-filter" style="margin-right:4px;"></i>Visualizando
+    </div>
+    <select id="empresaFilterSelect" onchange="onEmpresaFilterChange()" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:white;font-size:12px;font-weight:600;padding:6px 8px;cursor:pointer;outline:none;">
+      <option value="all" style="background:#0f2d4a;color:white;">🏢 Grupo — Todas as Empresas</option>
+      <option value="e1" style="background:#0f2d4a;color:white;">📍 Empresa Alpha (Matriz)</option>
+      <option value="e2" style="background:#0f2d4a;color:white;">📍 Alpha Nordeste (Filial)</option>
+      <option value="e3" style="background:#0f2d4a;color:white;">📍 Alpha Sul (Filial)</option>
+    </select>
+    <div id="empresaFilterBadge" style="margin-top:6px;display:none;">
+      <span style="font-size:10px;background:#27AE60;color:white;padding:2px 8px;border-radius:10px;font-weight:600;">
+        <i class="fas fa-check" style="font-size:8px;margin-right:3px;"></i>
+        <span id="empresaFilterLabel">Filtro ativo</span>
+      </span>
+      <button onclick="resetEmpresaFilter()" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:11px;cursor:pointer;margin-left:4px;" title="Limpar filtro">×</button>
+    </div>
+  </div>
+
   <div class="sidebar-nav">
   <div style="padding:12px 0;">
     <div class="nav-section-title">Principal</div>
@@ -237,7 +257,13 @@ export function layout(title: string, content: string, activePage: string = '') 
         <i class="fas fa-chevron-right" style="font-size:9px;"></i>
         <span>${title}</span>
       </div>
-      <div style="font-size:18px;font-weight:700;color:#1B4F72;">${title}</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="font-size:18px;font-weight:700;color:#1B4F72;">${title}</div>
+        <span id="topbarEmpresaBadge" style="display:none;background:#e8f4fd;color:#2980B9;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;border:1px solid #bee3f8;">
+          <i class="fas fa-building" style="font-size:9px;margin-right:3px;"></i>
+          <span id="activeFilterInfo">Grupo</span>
+        </span>
+      </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
       <button style="position:relative;background:none;border:none;cursor:pointer;color:#6c757d;font-size:18px;padding:6px;">
@@ -264,6 +290,36 @@ function toggleSidebar() {
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+// Filtro de empresa/grupo
+function onEmpresaFilterChange() {
+  const sel = document.getElementById('empresaFilterSelect');
+  const val = sel ? sel.value : 'all';
+  const badge = document.getElementById('empresaFilterBadge');
+  const label = document.getElementById('empresaFilterLabel');
+  const optText = sel ? sel.options[sel.selectedIndex].text.replace(/^📍 |^🏢 /, '') : '';
+  if (val === 'all') {
+    if (badge) badge.style.display = 'none';
+  } else {
+    if (badge) badge.style.display = 'block';
+    if (label) label.textContent = optText;
+  }
+  // Atualiza a versão do sub-header se existir
+  const filterInfo = document.getElementById('activeFilterInfo');
+  if (filterInfo) {
+    filterInfo.textContent = val === 'all' ? 'Grupo — todas as empresas' : optText;
+  }
+  // Dispara evento customizado para as páginas reagirem
+  window.dispatchEvent(new CustomEvent('empresaFilterChanged', { detail: { value: val, label: optText } }));
+  // Atualiza badge na topbar
+  const topBadge = document.getElementById('topbarEmpresaBadge');
+  if (topBadge) topBadge.style.display = val === 'all' ? 'none' : 'inline-flex';
+}
+
+function resetEmpresaFilter() {
+  const sel = document.getElementById('empresaFilterSelect');
+  if (sel) { sel.value = 'all'; onEmpresaFilterChange(); }
 }
 
 // Mobile menu button visibility

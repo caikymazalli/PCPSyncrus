@@ -384,6 +384,12 @@ app.get('/', (c) => {
                 <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="openNumerario('${imp.id}')" title="Pré-via de numerário">
                   <i class="fas fa-calculator"></i> Numerário
                 </button>
+                <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="openRascunhoLI('${imp.id}')" title="Rascunho de LI">
+                  <i class="fas fa-file-alt"></i> LI
+                </button>
+                <button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;" onclick="openFechamento('${imp.id}')" title="Fechamento de Processo / Documentos">
+                  <i class="fas fa-folder-open"></i> Fechar
+                </button>
               </div>
             </div>
 
@@ -438,6 +444,44 @@ app.get('/', (c) => {
           </div>`
         }).join('')}
       </div>
+
+      <!-- Subseção: Rascunho de LI -->
+      <div style="margin-top:28px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#7c3aed;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-file-alt"></i> Rascunhos de LI (Licença de Importação)
+            </div>
+            <div style="font-size:12px;color:#6c757d;margin-top:2px;">Pré-preenchimento automático para todos os itens importados — gerado sob solicitação</div>
+          </div>
+        </div>
+        <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;overflow:hidden;">
+          <div style="padding:14px 20px;border-bottom:1px solid #ede9fe;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;">
+            <div>Processo / Produto</div><div>NCM</div><div>Regime</div><div>Status LI</div><div>Ações</div>
+          </div>
+          ${importsData.map((imp: any) => `
+          <div style="padding:12px 20px;border-bottom:1px solid #ede9fe;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;align-items:center;background:white;">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#374151;">${imp.code}</div>
+              <div style="font-size:11px;color:#9ca3af;">${imp.description} · ${imp.supplierName}</div>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:#7c3aed;">${imp.ncm}</div>
+            <div><span class="badge" style="background:#ede9fe;color:#7c3aed;font-size:11px;">Importação Comum</span></div>
+            <div>
+              <span class="badge" style="background:#fef2f2;color:#dc2626;font-size:11px;">
+                <i class="fas fa-clock" style="font-size:9px;"></i> Pendente
+              </span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;font-size:11px;" onclick="openRascunhoLI('${imp.id}')">
+                <i class="fas fa-file-alt"></i> Gerar LI
+              </button>
+            </div>
+          </div>`).join('')}
+          ${importsData.length === 0 ? `<div style="padding:28px;text-align:center;background:white;color:#9ca3af;font-size:13px;"><i class="fas fa-file-alt" style="font-size:24px;margin-bottom:8px;display:block;"></i>Nenhum processo de importação cadastrado</div>` : ''}
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -553,157 +597,327 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <!-- Modal: Nova Importação -->
+  <!-- Modal: Nova Importação (expandido) -->
   <div class="modal-overlay" id="novaImportacaoModal">
-    <div class="modal" style="max-width:700px;">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+    <div class="modal" style="max-width:860px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-ship" style="margin-right:8px;"></i>Nova Importação</h3>
         <button onclick="closeModal('novaImportacaoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
-      <div style="padding:24px;max-height:75vh;overflow-y:auto;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div class="form-group" style="grid-column:span 2;">
-            <label class="form-label">Fornecedor *</label>
-            <select class="form-control">
-              <option value="">Selecionar fornecedor importado...</option>
-              ${suppliers.filter((s: any) => s.type === 'importado').map((s: any) => `<option value="${s.id}">${s.name} (${s.country})</option>`).join('')}
-            </select>
+      <!-- Abas internas do modal -->
+      <div style="display:flex;gap:0;border-bottom:2px solid #e9ecef;padding:0 24px;background:#f8f9fa;">
+        <button class="imp-modal-tab active" id="impTab1" onclick="switchImpTab(1)" style="padding:10px 18px;font-size:13px;font-weight:600;border:none;background:none;color:#1B4F72;border-bottom:2px solid #1B4F72;margin-bottom:-2px;cursor:pointer;">1. Cabeçalho</button>
+        <button class="imp-modal-tab" id="impTab2" onclick="switchImpTab(2)" style="padding:10px 18px;font-size:13px;font-weight:600;border:none;background:none;color:#6c757d;cursor:pointer;">2. Itens da Invoice</button>
+        <button class="imp-modal-tab" id="impTab3" onclick="switchImpTab(3)" style="padding:10px 18px;font-size:13px;font-weight:600;border:none;background:none;color:#6c757d;cursor:pointer;">3. Impostos & Numerário</button>
+      </div>
+      <div style="padding:20px 24px;max-height:68vh;overflow-y:auto;">
+
+        <!-- ABA 1: Cabeçalho -->
+        <div id="impTabContent1">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="form-group" style="grid-column:span 2;">
+              <label class="form-label">Fornecedor *</label>
+              <select class="form-control" id="impFornecedor">
+                <option value="">Selecionar fornecedor importado...</option>
+                ${suppliers.filter((s: any) => s.type === 'importado').map((s: any) => `<option value="${s.id}">${s.name} (${s.country})</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nº Invoice *</label>
+              <input class="form-control" id="impInvoice" type="text" placeholder="Ex: INV-2024-002">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Data Invoice</label>
+              <input class="form-control" id="impDataInvoice" type="date">
+            </div>
+            <!-- Modalidade de transporte -->
+            <div class="form-group" style="grid-column:span 2;">
+              <label class="form-label"><i class="fas fa-route" style="margin-right:5px;color:#1B4F72;"></i>Modalidade de Transporte *</label>
+              <div style="display:flex;gap:12px;margin-top:4px;" id="impModalidadeGroup">
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:2px solid #e9ecef;border-radius:8px;cursor:pointer;flex:1;transition:all 0.2s;" id="lblAereo" onclick="selectModalidade('aereo')">
+                  <i class="fas fa-plane" style="color:#2980B9;font-size:18px;"></i>
+                  <span style="font-size:13px;font-weight:600;">Aéreo</span>
+                  <input type="radio" name="impModalidade" value="aereo" style="margin-left:auto;">
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:2px solid #e9ecef;border-radius:8px;cursor:pointer;flex:1;transition:all 0.2s;" id="lblTerrestre" onclick="selectModalidade('terrestre')">
+                  <i class="fas fa-truck" style="color:#27AE60;font-size:18px;"></i>
+                  <span style="font-size:13px;font-weight:600;">Terrestre</span>
+                  <input type="radio" name="impModalidade" value="terrestre" style="margin-left:auto;">
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:2px solid #e9ecef;border-radius:8px;cursor:pointer;flex:1;transition:all 0.2s;" id="lblMaritimo" onclick="selectModalidade('maritimo')">
+                  <i class="fas fa-ship" style="color:#7c3aed;font-size:18px;"></i>
+                  <span style="font-size:13px;font-weight:600;">Marítimo</span>
+                  <input type="radio" name="impModalidade" value="maritimo" checked style="margin-left:auto;">
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Incoterm</label>
+              <select class="form-control" id="impIncoterm">
+                <option value="CIF">CIF — Cost, Insurance &amp; Freight</option>
+                <option value="FOB">FOB — Free On Board</option>
+                <option value="EXW">EXW — Ex Works</option>
+                <option value="DDU">DDU — Delivered Duty Unpaid</option>
+                <option value="DDP">DDP — Delivered Duty Paid</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Moeda</label>
+              <select class="form-control" id="impMoeda" onchange="updateImpMoedaLabel()">
+                <option value="EUR">EUR — Euro</option>
+                <option value="USD">USD — Dólar EUA</option>
+                <option value="GBP">GBP — Libra Esterlina</option>
+                <option value="CNY">CNY — Yuan Chinês</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Taxa de Câmbio (R$)</label>
+              <input class="form-control" type="number" id="impCambio" value="5.52" min="0" step="0.01" oninput="calcImpBRL()">
+            </div>
+            <div class="form-group" id="impOrigemGroup">
+              <label class="form-label" id="impOrigemLabel">Porto de Origem</label>
+              <input class="form-control" id="impOrigem" type="text" placeholder="Ex: Hamburg, Rotterdam">
+            </div>
+            <div class="form-group" id="impDestinoGroup">
+              <label class="form-label" id="impDestinoLabel">Porto de Destino</label>
+              <input class="form-control" id="impDestino" type="text" value="Santos" placeholder="Santos, Itajaí...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Chegada Prevista</label>
+              <input class="form-control" id="impChegada" type="date">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Peso Bruto Total (kg)</label>
+              <input class="form-control" id="impPesoBruto" type="number" placeholder="0">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Nº Invoice *</label>
-            <input class="form-control" type="text" placeholder="Ex: INV-2024-002">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Data Invoice</label>
-            <input class="form-control" type="date">
-          </div>
-          <div class="form-group">
-            <label class="form-label">NCM *</label>
-            <input class="form-control" type="text" placeholder="Ex: 7604.10.00">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Incoterm</label>
-            <select class="form-control">
-              <option value="CIF">CIF — Cost, Insurance & Freight</option>
-              <option value="FOB">FOB — Free On Board</option>
-              <option value="EXW">EXW — Ex Works</option>
-              <option value="DDU">DDU — Delivered Duty Unpaid</option>
-              <option value="DDP">DDP — Delivered Duty Paid</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Moeda</label>
-            <select class="form-control" id="impMoeda" onchange="updateImpMoedaLabel()">
-              <option value="EUR">EUR — Euro</option>
-              <option value="USD">USD — Dólar EUA</option>
-              <option value="GBP">GBP — Libra Esterlina</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" id="impValorLabel">Valor Invoice (EUR) *</label>
-            <input class="form-control" type="number" id="impValor" placeholder="0.00" min="0" step="0.01" oninput="calcImpBRL()">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Taxa de Câmbio (R$)</label>
-            <input class="form-control" type="number" id="impCambio" value="5.52" min="0" step="0.01" oninput="calcImpBRL()">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Valor em BRL (automático)</label>
-            <input class="form-control" type="text" id="impBRL" placeholder="R$ 0,00" readonly style="background:#f8f9fa;">
-          </div>
-          <div class="form-group" style="grid-column:span 2;">
-            <label class="form-label">Descrição da Mercadoria *</label>
-            <input class="form-control" type="text" placeholder="Ex: Chapas de Alumínio Liga 6061 espessura 3mm">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Peso Líquido (kg)</label>
-            <input class="form-control" type="number" placeholder="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Peso Bruto (kg)</label>
-            <input class="form-control" type="number" placeholder="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Porto de Origem</label>
-            <input class="form-control" type="text" placeholder="Ex: Hamburg, Rotterdam">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Porto de Destino</label>
-            <input class="form-control" type="text" value="Santos" placeholder="Santos, Itajaí...">
+          <div style="text-align:right;margin-top:12px;">
+            <button class="btn btn-primary" onclick="switchImpTab(2)">Próximo: Itens da Invoice <i class="fas fa-arrow-right"></i></button>
           </div>
         </div>
 
-        <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-top:8px;">
-          <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:12px;"><i class="fas fa-percent" style="margin-right:6px;"></i>Alíquotas de Impostos</div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">II (%)</label>
-              <input class="form-control" type="number" value="12" id="taxII" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">IPI (%)</label>
-              <input class="form-control" type="number" value="5" id="taxIPI" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">PIS (%)</label>
-              <input class="form-control" type="number" value="1.65" id="taxPIS" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">COFINS (%)</label>
-              <input class="form-control" type="number" value="7.6" id="taxCOFINS" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">ICMS (%)</label>
-              <input class="form-control" type="number" value="12" id="taxICMS" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">AFRMM (R$)</label>
-              <input class="form-control" type="number" value="25" id="taxAFRMM" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">SISCOMEX (R$)</label>
-              <input class="form-control" type="number" value="185" id="taxSISCOMEX" min="0" step="0.01" oninput="calcImpostos()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label"><strong>Total Impostos</strong></label>
-              <input class="form-control" type="text" id="taxTotal" readonly style="background:#fef2f2;color:#dc2626;font-weight:700;">
-            </div>
+        <!-- ABA 2: Itens da Invoice -->
+        <div id="impTabContent2" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <div style="font-size:14px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Itens da Invoice</div>
+            <button class="btn btn-primary btn-sm" onclick="addImpItem()"><i class="fas fa-plus"></i> Adicionar Item</button>
+          </div>
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400e;">
+            <i class="fas fa-info-circle" style="margin-right:6px;"></i>
+            <strong>Atenção:</strong> Cada item deve ter NCM, Descrição em Português e em Inglês (obrigatórias para LI e DI). O subtotal é calculado automaticamente.
+          </div>
+          <!-- Cabeçalho da tabela -->
+          <div style="display:grid;grid-template-columns:2fr 80px 70px 90px 90px 90px 36px;gap:6px;padding:6px 8px;background:#f1f3f5;border-radius:6px;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;">
+            <div>Produto / Descrição PT · EN</div><div>NCM</div><div>Qtd</div><div>Un</div><div>Val. Unit.</div><div>Subtotal</div><div></div>
+          </div>
+          <div id="impItensList" style="display:flex;flex-direction:column;gap:6px;">
+            <!-- Itens adicionados dinamicamente -->
+          </div>
+          <div style="margin-top:12px;padding:12px 16px;background:#f0fdf4;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;color:#374151;"><i class="fas fa-sigma" style="margin-right:6px;color:#27AE60;"></i>Total Invoice (moeda):</span>
+            <span id="impTotalMoeda" style="font-size:16px;font-weight:800;color:#1B4F72;">0.00</span>
+          </div>
+          <div style="margin-top:6px;padding:10px 16px;background:#e8f4fd;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;color:#374151;"><i class="fas fa-exchange-alt" style="margin-right:6px;color:#2980B9;"></i>Total Invoice (BRL):</span>
+            <span id="impTotalBRL" style="font-size:16px;font-weight:800;color:#2980B9;">R$ 0,00</span>
+          </div>
+          <input type="hidden" id="impBRL" value="0">
+          <div style="display:flex;justify-content:space-between;margin-top:14px;">
+            <button class="btn btn-secondary" onclick="switchImpTab(1)"><i class="fas fa-arrow-left"></i> Voltar</button>
+            <button class="btn btn-primary" onclick="switchImpTab(3)">Próximo: Impostos &amp; Numerário <i class="fas fa-arrow-right"></i></button>
           </div>
         </div>
 
-        <div style="background:#f5f3ff;border-radius:8px;padding:14px;margin-top:12px;">
-          <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:12px;"><i class="fas fa-calculator" style="margin-right:6px;"></i>Pré-via de Numerário (despesas estimadas)</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Frete (R$)</label>
-              <input class="form-control" type="number" id="numFrete" value="1500" min="0" oninput="calcNumerario()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Seguro (R$)</label>
-              <input class="form-control" type="number" id="numSeguro" value="300" min="0" oninput="calcNumerario()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Despachante (R$)</label>
-              <input class="form-control" type="number" id="numDesp" value="1200" min="0" oninput="calcNumerario()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Taxas Porto (R$)</label>
-              <input class="form-control" type="number" id="numPorto" value="800" min="0" oninput="calcNumerario()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Armazenagem (R$)</label>
-              <input class="form-control" type="number" id="numArm" value="400" min="0" oninput="calcNumerario()">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label"><strong>Custo Total Desemb.</strong></label>
-              <input class="form-control" type="text" id="numTotal" readonly style="background:#ede9fe;color:#7c3aed;font-weight:700;">
+        <!-- ABA 3: Impostos & Numerário -->
+        <div id="impTabContent3" style="display:none;">
+          <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:14px;">
+            <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:12px;"><i class="fas fa-percent" style="margin-right:6px;"></i>Alíquotas de Impostos</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">II (%)</label>
+                <input class="form-control" type="number" value="12" id="taxII" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">IPI (%)</label>
+                <input class="form-control" type="number" value="5" id="taxIPI" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">PIS (%)</label>
+                <input class="form-control" type="number" value="1.65" id="taxPIS" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">COFINS (%)</label>
+                <input class="form-control" type="number" value="7.6" id="taxCOFINS" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">ICMS (%)</label>
+                <input class="form-control" type="number" value="12" id="taxICMS" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">AFRMM (R$)</label>
+                <input class="form-control" type="number" value="25" id="taxAFRMM" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">SISCOMEX (R$)</label>
+                <input class="form-control" type="number" value="185" id="taxSISCOMEX" min="0" step="0.01" oninput="calcImpostos()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label"><strong>Total Impostos</strong></label>
+                <input class="form-control" type="text" id="taxTotal" readonly style="background:#fef2f2;color:#dc2626;font-weight:700;">
+              </div>
             </div>
           </div>
+
+          <div style="background:#f5f3ff;border-radius:8px;padding:14px;margin-bottom:14px;">
+            <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:12px;"><i class="fas fa-calculator" style="margin-right:6px;"></i>Pré-via de Numerário (despesas estimadas)</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Frete (R$)</label>
+                <input class="form-control" type="number" id="numFrete" value="1500" min="0" oninput="calcNumerario()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Seguro (R$)</label>
+                <input class="form-control" type="number" id="numSeguro" value="300" min="0" oninput="calcNumerario()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Despachante (R$)</label>
+                <input class="form-control" type="number" id="numDesp" value="1200" min="0" oninput="calcNumerario()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Taxas Porto (R$)</label>
+                <input class="form-control" type="number" id="numPorto" value="800" min="0" oninput="calcNumerario()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Armazenagem (R$)</label>
+                <input class="form-control" type="number" id="numArm" value="400" min="0" oninput="calcNumerario()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label"><strong>Custo Total Desemb.</strong></label>
+                <input class="form-control" type="text" id="numTotal" readonly style="background:#ede9fe;color:#7c3aed;font-weight:700;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Resumo final -->
+          <div style="background:#1B4F72;border-radius:8px;padding:14px;color:white;">
+            <div style="font-size:13px;font-weight:700;margin-bottom:10px;"><i class="fas fa-chart-pie" style="margin-right:6px;"></i>Resumo do Processo</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;" id="impResumoGrid">
+              <div style="background:rgba(255,255,255,0.1);border-radius:6px;padding:10px;text-align:center;">
+                <div style="font-size:10px;opacity:0.7;">ITENS NA INVOICE</div>
+                <div style="font-size:20px;font-weight:800;" id="impResumoItens">0</div>
+              </div>
+              <div style="background:rgba(255,255,255,0.1);border-radius:6px;padding:10px;text-align:center;">
+                <div style="font-size:10px;opacity:0.7;">TOTAL IMPOSTOS</div>
+                <div style="font-size:14px;font-weight:800;" id="impResumoImpostos">R$ 0,00</div>
+              </div>
+              <div style="background:rgba(255,255,255,0.15);border-radius:6px;padding:10px;text-align:center;border:1px solid rgba(255,255,255,0.3);">
+                <div style="font-size:10px;opacity:0.7;">CUSTO TOTAL DESEMBARAÇADO</div>
+                <div style="font-size:16px;font-weight:800;" id="impResumoCusto">R$ 0,00</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:14px;">
+            <button class="btn btn-secondary" onclick="switchImpTab(2)"><i class="fas fa-arrow-left"></i> Voltar</button>
+          </div>
+        </div>
+
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:12px;color:#9ca3af;">* Campos obrigatórios</div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeModal('novaImportacaoModal')" class="btn btn-secondary">Cancelar</button>
+          <button onclick="salvarImportacao()" class="btn btn-primary"><i class="fas fa-save"></i> Criar Processo</button>
         </div>
       </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeModal('novaImportacaoModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="salvarImportacao()" class="btn btn-primary"><i class="fas fa-save"></i> Criar Processo</button>
+    </div>
+  </div>
+
+  <!-- Modal: Rascunho de LI (Licença de Importação) -->
+  <div class="modal-overlay" id="rascunhoLIModal">
+    <div class="modal" style="max-width:800px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#7c3aed;"><i class="fas fa-file-alt" style="margin-right:8px;"></i>Rascunho de LI — <span id="liImpCodigo"></span></h3>
+        <button onclick="closeModal('rascunhoLIModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;max-height:75vh;overflow-y:auto;" id="rascunhoLIBody">
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;">
+        <button class="btn btn-secondary btn-sm" onclick="imprimirLI()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeModal('rascunhoLIModal')" class="btn btn-secondary">Fechar</button>
+          <button onclick="alert('✅ Rascunho de LI salvo!\\nEnviado ao despachante para análise.')" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Enviar ao Despachante</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Fechamento de Processo (histórico de arquivos) -->
+  <div class="modal-overlay" id="fechamentoProcessoModal">
+    <div class="modal" style="max-width:760px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-folder-open" style="margin-right:8px;"></i>Fechamento de Processo — <span id="fechImpCodigo"></span></h3>
+        <button onclick="closeModal('fechamentoProcessoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;max-height:75vh;overflow-y:auto;">
+        <!-- Sub-abas de fechamento -->
+        <div style="display:flex;gap:0;border-bottom:2px solid #e9ecef;margin-bottom:16px;">
+          <button class="fech-tab active" id="fechTabDoc" onclick="switchFechTab('doc')" style="padding:8px 16px;font-size:12px;font-weight:600;border:none;background:none;color:#1B4F72;border-bottom:2px solid #1B4F72;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-file-upload" style="margin-right:5px;"></i>Documentos</button>
+          <button class="fech-tab" id="fechTabHist" onclick="switchFechTab('hist')" style="padding:8px 16px;font-size:12px;font-weight:600;border:none;background:none;color:#6c757d;cursor:pointer;"><i class="fas fa-history" style="margin-right:5px;"></i>Histórico</button>
+          <button class="fech-tab" id="fechTabAudit" onclick="switchFechTab('audit')" style="padding:8px 16px;font-size:12px;font-weight:600;border:none;background:none;color:#6c757d;cursor:pointer;"><i class="fas fa-shield-alt" style="margin-right:5px;"></i>Auditoria</button>
+        </div>
+
+        <!-- Aba: Documentos -->
+        <div id="fechTabContentDoc">
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400e;">
+            <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+            <strong>Documentos obrigatórios:</strong> Invoice Comercial, Packing List, BL/AWB/CRT, LI aprovada, DI, DANFE de Importação, Comprovante de câmbio.
+          </div>
+          <!-- Área de upload -->
+          <div id="fechUploadArea" style="border:2px dashed #cbd5e1;border-radius:10px;padding:28px;text-align:center;margin-bottom:16px;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.borderColor='#1B4F72'" onmouseleave="this.style.borderColor='#cbd5e1'" onclick="document.getElementById('fechFileInput').click()">
+            <i class="fas fa-cloud-upload-alt" style="font-size:32px;color:#1B4F72;margin-bottom:10px;"></i>
+            <div style="font-size:14px;font-weight:600;color:#374151;">Arraste arquivos aqui ou clique para selecionar</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:4px;">PDF, XLSX, DOCX, JPG, PNG — Máx. 25MB por arquivo</div>
+            <input type="file" id="fechFileInput" multiple style="display:none" onchange="addFechDocuments(this.files)">
+          </div>
+          <!-- Categorias de documentos -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            ${['Invoice Comercial', 'Packing List', 'BL / AWB / CRT', 'LI (Licença Importação)', 'DI (Declaração Importação)', 'DANFE de Importação', 'Comprovante de Câmbio', 'Certificado de Origem', 'Apólice de Seguro', 'Outros'].map((doc, i) => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;" id="docSlot${i}">
+              <div style="width:32px;height:32px;background:#e9ecef;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" id="docSlotIcon${i}">
+                <i class="fas fa-file-pdf" style="color:#9ca3af;font-size:14px;"></i>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:600;color:#374151;">${doc}</div>
+                <div style="font-size:11px;color:#9ca3af;" id="docSlotStatus${i}">Aguardando upload</div>
+              </div>
+              <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="uploadDocSlot(${i},'${doc}')"><i class="fas fa-upload"></i></button>
+            </div>`).join('')}
+          </div>
+        </div>
+
+        <!-- Aba: Histórico -->
+        <div id="fechTabContentHist" style="display:none;">
+          <div id="fechHistoricoBody">
+            <!-- Preenchido pelo JS -->
+          </div>
+        </div>
+
+        <!-- Aba: Auditoria -->
+        <div id="fechTabContentAudit" style="display:none;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin-bottom:14px;">
+            <i class="fas fa-shield-alt" style="color:#16a34a;margin-right:8px;"></i>
+            <strong style="font-size:13px;color:#15803d;">Registro de Auditoria</strong>
+            <span style="font-size:12px;color:#374151;"> — Todas as ações são registradas automaticamente com usuário, data e hora para fins de auditoria.</span>
+          </div>
+          <div id="fechAuditoriaBody">
+            <!-- Preenchido pelo JS -->
+          </div>
+        </div>
+
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:12px;color:#9ca3af;"><i class="fas fa-lock" style="margin-right:4px;"></i>Histórico imutável para fins de auditoria fiscal</div>
+        <button onclick="closeModal('fechamentoProcessoModal')" class="btn btn-secondary">Fechar</button>
       </div>
     </div>
   </div>
@@ -996,28 +1210,147 @@ app.get('/', (c) => {
 
   // ── Nova importação: cálculos inline ─────────────────────────────────────
   function updateImpMoedaLabel() {
-    const m = document.getElementById('impMoeda').value;
-    document.getElementById('impValorLabel').textContent = 'Valor Invoice (' + m + ') *';
+    // mantido por compatibilidade
     calcImpBRL();
   }
 
-  function calcImpBRL() {
-    const val = parseFloat(document.getElementById('impValor').value) || 0;
-    const fx = parseFloat(document.getElementById('impCambio').value) || 0;
-    const brl = val * fx;
-    document.getElementById('impBRL').value = 'R$ ' + brl.toLocaleString('pt-BR', {minimumFractionDigits:2});
+  // ── Navegação entre abas do modal de nova importação ────────────────────
+  function switchImpTab(n) {
+    [1,2,3].forEach(i => {
+      document.getElementById('impTabContent'+i).style.display = i===n ? 'block':'none';
+      const btn = document.getElementById('impTab'+i);
+      if (i===n) { btn.style.color='#1B4F72'; btn.style.borderBottom='2px solid #1B4F72'; }
+      else { btn.style.color='#6c757d'; btn.style.borderBottom='none'; }
+    });
+    if (n===3) { calcImpostos(); updateImpResumo(); }
+  }
+
+  // ── Seletor de modalidade ──────────────────────────────────────────────
+  function selectModalidade(mode) {
+    const labels = { aereo:'lblAereo', terrestre:'lblTerrestre', maritimo:'lblMaritimo' };
+    const colors = { aereo:'#2980B9', terrestre:'#27AE60', maritimo:'#7c3aed' };
+    const origemLabels = { aereo:'Aeroporto de Origem', terrestre:'Cidade de Origem', maritimo:'Porto de Origem' };
+    const destLabels = { aereo:'Aeroporto de Destino', terrestre:'Cidade de Destino', maritimo:'Porto de Destino' };
+    Object.keys(labels).forEach(m => {
+      const el = document.getElementById(labels[m]);
+      if (m===mode) { el.style.border='2px solid '+colors[mode]; el.style.background=colors[mode]+'15'; }
+      else { el.style.border='2px solid #e9ecef'; el.style.background='white'; }
+    });
+    document.getElementById('impOrigemLabel').textContent = origemLabels[mode];
+    document.getElementById('impDestinoLabel').textContent = destLabels[mode];
+  }
+  // Inicializa marítimo
+  setTimeout(() => selectModalidade('maritimo'), 100);
+
+  // ── Adicionar item à invoice ──────────────────────────────────────────
+  let impItemCount = 0;
+  function addImpItem() {
+    impItemCount++;
+    const idx = impItemCount;
+    const list = document.getElementById('impItensList');
+    const div = document.createElement('div');
+    div.id = 'impItem'+idx;
+    div.style.cssText = 'background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:4px;';
+    div.innerHTML = \`
+      <div style="display:grid;grid-template-columns:2fr 80px 60px 80px 90px 90px 32px;gap:6px;align-items:center;margin-bottom:8px;">
+        <div>
+          <select class="form-control" style="font-size:12px;" id="impItemProd\${idx}" onchange="onImpItemChange(\${idx})">
+            <option value="">Selecionar produto cadastrado...</option>
+            \${allItemsData.map(i => '<option value="'+i.code+'">'+i.name+' ('+i.code+')</option>').join('')}
+            <option value="__manual__">— Descrever manualmente —</option>
+          </select>
+        </div>
+        <input class="form-control" id="impItemNCM\${idx}" type="text" placeholder="NCM" style="font-size:12px;" value="">
+        <input class="form-control" id="impItemQtd\${idx}" type="number" placeholder="Qtd" min="0" step="0.001" style="font-size:12px;" value="1" oninput="recalcImpItem(\${idx})">
+        <input class="form-control" id="impItemUn\${idx}" type="text" placeholder="Un" style="font-size:12px;" value="un">
+        <input class="form-control" id="impItemVU\${idx}" type="number" placeholder="Val.Unit." min="0" step="0.01" style="font-size:12px;" value="0" oninput="recalcImpItem(\${idx})">
+        <input class="form-control" id="impItemSub\${idx}" type="text" placeholder="Subtotal" readonly style="font-size:12px;background:#fff;color:#1B4F72;font-weight:700;">
+        <button class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="removeImpItem(\${idx})"><i class="fas fa-trash"></i></button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descrição em Português *</label>
+          <input class="form-control" id="impItemDescPT\${idx}" type="text" placeholder="Ex: Chapa de Alumínio Liga 6061 esp. 3mm" style="font-size:12px;" oninput="calcImpTotal()">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descrição em Inglês * (para LI/DI)</label>
+          <input class="form-control" id="impItemDescEN\${idx}" type="text" placeholder="Ex: Aluminum Alloy 6061 Sheet 3mm thickness" style="font-size:12px;" oninput="calcImpTotal()">
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Detalhamento técnico (composição, especificação, uso)</label>
+        <textarea class="form-control" id="impItemDet\${idx}" rows="2" placeholder="Ex: Liga Al-Mg-Si, liga 6061-T6, utilizado na fabricação de tampas de equipamentos industriais..." style="font-size:12px;resize:vertical;"></textarea>
+      </div>\`;
+    list.appendChild(div);
+    calcImpTotal();
+  }
+
+  function removeImpItem(idx) {
+    const el = document.getElementById('impItem'+idx);
+    if (el) el.remove();
+    calcImpTotal();
+  }
+
+  function onImpItemChange(idx) {
+    const sel = document.getElementById('impItemProd'+idx);
+    const code = sel.value;
+    if (!code || code==='__manual__') return;
+    const item = allItemsData.find(i => i.code===code);
+    if (!item) return;
+    // Pré-preenche descrição PT
+    document.getElementById('impItemDescPT'+idx).value = item.name || '';
+    document.getElementById('impItemUn'+idx).value = item.unit || 'un';
+    calcImpTotal();
+  }
+
+  function recalcImpItem(idx) {
+    const qtd = parseFloat(document.getElementById('impItemQtd'+idx)?.value)||0;
+    const vu = parseFloat(document.getElementById('impItemVU'+idx)?.value)||0;
+    const sub = qtd * vu;
+    const moeda = document.getElementById('impMoeda')?.value || 'EUR';
+    const sym = moeda==='EUR'?'€':moeda==='USD'?'US$':moeda==='GBP'?'£':'¥';
+    const el = document.getElementById('impItemSub'+idx);
+    if (el) el.value = sym+' '+sub.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    calcImpTotal();
+  }
+
+  function calcImpTotal() {
+    const moeda = document.getElementById('impMoeda')?.value || 'EUR';
+    const fx = parseFloat(document.getElementById('impCambio')?.value)||1;
+    const sym = moeda==='EUR'?'€':moeda==='USD'?'US$':moeda==='GBP'?'£':'¥';
+    let total = 0;
+    let count = 0;
+    document.querySelectorAll('[id^="impItemVU"]').forEach(el => {
+      const idx = el.id.replace('impItemVU','');
+      const qtd = parseFloat(document.getElementById('impItemQtd'+idx)?.value)||0;
+      const vu = parseFloat(el.value)||0;
+      total += qtd * vu;
+      count++;
+    });
+    const brl = total * fx;
+    const tmEl = document.getElementById('impTotalMoeda');
+    const tbEl = document.getElementById('impTotalBRL');
+    const brlEl = document.getElementById('impBRL');
+    if (tmEl) tmEl.textContent = sym+' '+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    if (tbEl) tbEl.textContent = 'R$ '+brl.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    if (brlEl) brlEl.value = brl.toString();
+    document.getElementById('impResumoItens') && (document.getElementById('impResumoItens').textContent = count);
     calcImpostos();
   }
 
+  function calcImpBRL() {
+    calcImpTotal();
+  }
+
   function calcImpostos() {
-    const brl = parseFloat((document.getElementById('impBRL').value||'').replace('R$ ','').replace('.','').replace(',','.')) || 0;
-    const ii = parseFloat(document.getElementById('taxII').value) || 0;
-    const ipi = parseFloat(document.getElementById('taxIPI').value) || 0;
-    const pis = parseFloat(document.getElementById('taxPIS').value) || 0;
-    const cofins = parseFloat(document.getElementById('taxCOFINS').value) || 0;
-    const icms = parseFloat(document.getElementById('taxICMS').value) || 0;
-    const afrmm = parseFloat(document.getElementById('taxAFRMM').value) || 0;
-    const siscomex = parseFloat(document.getElementById('taxSISCOMEX').value) || 0;
+    const brl = parseFloat(document.getElementById('impBRL')?.value) || 0;
+    const ii = parseFloat(document.getElementById('taxII')?.value) || 0;
+    const ipi = parseFloat(document.getElementById('taxIPI')?.value) || 0;
+    const pis = parseFloat(document.getElementById('taxPIS')?.value) || 0;
+    const cofins = parseFloat(document.getElementById('taxCOFINS')?.value) || 0;
+    const icms = parseFloat(document.getElementById('taxICMS')?.value) || 0;
+    const afrmm = parseFloat(document.getElementById('taxAFRMM')?.value) || 0;
+    const siscomex = parseFloat(document.getElementById('taxSISCOMEX')?.value) || 0;
     const baseII = brl;
     const valII = baseII * ii / 100;
     const valIPI = (baseII + valII) * ipi / 100;
@@ -1025,30 +1358,226 @@ app.get('/', (c) => {
     const valCOFINS = brl * cofins / 100;
     const valICMS = (brl + valII + valIPI) / (1 - icms/100) * (icms/100);
     const total = valII + valIPI + valPIS + valCOFINS + valICMS + afrmm + siscomex;
-    document.getElementById('taxTotal').value = 'R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2});
+    const el = document.getElementById('taxTotal');
+    if (el) el.value = 'R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2});
     calcNumerario(total);
   }
 
   function calcNumerario(impostos) {
-    const brlStr = (document.getElementById('impBRL').value||'').replace('R$ ','').replace(/\./g,'').replace(',','.');
-    const brl = parseFloat(brlStr) || 0;
-    const taxTotal = impostos !== undefined ? impostos : parseFloat((document.getElementById('taxTotal').value||'').replace('R$ ','').replace(/\./g,'').replace(',','.')) || 0;
-    const frete = parseFloat(document.getElementById('numFrete').value) || 0;
-    const seguro = parseFloat(document.getElementById('numSeguro').value) || 0;
-    const desp = parseFloat(document.getElementById('numDesp').value) || 0;
-    const porto = parseFloat(document.getElementById('numPorto').value) || 0;
-    const arm = parseFloat(document.getElementById('numArm').value) || 0;
+    const brl = parseFloat(document.getElementById('impBRL')?.value) || 0;
+    const taxTotal = impostos !== undefined ? impostos : parseFloat((document.getElementById('taxTotal')?.value||'').replace('R$ ','').replace(/\\./g,'').replace(',','.')) || 0;
+    const frete = parseFloat(document.getElementById('numFrete')?.value) || 0;
+    const seguro = parseFloat(document.getElementById('numSeguro')?.value) || 0;
+    const desp = parseFloat(document.getElementById('numDesp')?.value) || 0;
+    const porto = parseFloat(document.getElementById('numPorto')?.value) || 0;
+    const arm = parseFloat(document.getElementById('numArm')?.value) || 0;
     const total = brl + taxTotal + frete + seguro + desp + porto + arm;
-    document.getElementById('numTotal').value = 'R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2});
+    const el = document.getElementById('numTotal');
+    if (el) el.value = 'R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits:2});
+    updateImpResumo(taxTotal, total);
+  }
+
+  function updateImpResumo(taxTotalVal, custoTotalVal) {
+    const taxStr = document.getElementById('taxTotal')?.value || 'R$ 0,00';
+    const custoStr = document.getElementById('numTotal')?.value || 'R$ 0,00';
+    if (document.getElementById('impResumoImpostos')) document.getElementById('impResumoImpostos').textContent = taxStr;
+    if (document.getElementById('impResumoCusto')) document.getElementById('impResumoCusto').textContent = custoStr;
   }
 
   function salvarImportacao() {
-    alert('✅ Processo de importação criado com sucesso!\\n\\nCódigo: IMP-2024-002\\nStatus inicial: Aguardando Embarque\\n\\nVocê pode acompanhar o processo na aba Importação.');
+    const inv = document.getElementById('impInvoice')?.value;
+    const forn = document.getElementById('impFornecedor')?.options[document.getElementById('impFornecedor')?.selectedIndex]?.text;
+    const mod = document.querySelector('input[name="impModalidade"]:checked')?.value || 'maritimo';
+    const modLabel = { aereo:'Aéreo', terrestre:'Terrestre', maritimo:'Marítimo' }[mod];
+    const totalBRL = document.getElementById('numTotal')?.value || 'R$ 0,00';
+    const itens = document.querySelectorAll('[id^="impItem"]').length;
+    if (!inv) { alert('⚠️ Informe o número da Invoice antes de salvar.'); switchImpTab(1); return; }
+    alert('✅ Processo de importação criado com sucesso!\\n\\nCódigo: IMP-2024-00'+(importsData2.length+2)+'\\nFornecedor: '+forn+'\\nInvoice: '+inv+'\\nModalidade: '+modLabel+'\\nItens na Invoice: '+itens+'\\nCusto Desembaraçado: '+totalBRL+'\\n\\nStatus inicial: Aguardando Embarque\\n\\nRascunho de LI disponível na subseção LI.');
     closeModal('novaImportacaoModal');
   }
 
   function printNumerario() {
     window.print();
+  }
+
+  // ── Rascunho de LI ────────────────────────────────────────────────────
+  function openRascunhoLI(id) {
+    const imp = importsData2.find(x => x.id === id);
+    if (!imp) return;
+    document.getElementById('liImpCodigo').textContent = imp.code;
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    let html = \`
+    <div style="background:#f5f3ff;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:16px;font-weight:800;color:#7c3aed;"><i class="fas fa-stamp" style="margin-right:8px;"></i>RASCUNHO DE LICENÇA DE IMPORTAÇÃO</div>
+        <span style="background:#fef2f2;color:#dc2626;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid #fecaca;">MINUTA — Não oficial</span>
+      </div>
+      <div style="font-size:11px;color:#6c757d;">Gerado automaticamente em \${hoje} · Processo: \${imp.code}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      \${detRow('IMPORTADOR (CNPJ)', 'Sua Empresa Ltda — 00.000.000/0001-00')}
+      \${detRow('FORNECEDOR / EXPORTADOR', imp.supplierName)}
+      \${detRow('PAÍS DE ORIGEM', imp.portOfOrigin.includes('Hamburg')||imp.portOfOrigin.includes('München')?'Alemanha':imp.portOfOrigin.includes('Chicago')?'EUA':'—')}
+      \${detRow('PAÍS DE PROCEDÊNCIA', imp.portOfOrigin.includes('Hamburg')||imp.portOfOrigin.includes('München')?'Alemanha':imp.portOfOrigin.includes('Chicago')?'EUA':'—')}
+      \${detRow('PORTO/AEROPORTO DESCARGA', imp.portOfDestination)}
+      \${detRow('VIA DE TRANSPORTE', imp.incoterm.includes('CIF')?'Marítima':'A definir')}
+      \${detRow('INCOTERM', imp.incoterm)}
+      \${detRow('REGIME ADUANEIRO', 'Importação Comum')}
+      \${detRow('ENQUADRAMENTO CAMBIAL', 'SEM COBERTURA CAMBIAL — LUCROS E DIVIDENDOS')}
+      \${detRow('MODALIDADE PAGAMENTO', 'Pagamento Antecipado / L/C à vista')}
+    </div>
+
+    <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Relação de Mercadorias</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+      <thead>
+        <tr style="background:#7c3aed;color:white;">
+          <th style="padding:8px 10px;text-align:left;border-radius:0;">NCM</th>
+          <th style="padding:8px 10px;text-align:left;">Descrição (PT)</th>
+          <th style="padding:8px 10px;text-align:left;">Descrição (EN)</th>
+          <th style="padding:8px 10px;text-align:right;">Qtd</th>
+          <th style="padding:8px 10px;text-align:right;">Val. Unit.</th>
+          <th style="padding:8px 10px;text-align:right;">Subtotal (USD/EUR)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background:#f8f9fa;border-bottom:1px solid #e9ecef;">
+          <td style="padding:8px 10px;font-weight:700;color:#7c3aed;">\${imp.ncm}</td>
+          <td style="padding:8px 10px;">\${imp.description}</td>
+          <td style="padding:8px 10px;color:#6c757d;font-style:italic;">— preencher —</td>
+          <td style="padding:8px 10px;text-align:right;">\${imp.netWeight} kg</td>
+          <td style="padding:8px 10px;text-align:right;">\${imp.invoiceValueEUR > 0 ? '€':'US$'} \${((imp.invoiceValueEUR||imp.invoiceValueUSD)/imp.netWeight).toFixed(2)}</td>
+          <td style="padding:8px 10px;text-align:right;font-weight:700;">\${imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr style="background:#f5f3ff;">
+          <td colspan="5" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL:</td>
+          <td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">\${imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      \${detRow('VALOR TOTAL CIF (USD/EUR)', imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+      \${detRow('VALOR TOTAL CIF (BRL)', 'R$ '+imp.invoiceValueBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+imp.exchangeRate+')')}
+      \${detRow('PESO LÍQUIDO', imp.netWeight+' kg')}
+      \${detRow('PESO BRUTO', imp.grossWeight+' kg')}
+    </div>
+
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;">
+      <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+      <strong>Atenção:</strong> Este rascunho deve ser revisado e validado pelo despachante aduaneiro antes de protocolar a LI no SISCOMEX.
+      Informações marcadas como "— preencher —" requerem complementação.
+    </div>\`;
+    document.getElementById('rascunhoLIBody').innerHTML = html;
+    openModal('rascunhoLIModal');
+  }
+
+  function imprimirLI() {
+    window.print();
+  }
+
+  // ── Fechamento de Processo ─────────────────────────────────────────────
+  let fechCurrentImp = null;
+  const fechDocumentos = {}; // simula documentos por processo
+
+  function openFechamento(id) {
+    const imp = importsData2.find(x => x.id === id);
+    if (!imp) return;
+    fechCurrentImp = imp;
+    document.getElementById('fechImpCodigo').textContent = imp.code;
+    switchFechTab('doc');
+    buildFechHistorico(imp);
+    buildFechAuditoria(imp);
+    openModal('fechamentoProcessoModal');
+  }
+
+  function switchFechTab(tab) {
+    ['doc','hist','audit'].forEach(t => {
+      const btn = document.getElementById('fechTab'+t.charAt(0).toUpperCase()+t.slice(1));
+      const content = document.getElementById('fechTabContent'+t.charAt(0).toUpperCase()+t.slice(1));
+      if (!btn||!content) return;
+      if (t===tab) { btn.style.color='#1B4F72'; btn.style.borderBottom='2px solid #1B4F72'; content.style.display='block'; }
+      else { btn.style.color='#6c757d'; btn.style.borderBottom='none'; content.style.display='none'; }
+    });
+  }
+
+  function uploadDocSlot(idx, docName) {
+    // Simula upload
+    const inp = document.createElement('input');
+    inp.type='file'; inp.accept='.pdf,.xlsx,.docx,.jpg,.png';
+    inp.onchange = function(e) {
+      const f = e.target.files[0];
+      if (!f) return;
+      document.getElementById('docSlotStatus'+idx).textContent = f.name+' — '+new Date().toLocaleDateString('pt-BR');
+      document.getElementById('docSlotStatus'+idx).style.color = '#16a34a';
+      document.getElementById('docSlot'+idx).style.background='#f0fdf4';
+      document.getElementById('docSlot'+idx).style.border='1px solid #bbf7d0';
+      document.getElementById('docSlotIcon'+idx).style.background='#dcfce7';
+      document.getElementById('docSlotIcon'+idx).innerHTML='<i class="fas fa-check-circle" style="color:#16a34a;font-size:14px;"></i>';
+      // Registra no histórico
+      if (fechCurrentImp) {
+        if (!fechDocumentos[fechCurrentImp.id]) fechDocumentos[fechCurrentImp.id] = [];
+        fechDocumentos[fechCurrentImp.id].push({ doc:docName, file:f.name, date:new Date().toLocaleString('pt-BR'), user:'Carlos Silva' });
+        buildFechHistorico(fechCurrentImp);
+        buildFechAuditoria(fechCurrentImp);
+      }
+    };
+    inp.click();
+  }
+
+  function addFechDocuments(files) {
+    for (const f of files) {
+      if (fechCurrentImp) {
+        if (!fechDocumentos[fechCurrentImp.id]) fechDocumentos[fechCurrentImp.id] = [];
+        fechDocumentos[fechCurrentImp.id].push({ doc:'Geral', file:f.name, date:new Date().toLocaleString('pt-BR'), user:'Carlos Silva' });
+      }
+    }
+    if (fechCurrentImp) { buildFechHistorico(fechCurrentImp); buildFechAuditoria(fechCurrentImp); }
+    alert('✅ '+files.length+' arquivo(s) adicionado(s) ao processo!');
+  }
+
+  function buildFechHistorico(imp) {
+    const docs = fechDocumentos[imp.id] || [];
+    // Combina timeline + docs
+    const events = [
+      ...imp.timeline.filter(t=>t.user).map(t=>({ tipo:'timeline', desc:t.event, date:new Date(t.date+'T12:00:00').toLocaleString('pt-BR'), user:t.user })),
+      ...docs.map(d=>({ tipo:'doc', desc:'Upload: '+d.doc+' — '+d.file, date:d.date, user:d.user }))
+    ].sort((a,b)=>a.date<b.date?-1:1);
+    let html = '';
+    if (events.length===0) {
+      html = '<div style="text-align:center;padding:28px;color:#9ca3af;"><i class="fas fa-history" style="font-size:24px;margin-bottom:8px;display:block;"></i>Nenhum evento registrado</div>';
+    } else {
+      html = '<div style="display:flex;flex-direction:column;gap:0;">';
+      events.forEach((ev,i) => {
+        html += '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f5;">' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:'+(ev.tipo==='doc'?'#e8f4fd':'#f0fdf4')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+          '<i class="fas '+(ev.tipo==='doc'?'fa-file-upload':'fa-check')+'" style="font-size:12px;color:'+(ev.tipo==='doc'?'#2980B9':'#16a34a')+';"></i></div>' +
+          '<div style="flex:1;"><div style="font-size:13px;color:#374151;font-weight:600;">'+ev.desc+'</div>' +
+          '<div style="font-size:11px;color:#9ca3af;">'+ev.date+' · '+ev.user+'</div></div></div>';
+      });
+      html += '</div>';
+    }
+    const el = document.getElementById('fechHistoricoBody');
+    if (el) el.innerHTML = html;
+  }
+
+  function buildFechAuditoria(imp) {
+    const docs = fechDocumentos[imp.id] || [];
+    const auditRows = [
+      { acao:'Processo criado', data:imp.timeline[0]?.date||'—', user:'Carlos Silva', obs:'Abertura do processo de importação' },
+      ...imp.timeline.filter(t=>t.user).map(t=>({ acao:t.event, data:t.date, user:t.user, obs:'Atualização de status' })),
+      ...docs.map(d=>({ acao:'Upload de documento', data:d.date, user:d.user, obs:d.doc+': '+d.file }))
+    ];
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    html += '<thead><tr style="background:#f1f3f5;"><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ação</th><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Data/Hora</th><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Usuário</th><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Observação</th></tr></thead><tbody>';
+    auditRows.forEach(r => {
+      html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px 10px;font-weight:600;color:#374151;">'+r.acao+'</td><td style="padding:8px 10px;color:#6c757d;">'+r.data+'</td><td style="padding:8px 10px;color:#374151;">'+r.user+'</td><td style="padding:8px 10px;color:#6c757d;">'+r.obs+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    const el = document.getElementById('fechAuditoriaBody');
+    if (el) el.innerHTML = html;
   }
 
   // ── Misc ──────────────────────────────────────────────────────────────────

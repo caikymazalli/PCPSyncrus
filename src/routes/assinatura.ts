@@ -79,14 +79,14 @@ app.get('/', (c) => {
   <div style="background:linear-gradient(135deg,#1B4F72,#2980B9);border-radius:16px;padding:32px;color:white;margin-bottom:32px;text-align:center;">
     <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:0.7;margin-bottom:8px;">Plano & Licença</div>
     <h2 style="margin:0 0 8px;font-size:28px;font-weight:800;">Escolha o plano ideal para sua operação</h2>
-    <p style="margin:0;font-size:15px;opacity:0.7;">Comece com 14 dias gratuitos em qualquer plano • Cancele a qualquer momento</p>
+    <p style="margin:0;font-size:15px;opacity:0.7;">14 dias de acesso completo gratuito, sem cartão de crédito • Cancele a qualquer momento</p>
 
     <!-- Trial status -->
     <div style="margin-top:20px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,0.15);border-radius:10px;padding:12px 20px;">
       <i class="fas fa-clock" style="color:#F39C12;font-size:18px;"></i>
       <div style="text-align:left;">
         <div style="font-size:12px;opacity:0.7;">Seu trial atual</div>
-        <div style="font-size:14px;font-weight:700;">11 dias restantes — Acesso completo ao Professional</div>
+        <div style="font-size:14px;font-weight:700;">11 dias restantes — Acesso completo ao Professional, sem cartão de crédito</div>
       </div>
     </div>
   </div>
@@ -134,9 +134,10 @@ app.get('/', (c) => {
           <div style="font-size:13px;color:#6c757d;margin-top:6px;">${plan.description}</div>
         </div>
 
-        <button onclick="alert('Ativando plano ${plan.name}!')" style="width:100%;padding:12px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:20px;background:${plan.badge === 'Mais Popular' ? plan.color : 'transparent'};color:${plan.badge === 'Mais Popular' ? 'white' : plan.color};${plan.badge !== 'Mais Popular' ? `border:2px solid ${plan.color};` : ''}" title="${plan.name === 'Enterprise' ? 'Falar com consultor' : 'Assinar plano ' + plan.name}">
-          ${plan.priceMonthly < 0 ? 'Falar com Consultor' : (i === 1 ? 'Assinar Agora' : 'Começar Grátis')}
+        <button onclick="alert('Iniciando trial de 14 dias do plano ${plan.name}!\\n\\nSem cartão de crédito necessário.')" style="width:100%;padding:12px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:8px;background:${plan.badge === 'Mais Popular' ? plan.color : 'transparent'};color:${plan.badge === 'Mais Popular' ? 'white' : plan.color};${plan.badge !== 'Mais Popular' ? `border:2px solid ${plan.color};` : ''}" title="${plan.name === 'Enterprise' ? 'Falar com consultor' : 'Iniciar trial 14 dias — ' + plan.name}">
+          ${plan.priceMonthly < 0 ? 'Falar com Consultor' : 'Começar — 14 dias grátis'}
         </button>
+        ${plan.priceMonthly > 0 ? `<div style="text-align:center;font-size:11px;color:#9ca3af;margin-bottom:16px;"><i class="fas fa-lock" style="margin-right:4px;"></i>Sem cartão de crédito</div>` : '<div style="margin-bottom:16px;"></div>'}
 
         <div style="display:flex;flex-direction:column;gap:10px;">
           ${plan.features.map(f => `
@@ -176,6 +177,39 @@ app.get('/', (c) => {
     </div>
 
     <div style="margin-top:20px;padding-top:20px;border-top:1px solid #f1f3f5;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px;">Calcule o custo para múltiplos CNPJs/Empresas:</div>
+      <div style="background:#f8f9fa;border-radius:12px;padding:18px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;flex-wrap:wrap;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Plano base</label>
+            <select class="form-control" id="calcPlan" onchange="calcCnpjCost()">
+              <option value="500">Starter — R$ 500/mês</option>
+              <option value="700" selected>Professional — R$ 700/mês</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">CNPJs/Empresas adicionais</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button onclick="changeCnpj(-1)" style="width:32px;height:38px;border:1.5px solid #d1d5db;border-radius:6px;background:white;cursor:pointer;font-size:16px;font-weight:700;">−</button>
+              <input class="form-control" type="number" id="calcCnpjQty" value="0" min="0" style="text-align:center;width:60px;" oninput="calcCnpjCost()">
+              <button onclick="changeCnpj(1)" style="width:32px;height:38px;border:1.5px solid #d1d5db;border-radius:6px;background:white;cursor:pointer;font-size:16px;font-weight:700;">+</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <label style="font-size:11px;color:#9ca3af;font-weight:700;">Anual (-20%)</label>
+            <input type="checkbox" id="calcAnnual" onchange="calcCnpjCost()" style="width:18px;height:18px;cursor:pointer;">
+          </div>
+        </div>
+        <div style="margin-top:14px;background:white;border-radius:8px;padding:12px 16px;border:1.5px solid #e9ecef;" id="calcResult">
+          <span style="color:#9ca3af;font-size:13px;">Configure acima para ver o cálculo</span>
+        </div>
+        <button onclick="alert('Checkout iniciado com o plano e CNPJs configurados!')" style="margin-top:12px;width:100%;padding:10px;border-radius:8px;border:none;cursor:pointer;background:#1B4F72;color:white;font-size:14px;font-weight:700;">
+          <i class="fas fa-shopping-cart" style="margin-right:8px;"></i>Ir para o Checkout
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding-top:20px;border-top:1px solid #f1f3f5;">
       <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px;">Limites do seu plano:</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
         ${[
@@ -203,7 +237,9 @@ app.get('/', (c) => {
         { q: 'O que inclui a taxa de setup?', a: 'A taxa de setup cobre a configuração inicial do sistema, importação de dados e treinamento básico via vídeo.' },
         { q: 'Os dados ficam salvos após o cancelamento?', a: 'Seus dados ficam disponíveis por 30 dias após o cancelamento para exportação.' },
         { q: 'Como funciona o desconto anual de 20%?', a: 'Ao optar pelo pagamento anual, você paga 20% menos por mês, com cobrança anual antecipada.' },
-        { q: 'Como funciona o trial de 14 dias?', a: 'Você tem acesso completo ao plano Professional durante 14 dias sem precisar de cartão de crédito.' },
+        { q: 'Como funciona o trial de 14 dias?', a: 'Tanto o plano Starter quanto o Professional oferecem 14 dias de acesso completo ao plano selecionado, sem necessidade de cadastrar cartão de crédito. Ao final do período, você escolhe se quer continuar com a assinatura paga.' },
+        { q: 'Posso adicionar mais CNPJs/empresas ao meu plano?', a: 'Sim! Você pode adicionar empresas (filiais ou novas matrizes) ao seu grupo. Cada CNPJ adicional tem um custo de 50% do valor da sua assinatura mensal (ou anual, se optar pelo plano anual). Ex: plano Professional mensal R$ 700 → cada CNPJ extra custa R$ 350/mês. No plano anual, o desconto de 20% também se aplica ao custo do CNPJ extra.' },
+        { q: 'Como funciona o cálculo de CNPJ extra no checkout?', a: 'Durante o checkout, informe o número de empresas/CNPJs adicionais. O sistema calculará automaticamente o valor total: assinatura + (nº de CNPJs extras × 50% da assinatura). Se optar pelo plano anual, o desconto de 20% será aplicado sobre o valor total antes do fechamento.' },
       ].map(faq => `
       <div style="border-bottom:1px solid #f1f3f5;padding-bottom:16px;">
         <div style="font-size:14px;font-weight:700;color:#374151;margin-bottom:6px;"><i class="fas fa-question-circle" style="color:#2980B9;margin-right:8px;"></i>${faq.q}</div>
@@ -236,7 +272,45 @@ app.get('/', (c) => {
       document.querySelectorAll('.price-annual').forEach(el => el.style.display = 'block');
       document.querySelectorAll('.annual-saving').forEach(el => el.style.display = 'block');
     }
+    // Also update the CNPJ calculator's checkbox
+    const calcAnnual = document.getElementById('calcAnnual');
+    if (calcAnnual) { calcAnnual.checked = (type === 'annual'); calcCnpjCost(); }
   }
+
+  function changeCnpj(delta) {
+    const inp = document.getElementById('calcCnpjQty');
+    const val = Math.max(0, (parseInt(inp.value) || 0) + delta);
+    inp.value = val;
+    calcCnpjCost();
+  }
+
+  function calcCnpjCost() {
+    const planBase = parseInt(document.getElementById('calcPlan').value) || 700;
+    const extras = parseInt(document.getElementById('calcCnpjQty').value) || 0;
+    const isAnnual = document.getElementById('calcAnnual').checked;
+    const discount = isAnnual ? 0.8 : 1;
+    const planFinal = Math.round(planBase * discount);
+    const extraUnit = Math.round(planBase * 0.5 * discount);
+    const extrasTotal = extras * extraUnit;
+    const total = planFinal + extrasTotal;
+    const totalAnnual = isAnnual ? total * 12 : null;
+    const planName = planBase === 500 ? 'Starter' : 'Professional';
+    const result = document.getElementById('calcResult');
+    if (!result) return;
+    result.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;font-size:13px;">' +
+        '<span style="color:#6c757d;">Plano ' + planName + (isAnnual?' (anual -20%)':'') + ':</span>' +
+        '<span style="font-weight:700;color:#1B4F72;">R$ ' + planFinal.toLocaleString('pt-BR') + '/mês</span>' +
+        (extras > 0 ? '<span style="color:#6c757d;">' + extras + ' CNPJ(s) extra × R$ ' + extraUnit.toLocaleString('pt-BR') + ':</span>' +
+        '<span style="font-weight:700;color:#7c3aed;">R$ ' + extrasTotal.toLocaleString('pt-BR') + '/mês</span>' : '') +
+        '<span style="font-weight:800;color:#1B4F72;border-top:1px solid #e9ecef;padding-top:6px;margin-top:2px;">Total mensal:</span>' +
+        '<span style="font-size:16px;font-weight:800;color:#1B4F72;border-top:1px solid #e9ecef;padding-top:6px;margin-top:2px;">R$ ' + total.toLocaleString('pt-BR') + '/mês</span>' +
+        (totalAnnual ? '<span style="color:#27AE60;font-size:12px;">Cobrança anual:</span><span style="font-weight:700;color:#27AE60;font-size:12px;">R$ ' + totalAnnual.toLocaleString('pt-BR') + '/ano</span>' : '') +
+      '</div>';
+  }
+
+  // Initialize calc on load
+  calcCnpjCost();
   </script>
   `
   return c.html(layout('Plano & Licença', content, 'assinatura'))
