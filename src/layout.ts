@@ -22,7 +22,13 @@ export function layout(title: string, content: string, activePage: string = '') 
       --surface: #FFFFFF;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); }
-    .sidebar { width: 260px; min-height: 100vh; background: #0f2d4a; transition: transform 0.3s; position: fixed; left: 0; top: 0; z-index: 50; overflow-y: auto; }
+    .sidebar { width: 260px; height: 100vh; background: #0f2d4a; transition: transform 0.3s; position: fixed; left: 0; top: 0; z-index: 50; overflow: hidden; display: flex; flex-direction: column; }
+    .sidebar-nav { flex: 1; overflow-y: auto; overflow-x: hidden; }
+    .sidebar-nav::-webkit-scrollbar { width: 4px; }
+    .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 4px; }
+    .sidebar-nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
+    .sidebar-footer { flex-shrink: 0; }
     .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; }
     .main-content { margin-left: 260px; min-height: 100vh; }
     @media (max-width: 768px) {
@@ -131,6 +137,7 @@ export function layout(title: string, content: string, activePage: string = '') 
     </div>
   </div>
 
+  <div class="sidebar-nav">
   <div style="padding:12px 0;">
     <div class="nav-section-title">Principal</div>
     <a href="/" class="nav-item ${activePage === 'dashboard' ? 'active' : ''}">
@@ -189,7 +196,9 @@ export function layout(title: string, content: string, activePage: string = '') 
       <span class="icon"><i class="fas fa-credit-card"></i></span> Plano & Licença
     </a>
   </div>
+  </div><!-- end sidebar-nav -->
 
+  <div class="sidebar-footer">
   <!-- Trial Banner -->
   <div style="margin:8px;padding:12px;background:rgba(230,126,34,0.15);border-radius:8px;border:1px solid rgba(230,126,34,0.3);">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -212,6 +221,7 @@ export function layout(title: string, content: string, activePage: string = '') 
       </a>
     </div>
   </div>
+  </div><!-- end sidebar-footer -->
 </nav>
 
 <!-- Main Content -->
