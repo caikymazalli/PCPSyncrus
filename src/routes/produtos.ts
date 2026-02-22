@@ -8,19 +8,107 @@ const app = new Hono()
 app.get('/', (c) => {
   const { products, bomItems } = mockData
 
+  // Count stock status
+  const criticalCount = products.filter(p => p.stockStatus === 'critical').length
+  const normalCount = products.filter(p => p.stockStatus === 'normal').length
+  const purchaseCount = products.filter(p => p.stockStatus === 'purchase_needed').length
+  const manufactureCount = products.filter(p => p.stockStatus === 'manufacture_needed').length
+
+  const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
+    critical:          { label: 'Crítico',              color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle' },
+    normal:            { label: 'Normal',               color: '#16a34a', bg: '#f0fdf4', icon: 'fa-check-circle' },
+    purchase_needed:   { label: 'Nec. Compra',          color: '#d97706', bg: '#fffbeb', icon: 'fa-shopping-cart' },
+    manufacture_needed:{ label: 'Nec. Manufatura',      color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry' },
+  }
+
   const content = `
+  <!-- Critical Stock Popup Alert -->
+  ${criticalCount > 0 ? `
+  <div id="criticalStockPopup" style="position:fixed;top:80px;right:20px;z-index:500;width:320px;background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.18);border-top:4px solid #dc2626;animation:slideIn 0.3s ease;">
+    <div style="padding:16px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:14px;"></i>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#dc2626;">Estoque Crítico!</div>
+          <div style="font-size:11px;color:#6c757d;">${criticalCount} produto(s) abaixo do mínimo</div>
+        </div>
+      </div>
+      <button onclick="document.getElementById('criticalStockPopup').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;">×</button>
+    </div>
+    <div style="padding:12px 16px;">
+      ${products.filter(p => p.stockStatus === 'critical').map(p => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f8f9fa;">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#374151;">${p.name}</div>
+          <div style="font-size:11px;color:#dc2626;">Atual: ${p.stockCurrent} • Mín: ${p.stockMin}</div>
+        </div>
+        <span class="badge" style="background:#fef2f2;color:#dc2626;">Crítico</span>
+      </div>`).join('')}
+    </div>
+    <div style="padding:12px 16px;text-align:center;">
+      <button class="btn btn-danger btn-sm" style="width:100%;" onclick="document.getElementById('criticalStockPopup').style.display='none';scrollToSection('stockStatus')">
+        <i class="fas fa-eye"></i> Ver todos os críticos
+      </button>
+    </div>
+  </div>
+  <style>@keyframes slideIn{from{opacity:0;transform:translateX(40px);}to{opacity:1;transform:translateX(0);}}</style>` : ''}
+
+  <!-- Header -->
   <div class="section-header">
-    <div style="font-size:14px;color:#6c757d;">${products.length} produtos cadastrados</div>
-    <button class="btn btn-primary" onclick="openModal('novoProdModal')"><i class="fas fa-plus"></i> Novo Produto</button>
+    <div>
+      <div style="font-size:14px;color:#6c757d;">${products.length} produtos cadastrados</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        ${criticalCount > 0 ? `<span class="badge" style="background:#fef2f2;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:9px;"></i> ${criticalCount} Crítico</span>` : ''}
+        ${normalCount > 0 ? `<span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-check-circle" style="font-size:9px;"></i> ${normalCount} Normal</span>` : ''}
+        ${purchaseCount > 0 ? `<span class="badge" style="background:#fffbeb;color:#d97706;"><i class="fas fa-shopping-cart" style="font-size:9px;"></i> ${purchaseCount} Nec. Compra</span>` : ''}
+        ${manufactureCount > 0 ? `<span class="badge" style="background:#f5f3ff;color:#7c3aed;"><i class="fas fa-industry" style="font-size:9px;"></i> ${manufactureCount} Nec. Manufatura</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="openModal('configLimitesModal')" title="Configurar limites de estoque por status">
+        <i class="fas fa-sliders-h"></i> Config. Limites
+      </button>
+      <button class="btn btn-primary" onclick="openModal('novoProdModal')" title="Cadastrar novo produto">
+        <i class="fas fa-plus"></i> Novo Produto
+      </button>
+    </div>
   </div>
 
-  <!-- Search -->
+  <!-- Stock Status Summary Cards -->
+  <div id="stockStatus" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+    ${Object.entries(stockStatusInfo).map(([key, info]) => {
+      const count = products.filter(p => p.stockStatus === key).length
+      return `
+      <div class="card" style="padding:16px;border-left:4px solid ${info.color};cursor:pointer;" onclick="filterByStatus('${key}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:22px;font-weight:800;color:${info.color};">${count}</div>
+            <div style="font-size:12px;color:#6c757d;margin-top:2px;">${info.label}</div>
+          </div>
+          <div style="width:38px;height:38px;border-radius:10px;background:${info.bg};display:flex;align-items:center;justify-content:center;">
+            <i class="fas ${info.icon}" style="color:${info.color};font-size:16px;"></i>
+          </div>
+        </div>
+      </div>`
+    }).join('')}
+  </div>
+
+  <!-- Search & Filter -->
   <div class="card" style="padding:14px 20px;margin-bottom:16px;">
-    <div style="display:flex;gap:12px;align-items:center;">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <div class="search-box" style="flex:1;">
         <i class="fas fa-search icon"></i>
-        <input class="form-control" type="text" placeholder="Buscar por código ou nome...">
+        <input class="form-control" type="text" id="prodSearch" placeholder="Buscar por código ou nome..." oninput="filterProds()">
       </div>
+      <select class="form-control" id="prodStatusFilter" style="width:auto;" onchange="filterProds()">
+        <option value="">Todos os status</option>
+        <option value="critical">Crítico</option>
+        <option value="normal">Normal</option>
+        <option value="purchase_needed">Nec. Compra</option>
+        <option value="manufacture_needed">Nec. Manufatura</option>
+      </select>
       <select class="form-control" style="width:auto;">
         <option>Todas as unidades</option>
         <option>un</option><option>kg</option><option>m</option><option>l</option>
@@ -28,35 +116,60 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
+  <div id="prodGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
     ${products.map(p => {
       const bomCount = bomItems.filter(b => b.productCode === p.code).length
+      const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
+      const stockPct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
       return `
-      <div class="card" style="padding:20px;">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
-          <div>
-            <div style="font-size:15px;font-weight:700;color:#1B4F72;">${p.name}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-              <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${p.code}</span>
-              <span class="chip" style="background:#f1f5f9;color:#374151;">${p.unit}</span>
+      <div class="card prod-card" data-status="${p.stockStatus}" data-search="${p.name.toLowerCase()} ${p.code.toLowerCase()}" style="padding:0;overflow:hidden;border-top:3px solid ${si.color};">
+        <div style="padding:16px 16px 12px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+            <div style="flex:1;min-width:0;padding-right:8px;">
+              <div style="font-size:15px;font-weight:700;color:#1B4F72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${p.code}</span>
+                <span class="chip" style="background:#f1f5f9;color:#374151;">${p.unit}</span>
+              </div>
+            </div>
+            <span class="badge" style="background:${si.bg};color:${si.color};white-space:nowrap;flex-shrink:0;">
+              <i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}
+            </span>
+          </div>
+
+          ${p.description ? `<div style="font-size:12px;color:#6c757d;margin-bottom:12px;line-height:1.5;">${p.description}</div>` : ''}
+
+          <!-- Stock Progress -->
+          <div style="background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:11px;color:#6c757d;font-weight:600;">Estoque Atual</span>
+              <span style="font-size:11px;color:#6c757d;">Mín: <strong>${p.stockMin} ${p.unit}</strong></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="progress-bar" style="flex:1;height:6px;">
+                <div class="progress-fill" style="width:${stockPct}%;background:${si.color};"></div>
+              </div>
+              <span style="font-size:14px;font-weight:800;color:${si.color};">${p.stockCurrent}</span>
+              <span style="font-size:10px;color:#9ca3af;">${p.unit}</span>
             </div>
           </div>
-        </div>
-        ${p.description ? `<div style="font-size:12px;color:#6c757d;margin-bottom:14px;line-height:1.5;">${p.description}</div>` : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-          <div style="background:#f8f9fa;border-radius:8px;padding:10px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:${bomCount > 0 ? '#1B4F72' : '#9ca3af'};">${bomCount}</div>
-            <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Componentes BOM</div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+            <div style="background:#f8f9fa;border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:18px;font-weight:800;color:${bomCount > 0 ? '#1B4F72' : '#9ca3af'};">${bomCount}</div>
+              <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Comp. BOM</div>
+            </div>
+            <div style="background:${si.bg};border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:13px;font-weight:800;color:${si.color};"><i class="fas ${si.icon}"></i></div>
+              <div style="font-size:10px;color:${si.color};font-weight:600;margin-top:3px;">${si.label}</div>
+            </div>
           </div>
-          <div style="background:#f8f9fa;border-radius:8px;padding:10px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:#27AE60;">✓</div>
-            <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Ativo</div>
+
+          <div style="display:flex;gap:6px;">
+            <a href="/engenharia" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" title="Ver lista de materiais BOM"><i class="fas fa-list-ul"></i> Ver BOM</a>
+            <div class="tooltip-wrap" data-tooltip="Editar produto"><button class="btn btn-secondary btn-sm" onclick="openEditProd('${p.id}','${p.name}','${p.code}','${p.unit}',${p.stockMin},${p.stockCurrent},'${p.stockStatus}')"><i class="fas fa-edit"></i></button></div>
+            <div class="tooltip-wrap" data-tooltip="Excluir produto"><button class="btn btn-danger btn-sm" onclick="if(confirm('Excluir ${p.name}?')) alert('Produto removido.')"><i class="fas fa-trash"></i></button></div>
           </div>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <a href="/engenharia" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;"><i class="fas fa-list-ul"></i> Ver BOM</a>
-          <button class="btn btn-secondary btn-sm" onclick="openModal('novoProdModal')"><i class="fas fa-edit"></i></button>
-          <button class="btn btn-danger btn-sm" onclick="alert('Confirmar?')"><i class="fas fa-trash"></i></button>
         </div>
       </div>`
     }).join('')}
@@ -64,7 +177,7 @@ app.get('/', (c) => {
 
   <!-- Novo Produto Modal -->
   <div class="modal-overlay" id="novoProdModal">
-    <div class="modal">
+    <div class="modal" style="max-width:560px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-box" style="margin-right:8px;"></i>Novo Produto</h3>
         <button onclick="closeModal('novoProdModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
@@ -76,6 +189,36 @@ app.get('/', (c) => {
           <div class="form-group"><label class="form-label">Unidade *</label>
             <select class="form-control"><option value="un">un</option><option value="kg">kg</option><option value="m">m</option><option value="l">l</option></select>
           </div>
+          <!-- Estoque mínimo -->
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-layer-group" style="margin-right:5px;color:#2980B9;"></i>Estoque Mínimo</label>
+            <input class="form-control" type="number" id="newProdStockMin" placeholder="0" min="0" oninput="updateStatusPreview()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Estoque Atual</label>
+            <input class="form-control" type="number" id="newProdStockCurrent" placeholder="0" min="0" oninput="updateStatusPreview()">
+          </div>
+          <!-- Status preview -->
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Status de Estoque</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;" id="st_critical">
+                <input type="radio" name="stockStatus" value="critical" onchange="highlightStatus()"> <span style="color:#dc2626;"><i class="fas fa-exclamation-circle"></i> Crítico</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;" id="st_normal">
+                <input type="radio" name="stockStatus" value="normal" checked onchange="highlightStatus()"> <span style="color:#16a34a;"><i class="fas fa-check-circle"></i> Normal</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;" id="st_purchase">
+                <input type="radio" name="stockStatus" value="purchase_needed" onchange="highlightStatus()"> <span style="color:#d97706;"><i class="fas fa-shopping-cart"></i> Nec. Compra</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;" id="st_manufacture">
+                <input type="radio" name="stockStatus" value="manufacture_needed" onchange="highlightStatus()"> <span style="color:#7c3aed;"><i class="fas fa-industry"></i> Nec. Manufatura</span>
+              </label>
+            </div>
+            <div id="statusAutoHint" style="font-size:11px;color:#6c757d;background:#f8f9fa;padding:8px 12px;border-radius:6px;">
+              <i class="fas fa-info-circle" style="margin-right:4px;"></i>Ao informar Estoque Mínimo e Atual, o status será calculado automaticamente (Atual &lt; 50% do mínimo = Crítico).
+            </div>
+          </div>
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" rows="3" placeholder="Descrição detalhada..."></textarea></div>
         </div>
       </div>
@@ -85,6 +228,167 @@ app.get('/', (c) => {
       </div>
     </div>
   </div>
+
+  <!-- Edit Produto Modal -->
+  <div class="modal-overlay" id="editProdModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="editProdTitle"><i class="fas fa-edit" style="margin-right:8px;"></i>Editar Produto</h3>
+        <button onclick="closeModal('editProdModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome</label><input class="form-control" id="ep_name" type="text"></div>
+          <div class="form-group"><label class="form-label">Código</label><input class="form-control" id="ep_code" type="text"></div>
+          <div class="form-group"><label class="form-label">Unidade</label>
+            <select class="form-control" id="ep_unit"><option>un</option><option>kg</option><option>m</option><option>l</option></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-layer-group" style="margin-right:5px;color:#2980B9;"></i>Estoque Mínimo</label>
+            <input class="form-control" id="ep_stockMin" type="number" min="0" oninput="calcEditStatus()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Estoque Atual</label>
+            <input class="form-control" id="ep_stockCurrent" type="number" min="0" oninput="calcEditStatus()">
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Status de Estoque (calculado)</label>
+            <div id="editStatusDisplay" style="padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;background:#f0fdf4;color:#16a34a;">
+              <i class="fas fa-check-circle"></i> Normal
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('editProdModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="alert('Produto atualizado!');closeModal('editProdModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Config Limites Modal -->
+  <div class="modal-overlay" id="configLimitesModal">
+    <div class="modal" style="max-width:540px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-sliders-h" style="margin-right:8px;"></i>Configurador de Limites de Estoque</h3>
+        <button onclick="closeModal('configLimitesModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="background:#e8f4fd;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#1B4F72;">
+          <i class="fas fa-info-circle" style="margin-right:6px;"></i>Defina os percentuais do estoque mínimo que determinam o status de cada produto. Esses valores são usados pelo MRP automaticamente.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          ${[
+            { key: 'critical', label: 'Crítico', color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle', desc: 'Abaixo de X% do estoque mínimo', default: 50 },
+            { key: 'purchase_needed', label: 'Necessidade de Compra', color: '#d97706', bg: '#fffbeb', icon: 'fa-shopping-cart', desc: 'Entre X% e 100% do estoque mínimo (compra externa)', default: 100 },
+            { key: 'manufacture_needed', label: 'Necessidade de Manufatura', color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry', desc: 'Produção interna necessária para repor estoque', default: 120 },
+            { key: 'normal', label: 'Normal', color: '#16a34a', bg: '#f0fdf4', icon: 'fa-check-circle', desc: 'Acima de X% do estoque mínimo', default: 120 },
+          ].map(l => `
+          <div style="display:flex;align-items:center;gap:12px;padding:12px;background:${l.bg};border-radius:8px;border-left:3px solid ${l.color};">
+            <i class="fas ${l.icon}" style="color:${l.color};font-size:18px;width:24px;text-align:center;"></i>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:${l.color};">${l.label}</div>
+              <div style="font-size:11px;color:#6c757d;">${l.desc}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="number" value="${l.default}" min="0" max="999" style="width:64px;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;text-align:center;font-weight:700;">
+              <span style="font-size:12px;color:#6c757d;">%</span>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div style="margin-top:16px;background:#f8f9fa;border-radius:8px;padding:12px;">
+          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;"><i class="fas fa-link" style="margin-right:6px;color:#2980B9;"></i>Integração com MRP</div>
+          <div style="font-size:12px;color:#6c757d;">Produtos com status "Crítico" e "Necessidade de Compra" são automaticamente incluídos no cálculo MRP como itens prioritários para reposição.</div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('configLimitesModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="alert('Configuração de limites salva com sucesso! O MRP será recalculado automaticamente.');closeModal('configLimitesModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Config.</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function filterProds() {
+    const search = document.getElementById('prodSearch').value.toLowerCase();
+    const status = document.getElementById('prodStatusFilter').value;
+    document.querySelectorAll('.prod-card').forEach(card => {
+      const matchSearch = !search || (card.dataset.search || '').includes(search);
+      const matchStatus = !status || card.dataset.status === status;
+      card.parentElement.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    });
+  }
+
+  function filterByStatus(status) {
+    document.getElementById('prodStatusFilter').value = status;
+    filterProds();
+    document.getElementById('prodGrid').scrollIntoView({ behavior:'smooth' });
+  }
+
+  function scrollToSection(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+  }
+
+  function calcStatus(current, min) {
+    if (min <= 0) return 'normal';
+    const pct = (current / min) * 100;
+    if (pct < 50) return 'critical';
+    if (pct < 80) return 'purchase_needed';
+    if (pct < 100) return 'manufacture_needed';
+    return 'normal';
+  }
+
+  function updateStatusPreview() {
+    const min = parseInt(document.getElementById('newProdStockMin').value) || 0;
+    const curr = parseInt(document.getElementById('newProdStockCurrent').value) || 0;
+    if (min > 0) {
+      const status = calcStatus(curr, min);
+      const radio = document.querySelector('input[name="stockStatus"][value="' + status + '"]');
+      if (radio) { radio.checked = true; highlightStatus(); }
+    }
+  }
+
+  function highlightStatus() {
+    const selected = document.querySelector('input[name="stockStatus"]:checked')?.value;
+    ['critical','normal','purchase_needed','manufacture_needed'].forEach(s => {
+      const el = document.getElementById('st_' + (s === 'purchase_needed' ? 'purchase' : s === 'manufacture_needed' ? 'manufacture' : s));
+      if (el) el.style.borderColor = (selected === s) ? '#2980B9' : '#d1d5db';
+    });
+  }
+
+  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus) {
+    document.getElementById('ep_name').value = name;
+    document.getElementById('ep_code').value = code;
+    document.getElementById('ep_unit').value = unit;
+    document.getElementById('ep_stockMin').value = stockMin;
+    document.getElementById('ep_stockCurrent').value = stockCurrent;
+    calcEditStatus();
+    openModal('editProdModal');
+  }
+
+  function calcEditStatus() {
+    const min = parseInt(document.getElementById('ep_stockMin').value) || 0;
+    const curr = parseInt(document.getElementById('ep_stockCurrent').value) || 0;
+    const status = calcStatus(curr, min);
+    const info = {
+      critical: { label:'Crítico', color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
+      normal: { label:'Normal', color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
+      purchase_needed: { label:'Necessidade de Compra', color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
+      manufacture_needed: { label:'Necessidade de Manufatura', color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' },
+    };
+    const s = info[status] || info.normal;
+    const el = document.getElementById('editStatusDisplay');
+    el.style.background = s.bg;
+    el.style.color = s.color;
+    el.innerHTML = '<i class="fas ' + s.icon + '"></i> ' + s.label;
+  }
+
+  // Auto-close popup after 8 seconds
+  setTimeout(() => {
+    const popup = document.getElementById('criticalStockPopup');
+    if (popup) popup.style.display = 'none';
+  }, 8000);
+  </script>
   `
   return c.html(layout('Produtos', content, 'produtos'))
 })

@@ -1,0 +1,592 @@
+import { Hono } from 'hono'
+import { layout } from '../layout'
+import { mockData } from '../data'
+
+const app = new Hono()
+
+app.get('/', (c) => {
+  const { stockItems, separationOrders, stockExits, products } = mockData
+
+  const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
+    critical:          { label: 'Crítico',         color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle' },
+    normal:            { label: 'Normal',           color: '#16a34a', bg: '#f0fdf4', icon: 'fa-check-circle' },
+    purchase_needed:   { label: 'Nec. Compra',      color: '#d97706', bg: '#fffbeb', icon: 'fa-shopping-cart' },
+    manufacture_needed:{ label: 'Nec. Manufatura',  color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry' },
+  }
+
+  const sepStatusInfo: Record<string, { label: string, badge: string }> = {
+    pending:   { label: 'Pendente',  badge: 'badge-warning' },
+    completed: { label: 'Concluída', badge: 'badge-success' },
+    cancelled: { label: 'Cancelada', badge: 'badge-danger' },
+  }
+
+  const exitTypeInfo: Record<string, { label: string, icon: string, color: string }> = {
+    faturamento: { label: 'Faturamento',  icon: 'fa-file-invoice-dollar', color: '#27AE60' },
+    requisicao:  { label: 'Requisição',   icon: 'fa-exchange-alt',        color: '#3498DB' },
+    descarte:    { label: 'Descarte',     icon: 'fa-trash-alt',           color: '#E74C3C' },
+  }
+
+  const critCount = stockItems.filter(s => s.status === 'critical').length
+  const normalCount = stockItems.filter(s => s.status === 'normal').length
+  const purchaseCount = stockItems.filter(s => s.status === 'purchase_needed').length
+
+  const content = `
+  <!-- Header -->
+  <div class="section-header">
+    <div>
+      <div style="font-size:14px;color:#6c757d;">Gestão de Estoque — Materiais e Produtos Acabados</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        ${critCount > 0 ? `<span class="badge" style="background:#fef2f2;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:9px;"></i> ${critCount} Crítico</span>` : ''}
+        <span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-check-circle" style="font-size:9px;"></i> ${normalCount} Normal</span>
+        ${purchaseCount > 0 ? `<span class="badge" style="background:#fffbeb;color:#d97706;"><i class="fas fa-shopping-cart" style="font-size:9px;"></i> ${purchaseCount} Nec. Compra</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="openModal('uploadPlanilhaModal')" title="Importar estoque via planilha Excel/CSV">
+        <i class="fas fa-file-upload"></i> Import. Planilha
+      </button>
+      <button class="btn btn-secondary" onclick="alert('Exportando relatório de estoque...')" title="Exportar relatório">
+        <i class="fas fa-download"></i> Exportar
+      </button>
+      <button class="btn btn-primary" onclick="openModal('novoItemModal')" title="Adicionar novo item de estoque">
+        <i class="fas fa-plus"></i> Novo Item
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div data-tab-group="estoque">
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('tabEstoqueGeral','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Estoque Geral</button>
+      <button class="tab-btn" onclick="switchTab('tabProdutosAcabados','estoque')"><i class="fas fa-box-open" style="margin-right:6px;"></i>Produtos Acabados</button>
+      <button class="tab-btn" onclick="switchTab('tabSeparacao','estoque')"><i class="fas fa-dolly" style="margin-right:6px;"></i>Separação
+        <span style="background:#E67E22;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${separationOrders.filter(s => s.status === 'pending').length}</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('tabBaixas','estoque')"><i class="fas fa-minus-circle" style="margin-right:6px;"></i>Baixas</button>
+    </div>
+
+    <!-- ESTOQUE GERAL TAB -->
+    <div class="tab-content active" id="tabEstoqueGeral">
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card">
+          <div style="font-size:24px;font-weight:800;color:#1B4F72;">${stockItems.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Total de Itens</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #dc2626;">
+          <div style="font-size:24px;font-weight:800;color:#dc2626;">${critCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> Críticos</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #d97706;">
+          <div style="font-size:24px;font-weight:800;color:#d97706;">${purchaseCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-shopping-cart" style="color:#d97706;"></i> Nec. Compra</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #16a34a;">
+          <div style="font-size:24px;font-weight:800;color:#16a34a;">${normalCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-check-circle" style="color:#16a34a;"></i> Normais</div>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="card" style="padding:12px 16px;margin-bottom:14px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div class="search-box" style="flex:1;min-width:180px;">
+            <i class="fas fa-search icon"></i>
+            <input class="form-control" type="text" id="estoqueSearch" placeholder="Código, nome, localização..." oninput="filterEstoque()">
+          </div>
+          <select class="form-control" id="estoqueStatusFilter" style="width:auto;" onchange="filterEstoque()">
+            <option value="">Todos os status</option>
+            <option value="critical">Crítico</option>
+            <option value="normal">Normal</option>
+            <option value="purchase_needed">Nec. Compra</option>
+          </select>
+          <select class="form-control" style="width:auto;">
+            <option>Todas as categorias</option>
+            <option>Matéria-Prima</option>
+            <option>Componente</option>
+            <option>Fixador</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código</th><th>Item</th><th>Categoria</th><th>Qtd Atual</th><th>Qtd Mínima</th><th>% Cobertura</th><th>Localização</th><th>Última Atualiz.</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="estoqueBody">
+              ${stockItems.map(s => {
+                const si = stockStatusInfo[s.status] || stockStatusInfo.normal
+                const pct = s.minQuantity > 0 ? Math.min(100, Math.round((s.quantity / s.minQuantity) * 100)) : 100
+                return `
+                <tr data-status="${s.status}" data-search="${s.code.toLowerCase()} ${s.name.toLowerCase()} ${s.location.toLowerCase()}">
+                  <td><span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${s.code}</span></td>
+                  <td>
+                    <div style="font-weight:600;color:#374151;">${s.name}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${s.unit}</div>
+                  </td>
+                  <td><span class="chip" style="background:#f1f5f9;color:#374151;">${s.category}</span></td>
+                  <td style="font-weight:700;color:${si.color};">${s.quantity.toLocaleString('pt-BR')}</td>
+                  <td style="color:#6c757d;">${s.minQuantity.toLocaleString('pt-BR')}</td>
+                  <td style="min-width:100px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <div class="progress-bar" style="flex:1;height:6px;">
+                        <div class="progress-fill" style="width:${pct}%;background:${si.color};"></div>
+                      </div>
+                      <span style="font-size:11px;font-weight:700;color:${si.color};width:36px;text-align:right;">${pct}%</span>
+                    </div>
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${s.location}</td>
+                  <td style="font-size:12px;color:#9ca3af;">${new Date(s.lastUpdate + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td><span class="badge" style="background:${si.bg};color:${si.color};"><i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}</span></td>
+                  <td>
+                    <div style="display:flex;gap:4px;">
+                      <div class="tooltip-wrap" data-tooltip="Ajustar quantidade"><button class="btn btn-secondary btn-sm" onclick="openModal('ajusteModal')"><i class="fas fa-edit"></i></button></div>
+                      <div class="tooltip-wrap" data-tooltip="Registrar baixa"><button class="btn btn-warning btn-sm" onclick="openBaixaModal('${s.code}','${s.name}')"><i class="fas fa-minus"></i></button></div>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUTOS ACABADOS TAB -->
+    <div class="tab-content" id="tabProdutosAcabados">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+        ${products.map(p => {
+          const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
+          const pct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
+          return `
+          <div class="card" style="padding:16px;border-top:3px solid ${si.color};">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+              <div style="flex:1;padding-right:8px;">
+                <div style="font-size:14px;font-weight:700;color:#1B4F72;">${p.name}</div>
+                <div style="font-family:monospace;font-size:11px;color:#9ca3af;margin-top:3px;">${p.code}</div>
+              </div>
+              <span class="badge" style="background:${si.bg};color:${si.color};white-space:nowrap;">
+                <i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}
+              </span>
+            </div>
+            <div style="background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:11px;color:#6c757d;">Estoque Atual</span>
+                <span style="font-size:11px;color:#6c757d;">Mínimo: ${p.stockMin} ${p.unit}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="progress-bar" style="flex:1;height:6px;">
+                  <div class="progress-fill" style="width:${pct}%;background:${si.color};"></div>
+                </div>
+                <span style="font-size:16px;font-weight:800;color:${si.color};">${p.stockCurrent} <span style="font-size:10px;font-weight:400;color:#9ca3af;">${p.unit}</span></span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-success btn-sm" style="flex:1;" onclick="openSeparacaoModal('${p.code}','${p.name}','${p.unit}')" title="Criar ordem de separação">
+                <i class="fas fa-dolly"></i> Separar
+              </button>
+              <div class="tooltip-wrap" data-tooltip="Registrar baixa"><button class="btn btn-warning btn-sm" onclick="openBaixaModal('${p.code}','${p.name}')"><i class="fas fa-minus"></i></button></div>
+            </div>
+          </div>`
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- SEPARAÇÃO TAB -->
+    <div class="tab-content" id="tabSeparacao">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:14px;color:#6c757d;">Ordens de separação de produtos acabados</div>
+        <button class="btn btn-primary" onclick="openModal('novaSeparacaoModal')" title="Nova ordem de separação">
+          <i class="fas fa-plus"></i> Nova Separação
+        </button>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código OS</th><th>Pedido Venda</th><th>Cliente</th><th>Produtos</th><th>Nº Série</th><th>Data Sep.</th><th>Responsável</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody>
+              ${separationOrders.map(so => {
+                const si = sepStatusInfo[so.status]
+                return `
+                <tr>
+                  <td style="font-weight:700;color:#1B4F72;">${so.code}</td>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:#2980B9;">${so.pedido}</div>
+                  </td>
+                  <td style="font-size:12px;color:#374151;">${so.cliente}</td>
+                  <td>
+                    ${so.items.map(it => `
+                    <div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;color:#1B4F72;">${it.productCode}</span> ${it.productName} <strong style="color:#374151;">(${it.quantity} un)</strong></div>`).join('')}
+                  </td>
+                  <td>
+                    ${so.items.map(it => `<div style="font-family:monospace;font-size:11px;color:#6c757d;">${it.serialNumber || '—'}</div>`).join('')}
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${new Date(so.dataSeparacao + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td style="font-size:12px;color:#6c757d;">${so.responsavel}</td>
+                  <td><span class="badge ${si.badge}">${si.label}</span></td>
+                  <td>
+                    <div style="display:flex;gap:4px;">
+                      <div class="tooltip-wrap" data-tooltip="Ver detalhes"><button class="btn btn-secondary btn-sm" onclick="alert('Detalhes da OS: ${so.code}')"><i class="fas fa-eye"></i></button></div>
+                      ${so.status === 'pending' ? `
+                      <div class="tooltip-wrap" data-tooltip="Confirmar separação"><button class="btn btn-success btn-sm" onclick="alert('Separação ${so.code} confirmada!')"><i class="fas fa-check"></i></button></div>
+                      <div class="tooltip-wrap" data-tooltip="Cancelar separação"><button class="btn btn-danger btn-sm" onclick="alert('Cancelar ${so.code}?')"><i class="fas fa-times"></i></button></div>` : ''}
+                      <div class="tooltip-wrap" data-tooltip="Imprimir romaneio"><button class="btn btn-secondary btn-sm" onclick="alert('Imprimindo romaneio...')"><i class="fas fa-print"></i></button></div>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- BAIXAS TAB -->
+    <div class="tab-content" id="tabBaixas">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:14px;color:#6c757d;">Registro de baixas de itens do estoque</div>
+        <button class="btn btn-primary" onclick="openModal('novaBaixaModal')" title="Registrar nova baixa">
+          <i class="fas fa-minus-circle"></i> Nova Baixa
+        </button>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código</th><th>Tipo</th><th>Pedido/Ref.</th><th>Itens</th><th>Data</th><th>Responsável</th><th>Observações</th><th>Ações</th>
+            </tr></thead>
+            <tbody>
+              ${stockExits.map(ex => {
+                const ti = exitTypeInfo[ex.type] || exitTypeInfo.requisicao
+                return `
+                <tr>
+                  <td style="font-weight:700;color:#1B4F72;">${ex.code}</td>
+                  <td>
+                    <span class="badge" style="background:${ti.color}18;color:${ti.color};">
+                      <i class="fas ${ti.icon}" style="font-size:9px;"></i> ${ti.label}
+                    </span>
+                  </td>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:#2980B9;">${ex.pedido}</div>
+                  </td>
+                  <td>
+                    ${ex.items.map(it => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.code}</span> ${it.name} <strong>(${it.quantity})</strong></div>`).join('')}
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${new Date(ex.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td style="font-size:12px;color:#6c757d;">${ex.responsavel}</td>
+                  <td style="font-size:12px;color:#6c757d;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ex.notes}">${ex.notes}</td>
+                  <td>
+                    <div class="tooltip-wrap" data-tooltip="Ver comprovante"><button class="btn btn-secondary btn-sm" onclick="alert('Comprovante da baixa ${ex.code}')"><i class="fas fa-eye"></i></button></div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Planilha Modal -->
+  <div class="modal-overlay" id="uploadPlanilhaModal">
+    <div class="modal" style="max-width:560px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-file-upload" style="margin-right:8px;"></i>Importar Planilha de Estoque</h3>
+        <button onclick="closeModal('uploadPlanilhaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;"><i class="fas fa-info-circle" style="margin-right:6px;"></i>Formato da Planilha Padrão</div>
+          <div style="font-size:12px;color:#374151;line-height:1.6;">A planilha deve ter as colunas na seguinte ordem:<br>
+            <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">Código | Nome | Categoria | Unidade | Qtd Atual | Qtd Mínima | Localização</code>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="alert('Download do modelo...')">
+            <i class="fas fa-download"></i> Baixar Planilha Modelo (.xlsx)
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Tipo de Importação</label>
+          <select class="form-control" id="importType">
+            <option value="update">Atualizar existentes + Incluir novos</option>
+            <option value="replace">Substituir estoque completamente</option>
+            <option value="new_only">Apenas incluir novos itens</option>
+          </select>
+        </div>
+
+        <div id="uploadArea" style="border:2px dashed #d1d5db;border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;"
+             onclick="document.getElementById('planilhaFile').click()"
+             ondragover="event.preventDefault();this.style.borderColor='#2980B9';this.style.background='#f0f7ff';"
+             ondragleave="this.style.borderColor='#d1d5db';this.style.background='white';"
+             ondrop="handlePlanilhaDrop(event)">
+          <i class="fas fa-cloud-upload-alt" style="font-size:40px;color:#9ca3af;margin-bottom:10px;"></i>
+          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Clique ou arraste sua planilha aqui</div>
+          <div style="font-size:12px;color:#9ca3af;">Suporta .xlsx, .xls e .csv • Máx. 10MB</div>
+          <input type="file" id="planilhaFile" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handlePlanilhaSelect(event)">
+        </div>
+
+        <div id="fileSelectedInfo" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-file-excel" style="color:#16a34a;font-size:20px;"></i>
+            <div>
+              <div id="fileName" style="font-size:13px;font-weight:700;color:#374151;"></div>
+              <div style="font-size:11px;color:#6c757d;">Pronto para importação</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;">
+          <div style="font-size:12px;color:#92400e;"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+          <strong>Atenção:</strong> Após a importação, o estoque será atualizado automaticamente no MRP. Certifique-se de que os códigos dos itens correspondem ao cadastro.</div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('uploadPlanilhaModal')" class="btn btn-secondary">Cancelar</button>
+        <button id="importBtn" onclick="importarPlanilha()" class="btn btn-primary" disabled style="opacity:0.5;">
+          <i class="fas fa-upload"></i> Importar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nova Separação Modal -->
+  <div class="modal-overlay" id="novaSeparacaoModal">
+    <div class="modal" style="max-width:640px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-dolly" style="margin-right:8px;"></i>Nova Ordem de Separação</h3>
+        <button onclick="closeModal('novaSeparacaoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-file-invoice" style="margin-right:5px;color:#2980B9;"></i>Pedido de Venda *</label>
+            <input class="form-control" type="text" placeholder="PV-2024-XXXX" id="sep_pedido">
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-calendar" style="margin-right:5px;color:#2980B9;"></i>Data de Separação *</label>
+            <input class="form-control" type="date" id="sep_data">
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label"><i class="fas fa-building" style="margin-right:5px;color:#2980B9;"></i>Nome do Cliente *</label>
+            <input class="form-control" type="text" placeholder="Razão social do cliente" id="sep_cliente">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Responsável pela Separação</label>
+            <select class="form-control" id="sep_responsavel">
+              ${mockData.users.map(u => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Código da OS</label>
+            <input class="form-control" type="text" value="OS-2024-003" readonly style="background:#f8f9fa;">
+          </div>
+        </div>
+
+        <!-- Itens de separação -->
+        <div style="border-top:1px solid #f1f3f5;padding-top:16px;margin-top:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <label class="form-label" style="margin:0;">Produtos a Separar *</label>
+            <button class="btn btn-secondary btn-sm" onclick="addSepItem()" title="Adicionar produto"><i class="fas fa-plus"></i> Adicionar</button>
+          </div>
+          <div id="sepItemsList">
+            <div class="sep-item" style="display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:8px;align-items:center;">
+              <select class="form-control" style="font-size:12px;">
+                <option value="">Selecionar produto...</option>
+                ${products.map(p => `<option value="${p.code}">${p.name} (${p.code})</option>`).join('')}
+              </select>
+              <input class="form-control" type="number" placeholder="Qtd" min="1">
+              <input class="form-control" type="text" placeholder="Nº Série / Lote (opcional)">
+              <button class="btn btn-danger btn-sm" onclick="this.closest('.sep-item').remove()" title="Remover item"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaSeparacaoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveSeparacao()" class="btn btn-primary"><i class="fas fa-save"></i> Criar Separação</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nova Baixa Modal -->
+  <div class="modal-overlay" id="novaBaixaModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-minus-circle" style="margin-right:8px;"></i>Registrar Baixa de Estoque</h3>
+        <button onclick="closeModal('novaBaixaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div class="form-group">
+          <label class="form-label">Tipo de Baixa *</label>
+          <select class="form-control" id="baixa_tipo">
+            <option value="faturamento">Faturamento (saída com NF-e)</option>
+            <option value="requisicao">Requisição Interna (outra área)</option>
+            <option value="descarte">Descarte / Perda</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pedido / Referência</label>
+          <input class="form-control" id="baixa_pedido" type="text" placeholder="PV-2024-XXXX ou REQ-ENG-XXX">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Item *</label>
+          <select class="form-control" id="baixa_item">
+            <option value="">Selecionar item...</option>
+            ${stockItems.map(s => `<option value="${s.code}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
+            ${products.map(p => `<option value="${p.code}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Quantidade *</label>
+            <input class="form-control" id="baixa_qty" type="number" min="1" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data</label>
+            <input class="form-control" id="baixa_data" type="date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Responsável</label>
+          <select class="form-control" id="baixa_responsavel">
+            ${mockData.users.map(u => `<option>${u.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observações</label>
+          <textarea class="form-control" id="baixa_obs" rows="2" placeholder="NF-e, número de documento, justificativa..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaBaixaModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveBaixa()" class="btn btn-warning" style="color:white;"><i class="fas fa-minus-circle"></i> Registrar Baixa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ajuste Modal -->
+  <div class="modal-overlay" id="ajusteModal">
+    <div class="modal" style="max-width:440px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-balance-scale" style="margin-right:8px;"></i>Ajuste de Estoque</h3>
+        <button onclick="closeModal('ajusteModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div class="form-group"><label class="form-label">Tipo de Ajuste</label>
+          <select class="form-control"><option>Entrada (aumentar)</option><option>Saída (diminuir)</option><option>Acerto de inventário</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Quantidade</label>
+          <input class="form-control" type="number" min="0" placeholder="0">
+        </div>
+        <div class="form-group"><label class="form-label">Motivo *</label>
+          <textarea class="form-control" rows="2" placeholder="Descreva o motivo do ajuste..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('ajusteModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="alert('Ajuste aplicado!');closeModal('ajusteModal')" class="btn btn-primary"><i class="fas fa-save"></i> Aplicar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Filter estoque table
+  function filterEstoque() {
+    const search = document.getElementById('estoqueSearch').value.toLowerCase();
+    const status = document.getElementById('estoqueStatusFilter').value;
+    document.querySelectorAll('#estoqueBody tr').forEach(row => {
+      const matchSearch = !search || (row.dataset.search || '').includes(search);
+      const matchStatus = !status || row.dataset.status === status;
+      row.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    });
+  }
+
+  function openBaixaModal(code, name) {
+    const sel = document.getElementById('baixa_item');
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === code) { sel.selectedIndex = i; break; }
+    }
+    openModal('novaBaixaModal');
+  }
+
+  function openSeparacaoModal(code, name, unit) {
+    openModal('novaSeparacaoModal');
+    const sel = document.querySelector('#sepItemsList select');
+    if (sel) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === code) { sel.selectedIndex = i; break; }
+      }
+    }
+    switchTab('tabSeparacao', 'estoque');
+    document.querySelector('.tab-btn:nth-child(3)').classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tabSeparacao').classList.add('active');
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 2));
+  }
+
+  function addSepItem() {
+    const container = document.getElementById('sepItemsList');
+    const div = document.createElement('div');
+    div.className = 'sep-item';
+    div.style.cssText = 'display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;"><option value="">Selecionar produto...</option>' +
+      ${JSON.stringify(products.map(p => `<option value="${p.code}">${p.name} (${p.code})</option>`).join(''))}.split('').reduce((a,c)=>a+c,'') +
+      '</select><input class="form-control" type="number" placeholder="Qtd" min="1"><input class="form-control" type="text" placeholder="Nº Série / Lote"><button class="btn btn-danger btn-sm" onclick="this.closest(\\'.sep-item\\').remove()" title="Remover"><i class="fas fa-trash"></i></button>';
+    container.appendChild(div);
+  }
+
+  function saveSeparacao() {
+    const pedido = document.getElementById('sep_pedido').value;
+    const cliente = document.getElementById('sep_cliente').value;
+    if (!pedido || !cliente) { alert('Preencha o Pedido de Venda e o Cliente!'); return; }
+    alert('✅ Ordem de Separação OS-2024-003 criada!\\n\\nPedido: ' + pedido + '\\nCliente: ' + cliente);
+    closeModal('novaSeparacaoModal');
+  }
+
+  function saveBaixa() {
+    const item = document.getElementById('baixa_item').value;
+    const qty = document.getElementById('baixa_qty').value;
+    if (!item || !qty) { alert('Selecione o item e informe a quantidade!'); return; }
+    const tipo = document.getElementById('baixa_tipo').value;
+    const tipoLabel = { faturamento:'Faturamento', requisicao:'Requisição', descarte:'Descarte' }[tipo] || tipo;
+    alert('✅ Baixa registrada!\\n\\nTipo: ' + tipoLabel + '\\nItem: ' + item + '\\nQuantidade: ' + qty);
+    closeModal('novaBaixaModal');
+  }
+
+  function handlePlanilhaDrop(event) {
+    event.preventDefault();
+    document.getElementById('uploadArea').style.borderColor = '#d1d5db';
+    document.getElementById('uploadArea').style.background = 'white';
+    const file = event.dataTransfer.files[0];
+    if (file) showFileSelected(file);
+  }
+
+  function handlePlanilhaSelect(event) {
+    const file = event.target.files[0];
+    if (file) showFileSelected(file);
+  }
+
+  function showFileSelected(file) {
+    document.getElementById('fileName').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+    document.getElementById('fileSelectedInfo').style.display = 'block';
+    document.getElementById('uploadArea').style.borderColor = '#16a34a';
+    document.getElementById('importBtn').disabled = false;
+    document.getElementById('importBtn').style.opacity = '1';
+  }
+
+  function importarPlanilha() {
+    alert('✅ Planilha importada com sucesso!\\n\\n7 itens atualizados\\n2 itens novos adicionados\\n\\nO MRP será recalculado automaticamente.');
+    closeModal('uploadPlanilhaModal');
+  }
+  </script>
+  `
+  return c.html(layout('Estoque', content, 'estoque'))
+})
+
+export default app

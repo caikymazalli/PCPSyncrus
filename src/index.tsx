@@ -10,6 +10,8 @@ import instrucoesApp from './routes/instrucoes'
 import produtosApp from './routes/produtos'
 import adminApp from './routes/admin'
 import assinaturaApp from './routes/assinatura'
+import qualidadeApp from './routes/qualidade'
+import estoqueApp from './routes/estoque'
 import { loginPage } from './login'
 
 const app = new Hono()
@@ -31,6 +33,8 @@ app.route('/instrucoes', instrucoesApp)
 app.route('/produtos', produtosApp)
 app.route('/admin', adminApp)
 app.route('/assinatura', assinaturaApp)
+app.route('/qualidade', qualidadeApp)
+app.route('/estoque', estoqueApp)
 
 // 404 fallback
 app.notFound((c) => {

@@ -1,0 +1,377 @@
+import { Hono } from 'hono'
+import { layout } from '../layout'
+import { mockData } from '../data'
+
+const app = new Hono()
+
+app.get('/', (c) => {
+  const { nonConformances } = mockData
+
+  const sevColor: Record<string, string> = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' }
+  const sevBg: Record<string, string> = { low: '#f0fdf4', medium: '#fffbeb', high: '#fff7ed', critical: '#fef2f2' }
+  const sevLabel: Record<string, string> = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' }
+  const stColor: Record<string, string> = { open: '#E74C3C', in_analysis: '#F39C12', closed: '#27AE60' }
+  const stBadge: Record<string, string> = { open: 'badge-danger', in_analysis: 'badge-warning', closed: 'badge-success' }
+  const stLabel: Record<string, string> = { open: 'Aberta', in_analysis: 'Em Análise', closed: 'Encerrada' }
+
+  const openCount = nonConformances.filter(n => n.status === 'open').length
+  const analysisCount = nonConformances.filter(n => n.status === 'in_analysis').length
+  const closedCount = nonConformances.filter(n => n.status === 'closed').length
+  const criticalCount = nonConformances.filter(n => n.severity === 'critical' || n.severity === 'high').length
+
+  const content = `
+  <!-- New NC Modal -->
+  <div id="novaNcModal" class="modal-overlay">
+    <div class="modal" style="max-width:620px;border-top:4px solid #E74C3C;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#E74C3C;"><i class="fas fa-plus-circle" style="margin-right:8px;"></i>Nova Não Conformidade</h3>
+        <button onclick="closeModal('novaNcModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Ordem de Produção *</label>
+            <select class="form-control">
+              <option value="">Selecionar...</option>
+              ${mockData.productionOrders.map(o => `<option>${o.code}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Etapa / Operação</label>
+            <input class="form-control" type="text" placeholder="Ex: Torneamento, Montagem...">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Qtd Rejeitada *</label>
+            <input class="form-control" type="number" min="1" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Severidade *</label>
+            <select class="form-control">
+              <option value="low">Baixa</option>
+              <option value="medium" selected>Média</option>
+              <option value="high">Alta</option>
+              <option value="critical">Crítica</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Responsável Análise</label>
+            <select class="form-control">
+              ${mockData.users.filter(u => u.role === 'qualidade' || u.role === 'admin').map(u => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição da Não Conformidade *</label>
+          <textarea class="form-control" rows="3" placeholder="Descreva detalhadamente o defeito: localização na peça, extensão, impacto..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Causa Raiz</label>
+          <input class="form-control" type="text" placeholder="Ex: Desgaste de ferramenta, configuração incorreta...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ação Corretiva</label>
+          <input class="form-control" type="text" placeholder="Ex: Substituição de ferramenta, re-treinamento operador...">
+        </div>
+        <div class="form-group">
+          <label class="form-label"><i class="fas fa-images" style="margin-right:6px;color:#6c757d;"></i>Evidências Fotográficas</label>
+          <div style="border:2px dashed #fca5a5;border-radius:8px;padding:16px;text-align:center;cursor:pointer;" onclick="document.getElementById('nc_imgs_new').click()">
+            <i class="fas fa-cloud-upload-alt" style="font-size:24px;color:#ef4444;margin-bottom:6px;"></i>
+            <div style="font-size:13px;color:#6c757d;">Selecionar imagens ou arrastar aqui</div>
+          </div>
+          <input type="file" id="nc_imgs_new" multiple accept="image/*" style="display:none;" onchange="previewNewNCImages(event)">
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px;width:100%;" onclick="document.getElementById('nc_cam_new').click()">
+            <i class="fas fa-camera"></i> Tirar Foto com Câmera
+          </button>
+          <input type="file" id="nc_cam_new" accept="image/*" capture="environment" style="display:none;" onchange="previewNewNCImages(event)">
+          <div id="newNCImageGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:8px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal('novaNcModal')">Cancelar</button>
+          <button class="btn btn-danger" onclick="alert('NC registrada com sucesso!');closeModal('novaNcModal')"><i class="fas fa-save"></i> Registrar NC</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NC Detail/Edit Modal -->
+  <div id="ncDetailModal" class="modal-overlay">
+    <div class="modal" style="max-width:640px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 id="ncDetailTitle" style="margin:0;font-size:16px;font-weight:700;color:#1B4F72;"></h3>
+        <button onclick="closeModal('ncDetailModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div id="ncDetailBody" style="padding:24px;"></div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="section-header">
+    <div>
+      <div style="font-size:14px;color:#6c757d;">Tratamento e Análise de Não Conformidades</div>
+    </div>
+    <button class="btn btn-danger" onclick="openModal('novaNcModal')">
+      <i class="fas fa-plus"></i> Nova NC
+    </button>
+  </div>
+
+  <!-- KPI Cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:24px;">
+    <div class="kpi-card" style="border-left:4px solid #E74C3C;">
+      <div style="font-size:11px;color:#6c757d;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Abertas</div>
+      <div style="font-size:32px;font-weight:800;color:#E74C3C;line-height:1.1;margin:6px 0;">${openCount}</div>
+      <div style="font-size:12px;color:#6c757d;">Aguardando tratamento</div>
+    </div>
+    <div class="kpi-card" style="border-left:4px solid #F39C12;">
+      <div style="font-size:11px;color:#6c757d;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Em Análise</div>
+      <div style="font-size:32px;font-weight:800;color:#F39C12;line-height:1.1;margin:6px 0;">${analysisCount}</div>
+      <div style="font-size:12px;color:#6c757d;">Em investigação</div>
+    </div>
+    <div class="kpi-card" style="border-left:4px solid #27AE60;">
+      <div style="font-size:11px;color:#6c757d;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Encerradas</div>
+      <div style="font-size:32px;font-weight:800;color:#27AE60;line-height:1.1;margin:6px 0;">${closedCount}</div>
+      <div style="font-size:12px;color:#6c757d;">Tratadas e fechadas</div>
+    </div>
+    <div class="kpi-card" style="border-left:4px solid #dc2626;">
+      <div style="font-size:11px;color:#6c757d;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Alta/Crítica</div>
+      <div style="font-size:32px;font-weight:800;color:#dc2626;line-height:1.1;margin:6px 0;">${criticalCount}</div>
+      <div style="font-size:12px;color:#6c757d;">Severidade elevada</div>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="card" style="padding:12px 16px;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <div class="search-box" style="flex:1;min-width:200px;">
+        <i class="fas fa-search icon"></i>
+        <input class="form-control" type="text" placeholder="Buscar por código, ordem, descrição...">
+      </div>
+      <select class="form-control" style="width:auto;">
+        <option>Todos os status</option>
+        <option>Aberta</option>
+        <option>Em Análise</option>
+        <option>Encerrada</option>
+      </select>
+      <select class="form-control" style="width:auto;">
+        <option>Toda severidade</option>
+        <option>Baixa</option>
+        <option>Média</option>
+        <option>Alta</option>
+        <option>Crítica</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="alert('Exportando relatório de NCs...')" title="Exportar relatório">
+        <i class="fas fa-file-excel"></i> Exportar
+      </button>
+    </div>
+  </div>
+
+  <!-- NC Table -->
+  <div class="card" style="overflow:hidden;">
+    <div class="table-wrapper">
+      <table>
+        <thead><tr>
+          <th>Código NC</th>
+          <th>Ordem</th>
+          <th>Etapa</th>
+          <th>Qtd Rejeitada</th>
+          <th>Severidade</th>
+          <th>Status</th>
+          <th>Responsável</th>
+          <th>Data</th>
+          <th>Ações</th>
+        </tr></thead>
+        <tbody>
+          ${nonConformances.map(nc => `
+          <tr>
+            <td style="font-weight:700;color:#E74C3C;">${nc.code}</td>
+            <td style="font-weight:600;color:#1B4F72;">${nc.orderCode}</td>
+            <td>${nc.stepName}</td>
+            <td style="font-weight:600;color:#E74C3C;">${nc.quantityRejected} un</td>
+            <td>
+              <span class="badge" style="background:${sevBg[nc.severity]};color:${sevColor[nc.severity]};">
+                <i class="fas fa-circle" style="font-size:7px;"></i> ${sevLabel[nc.severity]}
+              </span>
+            </td>
+            <td><span class="badge ${stBadge[nc.status]}">${stLabel[nc.status]}</span></td>
+            <td>
+              ${nc.responsible
+                ? `<div style="display:flex;align-items:center;gap:6px;">
+                    <div class="avatar" style="width:24px;height:24px;font-size:9px;background:#2980B9;">${nc.responsible.split(' ').map((n: string) => n[0]).join('').slice(0,2)}</div>
+                    <span style="font-size:12px;">${nc.responsible}</span>
+                   </div>`
+                : `<span style="color:#9ca3af;font-size:12px;">Não atribuído</span>`
+              }
+            </td>
+            <td style="color:#6c757d;font-size:12px;">${nc.createdAt}</td>
+            <td>
+              <div style="display:flex;gap:4px;">
+                <button class="btn btn-secondary btn-sm" onclick="openNCDetail('${nc.id}')" title="Ver / Editar NC">
+                  <i class="fas fa-eye"></i>
+                </button>
+                ${nc.status !== 'closed'
+                  ? `<button class="btn btn-success btn-sm" onclick="alert('NC ${nc.code} encerrada!')" title="Encerrar NC">
+                      <i class="fas fa-check"></i>
+                     </button>`
+                  : ''
+                }
+              </div>
+            </td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- NC Detail Cards -->
+  <div style="margin-top:24px;">
+    <h4 style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:16px;"><i class="fas fa-clipboard-list" style="margin-right:8px;"></i>Detalhes das NCs</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
+      ${nonConformances.map(nc => `
+      <div class="card" style="padding:20px;border-left:4px solid ${sevColor[nc.severity]};">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#1B4F72;">${nc.code}</div>
+            <div style="font-size:12px;color:#6c757d;">Ordem: ${nc.orderCode} • ${nc.stepName}</div>
+          </div>
+          <span class="badge ${stBadge[nc.status]}">${stLabel[nc.status]}</span>
+        </div>
+
+        <div style="background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:12px;">
+          <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px;">Descrição:</div>
+          <div style="font-size:13px;color:#374151;">${nc.description}</div>
+        </div>
+
+        ${nc.rootCause ? `
+        <div style="margin-bottom:8px;">
+          <span style="font-size:11px;font-weight:600;color:#6c757d;text-transform:uppercase;">Causa Raiz:</span>
+          <div style="font-size:12px;color:#374151;margin-top:2px;">${nc.rootCause}</div>
+        </div>` : ''}
+
+        ${nc.correctiveAction ? `
+        <div style="margin-bottom:8px;">
+          <span style="font-size:11px;font-weight:600;color:#6c757d;text-transform:uppercase;">Ação Corretiva:</span>
+          <div style="font-size:12px;color:#374151;margin-top:2px;">${nc.correctiveAction}</div>
+        </div>` : ''}
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <span class="badge" style="background:${sevBg[nc.severity]};color:${sevColor[nc.severity]};">
+            <i class="fas fa-exclamation-circle"></i> ${sevLabel[nc.severity]}
+          </span>
+          <span class="badge badge-danger"><i class="fas fa-times-circle"></i> ${nc.quantityRejected} rejeitadas</span>
+          <span class="badge badge-secondary"><i class="fas fa-user"></i> ${nc.operator}</span>
+        </div>
+
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openNCDetail('${nc.id}')" title="Analisar esta NC">
+            <i class="fas fa-microscope"></i> Analisar
+          </button>
+          ${nc.status !== 'closed'
+            ? `<button class="btn btn-success btn-sm" onclick="alert('NC encerrada!')" title="Encerrar NC"><i class="fas fa-check"></i></button>`
+            : `<span class="badge badge-success" style="flex:0;"><i class="fas fa-check-circle"></i> Encerrada</span>`
+          }
+        </div>
+      </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <script>
+  const ncData = ${JSON.stringify(nonConformances)};
+
+  function openNCDetail(id) {
+    const nc = ncData.find(n => n.id === id);
+    if (!nc) return;
+    const sevColor = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' };
+    const sevLabel = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' };
+    const stLabel = { open: 'Aberta', in_analysis: 'Em Análise', closed: 'Encerrada' };
+    document.getElementById('ncDetailTitle').innerHTML = '<i class="fas fa-clipboard-check" style="margin-right:8px;color:#E74C3C;"></i>' + nc.code + ' — Tratamento';
+    document.getElementById('ncDetailBody').innerHTML = \`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div><label class="form-label">Ordem</label><input class="form-control" value="\${nc.orderCode}" readonly></div>
+        <div><label class="form-label">Etapa</label><input class="form-control" value="\${nc.stepName}" readonly></div>
+        <div><label class="form-label">Qtd Rejeitada</label><input class="form-control" value="\${nc.quantityRejected} un" readonly></div>
+        <div><label class="form-label">Severidade</label>
+          <select class="form-control">
+            <option value="low" \${nc.severity === 'low' ? 'selected' : ''}>Baixa</option>
+            <option value="medium" \${nc.severity === 'medium' ? 'selected' : ''}>Média</option>
+            <option value="high" \${nc.severity === 'high' ? 'selected' : ''}>Alta</option>
+            <option value="critical" \${nc.severity === 'critical' ? 'selected' : ''}>Crítica</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descrição da NC</label>
+        <textarea class="form-control" rows="3">\${nc.description}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Causa Raiz</label>
+        <input class="form-control" value="\${nc.rootCause || ''}" placeholder="Análise de causa raiz...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ação Corretiva</label>
+        <input class="form-control" value="\${nc.correctiveAction || ''}" placeholder="Ação para eliminar a causa raiz...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Responsável pela Análise</label>
+        <input class="form-control" value="\${nc.responsible || ''}" placeholder="Nome do responsável...">
+      </div>
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-images" style="margin-right:6px;"></i>Evidências Fotográficas</label>
+        <div style="border:2px dashed #fca5a5;border-radius:8px;padding:14px;text-align:center;cursor:pointer;" onclick="document.getElementById('nc_det_imgs').click()">
+          <i class="fas fa-camera" style="font-size:20px;color:#ef4444;margin-bottom:4px;"></i>
+          <div style="font-size:12px;color:#6c757d;">Adicionar evidências fotográficas</div>
+        </div>
+        <input type="file" id="nc_det_imgs" multiple accept="image/*" style="display:none;" onchange="previewNCDetImages(event)">
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px;width:100%;" onclick="document.getElementById('nc_det_cam').click()">
+          <i class="fas fa-camera"></i> Usar Câmera
+        </button>
+        <input type="file" id="nc_det_cam" accept="image/*" capture="environment" style="display:none;" onchange="previewNCDetImages(event)">
+        <div id="ncDetImgGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:8px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal('ncDetailModal')">Fechar</button>
+        <button class="btn btn-warning" onclick="alert('NC atualizada!')"><i class="fas fa-save"></i> Salvar Alterações</button>
+        <button class="btn btn-success" onclick="alert('NC encerrada com sucesso!');closeModal('ncDetailModal')"><i class="fas fa-check"></i> Encerrar NC</button>
+      </div>
+    \`;
+    openModal('ncDetailModal');
+  }
+
+  function previewNewNCImages(event) {
+    const grid = document.getElementById('newNCImageGrid');
+    Array.from(event.target.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'position:relative;';
+        div.innerHTML = '<img src="' + e.target.result + '" style="width:100%;height:80px;object-fit:cover;border-radius:6px;border:1px solid #e9ecef;">' +
+          '<button onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;background:#E74C3C;color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;padding:0;">×</button>';
+        grid.appendChild(div);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function previewNCDetImages(event) {
+    const grid = document.getElementById('ncDetImgGrid');
+    Array.from(event.target.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'position:relative;';
+        div.innerHTML = '<img src="' + e.target.result + '" style="width:100%;height:80px;object-fit:cover;border-radius:6px;border:1px solid #e9ecef;">' +
+          '<button onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;background:#E74C3C;color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;padding:0;">×</button>';
+        grid.appendChild(div);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  </script>
+  `
+
+  return c.html(layout('Qualidade — NCs', content, 'qualidade'))
+})
+
+export default app

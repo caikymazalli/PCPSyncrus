@@ -101,6 +101,16 @@ export function layout(title: string, content: string, activePage: string = '') 
     .notification-dot { width: 8px; height: 8px; border-radius: 50%; background: #E74C3C; position: absolute; top: 4px; right: 4px; }
     .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: white; flex-shrink: 0; }
     .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    /* Tooltips */
+    [title]:not(a):not(.nav-item) { position: relative; }
+    .tooltip-wrap { position: relative; display: inline-flex; }
+    .tooltip-wrap::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); background: #1B4F72; color: white; font-size: 11px; white-space: nowrap; padding: 4px 8px; border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 9999; }
+    .tooltip-wrap:hover::after { opacity: 1; }
+    /* Stock status colors */
+    .stock-critical { color: #dc2626; background: #fef2f2; }
+    .stock-normal { color: #16a34a; background: #f0fdf4; }
+    .stock-purchase { color: #d97706; background: #fffbeb; }
+    .stock-manufacture { color: #7c3aed; background: #f5f3ff; }
   </style>
 </head>
 <body>
@@ -128,37 +138,46 @@ export function layout(title: string, content: string, activePage: string = '') 
     </a>
 
     <div class="nav-section-title">Produção</div>
-    <a href="/ordens" class="nav-item ${activePage === 'ordens' ? 'active' : ''}">
+    <a href="/ordens" class="nav-item ${activePage === 'ordens' ? 'active' : ''}" title="Ordens de Produção">
       <span class="icon"><i class="fas fa-clipboard-list"></i></span> Ordens de Produção
     </a>
-    <a href="/apontamento" class="nav-item ${activePage === 'apontamento' ? 'active' : ''}">
+    <a href="/apontamento" class="nav-item ${activePage === 'apontamento' ? 'active' : ''}" title="Apontamento de Produção">
       <span class="icon"><i class="fas fa-check-square"></i></span> Apontamento
     </a>
 
-    <div class="nav-section-title">Planejamento</div>
-    <a href="/planejamento" class="nav-item ${activePage === 'planejamento' ? 'active' : ''}">
-      <span class="icon"><i class="fas fa-chart-gantt"></i></span> Planejamento & MRP
+    <div class="nav-section-title">Qualidade</div>
+    <a href="/qualidade" class="nav-item ${activePage === 'qualidade' ? 'active' : ''}" title="Não Conformidades — NC" style="position:relative;">
+      <span class="icon"><i class="fas fa-clipboard-check"></i></span> Não Conformidades
+      <span style="margin-left:auto;background:#E74C3C;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;">3</span>
     </a>
-    <a href="/engenharia" class="nav-item ${activePage === 'engenharia' ? 'active' : ''}">
+
+    <div class="nav-section-title">Planejamento</div>
+    <a href="/planejamento" class="nav-item ${activePage === 'planejamento' ? 'active' : ''}" title="Planejamento MRP e Capacidade">
+      <span class="icon"><i class="fas fa-calendar-alt"></i></span> Planejamento & MRP
+    </a>
+    <a href="/estoque" class="nav-item ${activePage === 'estoque' ? 'active' : ''}" title="Gestão de Estoque">
+      <span class="icon"><i class="fas fa-warehouse"></i></span> Estoque
+    </a>
+    <a href="/engenharia" class="nav-item ${activePage === 'engenharia' ? 'active' : ''}" title="BOM e Roteiros de Produção">
       <span class="icon"><i class="fas fa-cogs"></i></span> Engenharia de Produto
     </a>
-    <a href="/instrucoes" class="nav-item ${activePage === 'instrucoes' ? 'active' : ''}">
-      <span class="icon"><i class="fas fa-book"></i></span> Instruções de Trabalho
+    <a href="/instrucoes" class="nav-item ${activePage === 'instrucoes' ? 'active' : ''}" title="Instruções de Trabalho">
+      <span class="icon"><i class="fas fa-book-open"></i></span> Instruções de Trabalho
     </a>
 
     <div class="nav-section-title">Recursos</div>
-    <a href="/recursos" class="nav-item ${activePage === 'recursos' ? 'active' : ''}">
+    <a href="/recursos" class="nav-item ${activePage === 'recursos' ? 'active' : ''}" title="Plantas, Máquinas e Bancadas">
       <span class="icon"><i class="fas fa-tools"></i></span> Cadastros
     </a>
-    <a href="/produtos" class="nav-item ${activePage === 'produtos' ? 'active' : ''}">
+    <a href="/produtos" class="nav-item ${activePage === 'produtos' ? 'active' : ''}" title="Produtos e Estoque Mínimo">
       <span class="icon"><i class="fas fa-box"></i></span> Produtos
     </a>
 
     <div class="nav-section-title">Gestão</div>
-    <a href="/admin" class="nav-item ${activePage === 'admin' ? 'active' : ''}">
+    <a href="/admin" class="nav-item ${activePage === 'admin' ? 'active' : ''}" title="Administração de Usuários e Empresa">
       <span class="icon"><i class="fas fa-users-cog"></i></span> Administração
     </a>
-    <a href="/assinatura" class="nav-item ${activePage === 'assinatura' ? 'active' : ''}">
+    <a href="/assinatura" class="nav-item ${activePage === 'assinatura' ? 'active' : ''}" title="Planos e Licenças">
       <span class="icon"><i class="fas fa-credit-card"></i></span> Plano & Licença
     </a>
   </div>
