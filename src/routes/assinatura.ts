@@ -79,14 +79,14 @@ app.get('/', (c) => {
   <div style="background:linear-gradient(135deg,#1B4F72,#2980B9);border-radius:16px;padding:32px;color:white;margin-bottom:32px;text-align:center;">
     <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:0.7;margin-bottom:8px;">Plano & Licença</div>
     <h2 style="margin:0 0 8px;font-size:28px;font-weight:800;">Escolha o plano ideal para sua operação</h2>
-    <p style="margin:0;font-size:15px;opacity:0.7;">14 dias de acesso completo gratuito, sem cartão de crédito • Cancele a qualquer momento</p>
+    <p style="margin:0;font-size:15px;opacity:0.7;">Comece gratuitamente com o plano Starter • Cancele a qualquer momento</p>
 
     <!-- Trial status -->
     <div style="margin-top:20px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,0.15);border-radius:10px;padding:12px 20px;">
       <i class="fas fa-clock" style="color:#F39C12;font-size:18px;"></i>
       <div style="text-align:left;">
         <div style="font-size:12px;opacity:0.7;">Seu trial atual</div>
-        <div style="font-size:14px;font-weight:700;">11 dias restantes — Acesso completo ao Professional, sem cartão de crédito</div>
+        <div style="font-size:14px;font-weight:700;">11 dias restantes — Trial do plano Starter, sem cartão de crédito</div>
       </div>
     </div>
   </div>
@@ -134,10 +134,10 @@ app.get('/', (c) => {
           <div style="font-size:13px;color:#6c757d;margin-top:6px;">${plan.description}</div>
         </div>
 
-        <button onclick="alert('Iniciando trial de 14 dias do plano ${plan.name}!\\n\\nSem cartão de crédito necessário.')" style="width:100%;padding:12px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:8px;background:${plan.badge === 'Mais Popular' ? plan.color : 'transparent'};color:${plan.badge === 'Mais Popular' ? 'white' : plan.color};${plan.badge !== 'Mais Popular' ? `border:2px solid ${plan.color};` : ''}" title="${plan.name === 'Enterprise' ? 'Falar com consultor' : 'Iniciar trial 14 dias — ' + plan.name}">
-          ${plan.priceMonthly < 0 ? 'Falar com Consultor' : 'Começar — 14 dias grátis'}
+        <button onclick="${plan.name === 'Enterprise' ? 'alert(\'Abrindo formulário de contato Enterprise...\')' : plan.name === 'Starter' ? 'alert(\'Iniciando trial de 14 dias do plano Starter!\\n\\nSem cartão de crédito necessário.\')' : 'alert(\'Iniciando assinatura do plano Professional!\')'}" style="width:100%;padding:12px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:8px;background:${plan.badge === 'Mais Popular' ? plan.color : 'transparent'};color:${plan.badge === 'Mais Popular' ? 'white' : plan.color};${plan.badge !== 'Mais Popular' ? `border:2px solid ${plan.color};` : ''}" title="${plan.name === 'Enterprise' ? 'Falar com consultor' : plan.name === 'Starter' ? 'Iniciar trial 14 dias grátis — Starter' : 'Assinar plano Professional'}">
+          ${plan.name === 'Enterprise' ? 'Falar com Consultor' : plan.name === 'Starter' ? 'Começar — 14 dias grátis' : 'Assinar Agora'}
         </button>
-        ${plan.priceMonthly > 0 ? `<div style="text-align:center;font-size:11px;color:#9ca3af;margin-bottom:16px;"><i class="fas fa-lock" style="margin-right:4px;"></i>Sem cartão de crédito</div>` : '<div style="margin-bottom:16px;"></div>'}
+        ${plan.name === 'Starter' ? `<div style="text-align:center;font-size:11px;color:#9ca3af;margin-bottom:16px;"><i class="fas fa-lock" style="margin-right:4px;"></i>Sem cartão de crédito</div>` : '<div style="margin-bottom:16px;"></div>'}
 
         <div style="display:flex;flex-direction:column;gap:10px;">
           ${plan.features.map(f => `
@@ -167,8 +167,8 @@ app.get('/', (c) => {
   <div class="card" style="padding:24px;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
       <div>
-        <h3 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#1B4F72;">Plano Atual: Trial Gratuito</h3>
-        <div style="font-size:13px;color:#6c757d;">Iniciado em 07/02/2024 • Expira em 21/02/2024</div>
+        <h3 style="margin:0 0 4px;font-size:17px;font-weight:700;color:#1B4F72;">Plano Atual: Trial — Starter</h3>
+        <div style="font-size:13px;color:#6c757d;">Iniciado em 07/02/2024 • Expira em 21/02/2024 • <strong style="color:#27AE60;">Sem cartão de crédito</strong></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-secondary" onclick="alert('Gerenciando fatura...')" title="Ver faturas"><i class="fas fa-file-invoice"></i> Ver Faturas</button>
@@ -237,7 +237,7 @@ app.get('/', (c) => {
         { q: 'O que inclui a taxa de setup?', a: 'A taxa de setup cobre a configuração inicial do sistema, importação de dados e treinamento básico via vídeo.' },
         { q: 'Os dados ficam salvos após o cancelamento?', a: 'Seus dados ficam disponíveis por 30 dias após o cancelamento para exportação.' },
         { q: 'Como funciona o desconto anual de 20%?', a: 'Ao optar pelo pagamento anual, você paga 20% menos por mês, com cobrança anual antecipada.' },
-        { q: 'Como funciona o trial de 14 dias?', a: 'Tanto o plano Starter quanto o Professional oferecem 14 dias de acesso completo ao plano selecionado, sem necessidade de cadastrar cartão de crédito. Ao final do período, você escolhe se quer continuar com a assinatura paga.' },
+        { q: 'Como funciona o trial de 14 dias?', a: 'O plano Starter oferece 14 dias de acesso completo gratuito, sem necessidade de cartão de crédito. Ao final do período, você escolhe se deseja continuar com a assinatura paga. O plano Professional e o Enterprise não possuem período trial — a assinatura inicia imediatamente após o pagamento.' },
         { q: 'Posso adicionar mais CNPJs/empresas ao meu plano?', a: 'Sim! Você pode adicionar empresas (filiais ou novas matrizes) ao seu grupo. Cada CNPJ adicional tem um custo de 50% do valor da sua assinatura mensal (ou anual, se optar pelo plano anual). Ex: plano Professional mensal R$ 700 → cada CNPJ extra custa R$ 350/mês. No plano anual, o desconto de 20% também se aplica ao custo do CNPJ extra.' },
         { q: 'Como funciona o cálculo de CNPJ extra no checkout?', a: 'Durante o checkout, informe o número de empresas/CNPJs adicionais. O sistema calculará automaticamente o valor total: assinatura + (nº de CNPJs extras × 50% da assinatura). Se optar pelo plano anual, o desconto de 20% será aplicado sobre o valor total antes do fechamento.' },
       ].map(faq => `

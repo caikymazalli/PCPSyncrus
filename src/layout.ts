@@ -221,11 +221,12 @@ export function layout(title: string, content: string, activePage: string = '') 
   <div class="sidebar-footer">
   <!-- Trial Banner -->
   <div style="margin:8px;padding:12px;background:rgba(230,126,34,0.15);border-radius:8px;border:1px solid rgba(230,126,34,0.3);">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
       <i class="fas fa-clock" style="color:#E67E22;font-size:13px;"></i>
-      <span style="font-size:12px;font-weight:700;color:#E67E22;">Trial: 11 dias restantes</span>
+      <span style="font-size:12px;font-weight:700;color:#E67E22;">Trial Starter: 11 dias</span>
     </div>
-    <a href="/assinatura" style="display:block;text-align:center;padding:6px;background:#E67E22;border-radius:6px;color:white;font-size:11px;font-weight:700;text-decoration:none;">Assinar Agora</a>
+    <div style="font-size:10px;color:rgba(230,126,34,0.8);margin-bottom:6px;">Sem cartão de crédito</div>
+    <a href="/assinatura" style="display:block;text-align:center;padding:6px;background:#E67E22;border-radius:6px;color:white;font-size:11px;font-weight:700;text-decoration:none;">Fazer Upgrade</a>
   </div>
 
   <!-- User info -->

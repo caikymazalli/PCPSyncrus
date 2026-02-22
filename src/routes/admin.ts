@@ -102,10 +102,13 @@ app.get('/', (c) => {
       <!-- Plano atual -->
       <div class="card" style="padding:20px;">
         <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:12px;"><i class="fas fa-credit-card" style="margin-right:8px;"></i>Plano Atual</div>
-        <div style="background:linear-gradient(135deg,#1B4F72,#2980B9);border-radius:10px;padding:14px;color:white;margin-bottom:12px;">
-          <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1px;">Trial Gratuito</div>
+        <div style="background:linear-gradient(135deg,#27AE60,#1e8449);border-radius:10px;padding:14px;color:white;margin-bottom:8px;">
+          <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1px;">Trial — Plano Starter</div>
           <div style="font-size:20px;font-weight:800;margin-top:4px;">R$ 0<span style="font-size:13px;font-weight:400;opacity:0.7;">/mês</span></div>
-          <div style="font-size:11px;opacity:0.7;margin-top:4px;">1 CNPJ · Recursos básicos</div>
+          <div style="font-size:11px;opacity:0.7;margin-top:4px;">1 CNPJ · Até 3 usuários · 1 planta</div>
+        </div>
+        <div style="font-size:11px;color:#9ca3af;text-align:center;margin-bottom:10px;">
+          <i class="fas fa-clock" style="margin-right:4px;color:#E67E22;"></i>11 dias restantes · Sem cartão de crédito
         </div>
         <a href="/assinatura" class="btn btn-primary" style="width:100%;justify-content:center;"><i class="fas fa-arrow-up"></i> Fazer Upgrade</a>
       </div>
