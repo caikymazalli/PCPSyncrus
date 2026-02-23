@@ -445,6 +445,155 @@ app.get('/', (c) => {
         }).join('')}
       </div>
 
+      <!-- Subseção: Lista de Produtos Importados -->
+      <div style="margin-top:32px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#2980B9;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-boxes"></i> Produtos de Fornecedores Importados
+            </div>
+            <div style="font-size:12px;color:#6c757d;margin-top:2px;">Itens vinculados a fornecedores do tipo "Importado" — com NCM, preço unitário, descrição técnica em PT e EN</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="filterImpProd" class="form-control" placeholder="Filtrar produto..." style="width:200px;font-size:12px;" oninput="filterImportProducts()">
+            <button class="btn btn-secondary btn-sm" onclick="toggleImpProdSection()"><i class="fas fa-chevron-down" id="impProdChevron"></i> Expandir</button>
+          </div>
+        </div>
+
+        <!-- Sumário de stats -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">
+          <div style="background:#e8f4fd;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:#2980B9;">${[...stockItems, ...products].filter((i: any) => (i.supplierIds||[]).some((sid: string) => suppliers.find((s: any) => s.id === sid && s.type === 'importado'))).length}</div>
+            <div style="font-size:11px;color:#6c757d;margin-top:2px;">Produtos com Forn. Import.</div>
+          </div>
+          <div style="background:#ede9fe;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:#7c3aed;">${suppliers.filter((s: any) => s.type === 'importado').length}</div>
+            <div style="font-size:11px;color:#6c757d;margin-top:2px;">Fornecedores Importados</div>
+          </div>
+          <div style="background:#f0fdf4;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:20px;font-weight:800;color:#16a34a;">${importsData.length}</div>
+            <div style="font-size:11px;color:#6c757d;margin-top:2px;">Processos de Importação</div>
+          </div>
+        </div>
+
+        <!-- Tabela de produtos importados (colapsável) -->
+        <div id="impProdTableSection" style="display:none;">
+          <div class="card" style="overflow:hidden;border-top:3px solid #2980B9;">
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                  <tr style="background:#1B4F72;color:white;">
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Código</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Produto (PT)</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Descrição EN</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">NCM</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Detalhes Técnicos</th>
+                    <th style="padding:10px 12px;text-align:right;white-space:nowrap;">Qtd Atual</th>
+                    <th style="padding:10px 12px;text-align:right;white-space:nowrap;">Preço Unit. (ref.)</th>
+                    <th style="padding:10px 12px;text-align:right;white-space:nowrap;">Subtotal Est.</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Fornecedor</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="impProdTableBody">
+                  ${(() => {
+                    const importedSupIds = new Set(suppliers.filter((s: any) => s.type === 'importado').map((s: any) => s.id))
+                    const importedItems = [...stockItems, ...products].filter((i: any) =>
+                      (i.supplierIds||[]).some((sid: string) => importedSupIds.has(sid))
+                    )
+                    if (importedItems.length === 0) {
+                      return `<tr><td colspan="10" style="padding:28px;text-align:center;color:#9ca3af;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>Nenhum item vinculado a fornecedor importado</td></tr>`
+                    }
+                    // Calcular preço unit. referência a partir do processo de importação se existir
+                    return importedItems.map((item: any) => {
+                      const supId = (item.supplierIds||[]).find((sid: string) => importedSupIds.has(sid))
+                      const sup = suppliers.find((s: any) => s.id === supId)
+                      // Tentar achar processo de importação que tem esse produto pelo código
+                      const relatedImp = importsData.find((imp: any) =>
+                        (imp.items || []).some((it: any) => it.productCode === item.code) ||
+                        imp.description?.toLowerCase().includes(item.name?.toLowerCase().split(' ')[0]?.toLowerCase())
+                      )
+                      // Preço unit referência a partir do process de importação ou do pedido de compra
+                      const relatedPC = purchaseOrders.find((pc: any) => pc.items?.some((it: any) => it.productCode === item.code))
+                      const refUnitPrice = relatedPC?.items?.find((it: any) => it.productCode === item.code)?.unitPrice || 0
+                      const qty = item.quantity ?? item.stockCurrent ?? 0
+                      const subtotal = refUnitPrice * qty
+                      // NCM: pegar do processo de importação se existir
+                      const ncm = relatedImp?.ncm || sup?.notes?.match(/NCM\s*([\d.]+)/)?.[1] || '—'
+                      // Descrição EN: baseada no nome do produto
+                      const descEN = item.englishDescription || item.descEN || item.englishDesc || ''
+                      const autoDescEN = descEN || (() => {
+                        const nameMap: Record<string,string> = {
+                          'Chapa Al 6061': 'Aluminum Alloy 6061 Sheet',
+                          'Chapa': 'Sheet',
+                          'Alumínio': 'Aluminum',
+                          'Parafuso': 'Bolt',
+                          'Pino': 'Pin',
+                          'Rolamento': 'Bearing',
+                          'Anel': 'Ring',
+                          'Barra': 'Bar',
+                          'Bloco': 'Block'
+                        }
+                        for (const [pt, en] of Object.entries(nameMap)) {
+                          if (item.name?.includes(pt)) return en + ' — ' + item.code
+                        }
+                        return '—'
+                      })()
+                      const statusColors: Record<string,{c:string,bg:string,l:string}> = {
+                        critical: {c:'#dc2626',bg:'#fef2f2',l:'Crítico'},
+                        purchase_needed: {c:'#d97706',bg:'#fffbeb',l:'Comprar'},
+                        normal: {c:'#16a34a',bg:'#f0fdf4',l:'Normal'},
+                        manufacture_needed: {c:'#7c3aed',bg:'#f5f3ff',l:'Fabricar'}
+                      }
+                      const st = statusColors[item.status || item.stockStatus || 'normal'] || statusColors.normal
+                      const technicalDetail = item.description || sup?.notes || '—'
+                      return `
+                      <tr class="imp-prod-row" style="border-bottom:1px solid #f1f3f5;" onmouseenter="this.style.background='#f8f9fa'" onmouseleave="this.style.background='white'">
+                        <td style="padding:10px 12px;font-family:monospace;font-size:11px;background:#e8f4fd;color:#1B4F72;font-weight:700;white-space:nowrap;">${item.code}</td>
+                        <td style="padding:10px 12px;font-weight:600;color:#374151;max-width:160px;">
+                          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.name}">${item.name}</div>
+                          <div style="font-size:10px;color:#9ca3af;">${item.unit}</div>
+                        </td>
+                        <td style="padding:10px 12px;max-width:160px;">
+                          <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:11px;color:${autoDescEN?'#374151':'#dc2626'};font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${autoDescEN}">${autoDescEN || '— preencher —'}</span>
+                            <button onclick="editDescEN('${item.code}')" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:10px;flex-shrink:0;" title="Editar descrição EN"><i class="fas fa-pencil-alt"></i></button>
+                          </div>
+                        </td>
+                        <td style="padding:10px 12px;font-weight:700;color:#7c3aed;white-space:nowrap;">${ncm}</td>
+                        <td style="padding:10px 12px;max-width:180px;">
+                          <div style="font-size:11px;color:#6c757d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${technicalDetail}">${technicalDetail}</div>
+                        </td>
+                        <td style="padding:10px 12px;text-align:right;font-weight:700;color:#374151;">${qty} ${item.unit}</td>
+                        <td style="padding:10px 12px;text-align:right;font-weight:600;">${refUnitPrice > 0 ? 'R$ '+refUnitPrice.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>
+                        <td style="padding:10px 12px;text-align:right;font-weight:700;">${subtotal > 0 ? 'R$ '+subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>
+                        <td style="padding:10px 12px;max-width:120px;">
+                          <div style="font-size:11px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sup?.name||'—'}">${sup?.name||'—'}</div>
+                          <div style="font-size:10px;color:#9ca3af;">${sup?.country||''}</div>
+                        </td>
+                        <td style="padding:10px 12px;white-space:nowrap;">
+                          <span class="badge" style="background:${st.bg};color:${st.c};font-size:10px;">${st.l}</span>
+                        </td>
+                      </tr>`
+                    }).join('')
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <!-- Rodapé com totais -->
+            <div style="padding:12px 16px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <div style="font-size:12px;color:#6c757d;">
+                <i class="fas fa-info-circle" style="margin-right:4px;"></i>
+                Preços unitários de referência baseados nos últimos pedidos de compra. Para atualizar, edite a descrição EN diretamente.
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="exportImpProdCSV()">
+                <i class="fas fa-file-csv"></i> Exportar CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Subseção: Rascunho de LI -->
       <div style="margin-top:28px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
@@ -1578,6 +1727,68 @@ app.get('/', (c) => {
     html += '</tbody></table>';
     const el = document.getElementById('fechAuditoriaBody');
     if (el) el.innerHTML = html;
+  }
+
+  // ── Produtos Importados ───────────────────────────────────────────────────
+  let impProdExpanded = false;
+  function toggleImpProdSection() {
+    impProdExpanded = !impProdExpanded;
+    const sec = document.getElementById('impProdTableSection');
+    const chev = document.getElementById('impProdChevron');
+    const btn = chev?.closest('button');
+    if (sec) sec.style.display = impProdExpanded ? 'block' : 'none';
+    if (chev) {
+      chev.className = impProdExpanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+    }
+    if (btn) btn.innerHTML = (impProdExpanded ? '<i class="fas fa-chevron-up" id="impProdChevron"></i> Recolher' : '<i class="fas fa-chevron-down" id="impProdChevron"></i> Expandir');
+  }
+
+  function filterImportProducts() {
+    const q = (document.getElementById('filterImpProd')?.value || '').toLowerCase();
+    document.querySelectorAll('.imp-prod-row').forEach(row => {
+      const text = row.textContent?.toLowerCase() || '';
+      (row as HTMLElement).style.display = text.includes(q) ? '' : 'none';
+    });
+    if (q && !impProdExpanded) toggleImpProdSection();
+  }
+
+  // Mapa de descrições EN editadas pelo usuário
+  const impProdDescENMap: Record<string, string> = {};
+
+  function editDescEN(code: string) {
+    const current = impProdDescENMap[code] || '';
+    const val = prompt('Descrição em inglês para ' + code + ':\\n(Ex: Aluminum Alloy 6061 Sheet 3mm thickness)', current);
+    if (val === null) return;
+    impProdDescENMap[code] = val;
+    // Atualiza célula na tabela
+    const rows = document.querySelectorAll('.imp-prod-row');
+    rows.forEach(row => {
+      const codeCell = row.querySelector('td:first-child');
+      if (codeCell?.textContent?.trim() === code) {
+        const descCell = row.querySelectorAll('td')[2];
+        if (descCell) {
+          const span = descCell.querySelector('span');
+          if (span) span.textContent = val || '— preencher —';
+        }
+      }
+    });
+    if (val) alert('✅ Descrição EN salva para ' + code + ':\\n' + val + '\\n\\nSalvo localmente. Para persistir, utilize a edição de produtos em Cadastros.');
+  }
+
+  function exportImpProdCSV() {
+    const rows = document.querySelectorAll('.imp-prod-row');
+    if (rows.length === 0) { alert('Nenhum produto para exportar.'); return; }
+    let csv = 'Código,Produto (PT),Descrição EN,NCM,Detalhes Técnicos,Qtd Atual,Preço Unit. Ref.,Subtotal Est.,Fornecedor,Status\\n';
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      const vals = Array.from(cells).map(c => '"' + (c.textContent?.trim().replace(/"/g,'""') || '') + '"');
+      csv += vals.join(',') + '\\n';
+    });
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'produtos_importados.csv'; a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ── Misc ──────────────────────────────────────────────────────────────────
