@@ -13,8 +13,11 @@ import assinaturaApp from './routes/assinatura'
 import qualidadeApp from './routes/qualidade'
 import estoqueApp from './routes/estoque'
 import { loginPage } from './login'
+import { onboardingPage } from './onboarding'
+import { welcomePage } from './welcome'
 import cadastrosApp from './routes/cadastros'
 import suprimentosApp from './routes/suprimentos'
+import masterApp from './routes/master'
 
 const app = new Hono()
 
@@ -23,6 +26,13 @@ app.use('/static/*', serveStatic({ root: './public' }))
 
 // Auth routes
 app.get('/login', (c) => c.html(loginPage()))
+app.get('/cadastro', (c) => c.html(onboardingPage()))
+app.get('/welcome', (c) => {
+  const empresa = c.req.query('empresa') || 'Minha Empresa'
+  const nome = c.req.query('nome') || ''
+  const plano = c.req.query('plano') || 'starter'
+  return c.html(welcomePage(empresa, nome, plano))
+})
 
 // Module routes
 app.route('/', dashboardApp)
@@ -39,6 +49,7 @@ app.route('/qualidade', qualidadeApp)
 app.route('/estoque', estoqueApp)
 app.route('/cadastros', cadastrosApp)
 app.route('/suprimentos', suprimentosApp)
+app.route('/master', masterApp)
 
 // 404 fallback
 app.notFound((c) => {

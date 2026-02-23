@@ -230,7 +230,7 @@ export function layout(title: string, content: string, activePage: string = '') 
   </div>
 
   <!-- User info -->
-  <div style="padding:12px 16px 20px;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">
+  <div style="padding:12px 16px 16px;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="avatar" style="background:#2980B9;font-size:12px;">CS</div>
       <div style="flex:1;min-width:0;">
@@ -241,6 +241,12 @@ export function layout(title: string, content: string, activePage: string = '') 
         <i class="fas fa-sign-out-alt"></i>
       </a>
     </div>
+    <!-- Master Admin link — dev only -->
+    <a href="/master" title="Master Admin — Painel do Desenvolvedor" style="display:flex;align-items:center;gap:7px;margin-top:10px;padding:6px 10px;border-radius:7px;background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.22);text-decoration:none;transition:background 0.2s;" onmouseenter="this.style.background='rgba(124,58,237,0.22)'" onmouseleave="this.style.background='rgba(124,58,237,0.12)'" class="${activePage === 'master' ? 'active' : ''}">
+      <i class="fas fa-shield-alt" style="color:#a78bfa;font-size:12px;flex-shrink:0;"></i>
+      <span style="font-size:11px;font-weight:700;color:#c4b5fd;">Master Admin</span>
+      <span style="margin-left:auto;font-size:9px;font-weight:700;background:rgba(124,58,237,0.3);color:#a78bfa;padding:1px 6px;border-radius:8px;">DEV</span>
+    </a>
   </div>
   </div><!-- end sidebar-footer -->
 </nav>
