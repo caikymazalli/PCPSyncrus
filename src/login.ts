@@ -93,7 +93,7 @@ export function loginPage(): string {
 
         <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f3f5;text-align:center;">
           <p style="font-size:13px;color:#6c757d;margin:0 0 12px;">Ainda não tem conta?</p>
-          <button onclick="alert('Redirecionando para cadastro...')" style="width:100%;padding:10px;border:2px solid #1B4F72;border-radius:10px;background:transparent;color:#1B4F72;font-size:13px;font-weight:700;cursor:pointer;">
+          <button onclick="window.location.href='/assinatura'" style="width:100%;padding:10px;border:2px solid #1B4F72;border-radius:10px;background:transparent;color:#1B4F72;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='#1B4F72';this.style.color='white'" onmouseleave="this.style.background='transparent';this.style.color='#1B4F72'">
             <i class="fas fa-rocket" style="margin-right:8px;"></i>Criar conta gratuita — 14 dias de trial
           </button>
         </div>
