@@ -1,12 +1,16 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 const NC_LIMIT = 3 // Limite padrão de unidades rejeitadas para gerar NC
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { productionEntries, productionOrders, nonConformances } = mockData
   const activeOrders = productionOrders.filter(o => o.status === 'in_progress' || o.status === 'planned')
 
@@ -590,7 +594,7 @@ app.get('/', (c) => {
   </script>
   `
 
-  return c.html(layout('Apontamento', content, 'apontamento'))
+  return c.html(layout('Apontamento', content, 'apontamento', userInfo))
 })
 
 export default app

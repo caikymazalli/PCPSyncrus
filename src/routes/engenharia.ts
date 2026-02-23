@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { products, bomItems, routes } = mockData
 
   const content = `
@@ -248,7 +252,7 @@ app.get('/', (c) => {
   }
   </script>
   `
-  return c.html(layout('Engenharia de Produto', content, 'engenharia'))
+  return c.html(layout('Engenharia de Produto', content, 'engenharia', userInfo))
 })
 
 export default app

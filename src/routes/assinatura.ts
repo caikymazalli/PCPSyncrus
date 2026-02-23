@@ -1,9 +1,13 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const plans = [
     {
       name: 'Starter',
@@ -313,7 +317,7 @@ app.get('/', (c) => {
   calcCnpjCost();
   </script>
   `
-  return c.html(layout('Plano & Licença', content, 'assinatura'))
+  return c.html(layout('Plano & Licença', content, 'assinatura', userInfo))
 })
 
 export default app

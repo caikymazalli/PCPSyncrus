@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { nonConformances } = mockData
 
   const sevColor: Record<string, string> = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' }
@@ -371,7 +375,7 @@ app.get('/', (c) => {
   </script>
   `
 
-  return c.html(layout('Qualidade — NCs', content, 'qualidade'))
+  return c.html(layout('Qualidade — NCs', content, 'qualidade', userInfo))
 })
 
 export default app

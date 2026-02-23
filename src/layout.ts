@@ -1,5 +1,41 @@
 // Layout helper functions
-export function layout(title: string, content: string, activePage: string = '') {
+export interface UserInfo {
+  nome: string
+  empresa: string
+  plano: string
+  isDemo: boolean
+  role: string
+  trialEnd?: string   // ISO date string
+}
+
+export function layout(title: string, content: string, activePage: string = '', userInfo?: UserInfo) {
+  // Compute display values from userInfo or use defaults
+  const displayNome    = userInfo?.nome    || 'Carlos Silva'
+  const displayEmpresa = userInfo?.empresa || 'Empresa Alpha'
+  const displayPlano   = userInfo?.plano   || 'starter'
+  const displayInitials = (userInfo?.nome || 'CS')
+    .split(' ')
+    .map((w: string) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+  const displayRole = (() => {
+    const r = userInfo?.role || 'admin'
+    const map: Record<string,string> = { admin: 'Administrador', gestor_pcp: 'Gestor PCP', operador: 'Operador', viewer: 'Visualizador' }
+    return map[r] || r
+  })()
+  // Trial days remaining
+  let trialDias = 0
+  let isTrialing = false
+  if (userInfo?.trialEnd) {
+    const diff = new Date(userInfo.trialEnd).getTime() - Date.now()
+    trialDias = Math.max(0, Math.ceil(diff / 86400000))
+    isTrialing = trialDias > 0
+  }
+  const planLabel: Record<string,string> = { starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise' }
+  const trialBanner = (isTrialing || !userInfo)
+    ? `<div style="margin:8px;padding:12px;background:rgba(230,126,34,0.15);border-radius:8px;border:1px solid rgba(230,126,34,0.3);"><div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><i class="fas fa-clock" style="color:#E67E22;font-size:13px;"></i><span style="font-size:12px;font-weight:700;color:#E67E22;">Trial ${planLabel[displayPlano]||displayPlano}: ${!userInfo ? 11 : trialDias} dias</span></div><div style="font-size:10px;color:rgba(230,126,34,0.8);margin-bottom:6px;">Sem cartão de crédito</div><a href="/assinatura" style="display:block;text-align:center;padding:6px;background:#E67E22;border-radius:6px;color:white;font-size:11px;font-weight:700;text-decoration:none;">Fazer Upgrade</a></div>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -132,7 +168,7 @@ export function layout(title: string, content: string, activePage: string = '') 
       </div>
       <div>
         <div style="font-size:16px;font-weight:800;color:white;">PCP Planner</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px;">v2.0 • Empresa Alpha</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">${displayEmpresa}</div>
       </div>
     </div>
   </div>
@@ -220,22 +256,15 @@ export function layout(title: string, content: string, activePage: string = '') 
 
   <div class="sidebar-footer">
   <!-- Trial Banner -->
-  <div style="margin:8px;padding:12px;background:rgba(230,126,34,0.15);border-radius:8px;border:1px solid rgba(230,126,34,0.3);">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-      <i class="fas fa-clock" style="color:#E67E22;font-size:13px;"></i>
-      <span style="font-size:12px;font-weight:700;color:#E67E22;">Trial Starter: 11 dias</span>
-    </div>
-    <div style="font-size:10px;color:rgba(230,126,34,0.8);margin-bottom:6px;">Sem cartão de crédito</div>
-    <a href="/assinatura" style="display:block;text-align:center;padding:6px;background:#E67E22;border-radius:6px;color:white;font-size:11px;font-weight:700;text-decoration:none;">Fazer Upgrade</a>
-  </div>
+  ${trialBanner}
 
   <!-- User info -->
   <div style="padding:12px 16px 16px;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">
     <div style="display:flex;align-items:center;gap:10px;">
-      <div class="avatar" style="background:#2980B9;font-size:12px;">CS</div>
+      <div class="avatar" style="background:#2980B9;font-size:12px;">${displayInitials}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:white;">Carlos Silva</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.45);">Administrador</div>
+        <div style="font-size:13px;font-weight:600;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayNome}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.45);">${displayRole}</div>
       </div>
       <a href="/login" style="color:rgba(255,255,255,0.4);font-size:16px;" title="Sair">
         <i class="fas fa-sign-out-alt"></i>

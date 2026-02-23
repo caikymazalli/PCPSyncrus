@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { stockItems, separationOrders, stockExits, products, serialNumbers, kardexMovements } = mockData as any
 
   const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
@@ -1197,7 +1201,7 @@ app.get('/', (c) => {
   }
   </script>
   `
-  return c.html(layout('Estoque', content, 'estoque'))
+  return c.html(layout('Estoque', content, 'estoque', userInfo))
 })
 
 export default app

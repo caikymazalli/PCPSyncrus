@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { serveStatic } from 'hono/cloudflare-workers'
-import { setCookie, deleteCookie } from 'hono/cookie'
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import dashboardApp from './routes/dashboard'
 import ordensApp from './routes/ordens'
 import recursosApp from './routes/recursos'
@@ -20,39 +20,117 @@ import cadastrosApp from './routes/cadastros'
 import suprimentosApp from './routes/suprimentos'
 import masterApp from './routes/master'
 import { newUserDashboard } from './newuser'
+import { loginUser, registerUser, getSession, sessions } from './userStore'
 
 const app = new Hono()
+
+const SESSION_COOKIE = 'pcp_session'
+const SESSION_MAX_AGE = 60 * 60 * 8
 
 // Static files
 app.use('/static/*', serveStatic({ root: './public' }))
 
-// Auth routes
-app.get('/login', (c) => c.html(loginPage()))
-app.get('/cadastro', (c) => c.html(onboardingPage()))
-app.get('/welcome', (c) => {
-  const empresa = c.req.query('empresa') || 'Minha Empresa'
-  const nome = c.req.query('nome') || ''
-  const plano = c.req.query('plano') || 'starter'
-  return c.html(welcomePage(empresa, nome, plano))
-})
+// ── Auth: POST /login ──────────────────────────────────────────────────────────
+app.post('/login', async (c) => {
+  const body = await c.req.parseBody()
+  const email = (body['email'] as string || '').trim()
+  const pwd   = (body['pwd']   as string || body['password'] as string || '').trim()
 
-// Rota de dashboard para novo usuário (sem dados demo) — acessada após cadastro
-app.get('/novo', (c) => {
-  const empresa = c.req.query('empresa') || ''
-  const nome = c.req.query('nome') || ''
-  const plano = c.req.query('plano') || 'starter'
-  // Setar cookie indicando novo usuário (sem dados demo)
-  setCookie(c, 'new_user', '1', { path: '/', maxAge: 86400 * 30, sameSite: 'Lax' })
-  return c.html(newUserDashboard(empresa, nome, plano))
-})
+  const result = await loginUser(email, pwd)
+  if (!result.ok || !result.token) {
+    return c.html(loginPage('E-mail ou senha incorretos.'))
+  }
 
-// Rota para "sair" do modo novo usuário (usar o demo)
-app.get('/usar-demo', (c) => {
-  deleteCookie(c, 'new_user', { path: '/' })
+  setCookie(c, SESSION_COOKIE, result.token, {
+    maxAge: SESSION_MAX_AGE, path: '/', httpOnly: true, sameSite: 'Lax'
+  })
+
+  // If new (non-demo) user, go to /novo; else dashboard
+  if (result.session && !result.session.isDemo) {
+    const params = new URLSearchParams({
+      empresa: result.session.empresa,
+      nome: result.session.nome,
+      plano: result.session.plano,
+    })
+    return c.redirect('/novo?' + params.toString())
+  }
   return c.redirect('/')
 })
 
-// Module routes
+// ── Auth: POST /cadastro ───────────────────────────────────────────────────────
+app.post('/cadastro', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body) return c.json({ ok: false, error: 'Dados inválidos.' }, 400)
+
+  const result = await registerUser({
+    email:     body.email     || '',
+    pwd:       body.pwd       || '',
+    nome:      body.nome      || '',
+    sobrenome: body.sobrenome || '',
+    empresa:   body.empresa   || '',
+    plano:     body.plano     || 'starter',
+    tel:       body.tel       || '',
+    setor:     body.setor     || '',
+    porte:     body.porte     || '',
+  })
+
+  if (!result.ok || !result.user) {
+    return c.json({ ok: false, error: result.error || 'Erro ao cadastrar.' }, 400)
+  }
+
+  // Auto-login after registration
+  const loginResult = await loginUser(body.email, body.pwd)
+  if (loginResult.ok && loginResult.token) {
+    setCookie(c, SESSION_COOKIE, loginResult.token, {
+      maxAge: SESSION_MAX_AGE, path: '/', httpOnly: true, sameSite: 'Lax'
+    })
+  }
+
+  return c.json({
+    ok: true,
+    redirect: `/novo?empresa=${encodeURIComponent(result.user.empresa)}&nome=${encodeURIComponent(result.user.nome)}&plano=${encodeURIComponent(result.user.plano)}`
+  })
+})
+
+// ── Auth: GET /cadastro ────────────────────────────────────────────────────────
+app.get('/cadastro', (c) => c.html(onboardingPage()))
+
+// ── Auth: GET /login ───────────────────────────────────────────────────────────
+app.get('/login', (c) => {
+  const err = c.req.query('err') || ''
+  return c.html(loginPage(err === '1' ? 'E-mail ou senha incorretos.' : ''))
+})
+
+// ── Auth: GET /logout ──────────────────────────────────────────────────────────
+app.get('/logout', (c) => {
+  const token = getCookie(c, SESSION_COOKIE)
+  if (token) delete sessions[token]
+  deleteCookie(c, SESSION_COOKIE, { path: '/' })
+  return c.redirect('/login')
+})
+
+// ── Welcome ────────────────────────────────────────────────────────────────────
+app.get('/welcome', (c) => {
+  const empresa = c.req.query('empresa') || 'Minha Empresa'
+  const nome    = c.req.query('nome')    || ''
+  const plano   = c.req.query('plano')   || 'starter'
+  return c.html(welcomePage(empresa, nome, plano))
+})
+
+// ── /novo — dashboard vazio para novo usuário ──────────────────────────────────
+app.get('/novo', (c) => {
+  const token  = getCookie(c, SESSION_COOKIE)
+  const session = getSession(token)
+  const empresa = session?.empresa || c.req.query('empresa') || ''
+  const nome    = session?.nome    || c.req.query('nome')    || ''
+  const plano   = session?.plano   || c.req.query('plano')   || 'starter'
+  return c.html(newUserDashboard(empresa, nome, plano))
+})
+
+// ── /usar-demo — switch para dados demo ────────────────────────────────────────
+app.get('/usar-demo', (c) => c.redirect('/'))
+
+// ── Module routes ──────────────────────────────────────────────────────────────
 app.route('/', dashboardApp)
 app.route('/ordens', ordensApp)
 app.route('/recursos', recursosApp)
@@ -69,7 +147,7 @@ app.route('/cadastros', cadastrosApp)
 app.route('/suprimentos', suprimentosApp)
 app.route('/master', masterApp)
 
-// 404 fallback
+// ── 404 ────────────────────────────────────────────────────────────────────────
 app.notFound((c) => {
   return c.html(`
     <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#F0F3F5;">

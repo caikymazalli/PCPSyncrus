@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { registeredUsers, DEMO_USERS } from '../userStore'
 
 const app = new Hono()
 
@@ -287,6 +288,28 @@ app.post('/api/toggle-master-user', async (c) => {
 app.get('/', async (c) => {
   await ensureInit()
   if (!isAuthenticated(c)) return c.html(loginRedirect())
+
+  // Mesclar masterClients com registeredUsers (usuários que se cadastraram)
+  const registeredEmails = new Set(masterClients.map(mc => mc.email))
+  for (const u of Object.values(registeredUsers)) {
+    if (!u.isDemo && !registeredEmails.has(u.email)) {
+      registeredEmails.add(u.email)
+      masterClients.push({
+        id: u.userId,
+        empresa: u.empresa, fantasia: u.empresa,
+        cnpj: '', setor: u.setor, porte: u.porte,
+        responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
+        email: u.email, tel: u.tel,
+        plano: u.plano, billing: 'trial', valor: 0,
+        status: 'trial',
+        trialStart: u.trialStart, trialEnd: u.trialEnd,
+        empresas: 1, usuarios: 1, plantas: 0,
+        criadoEm: u.createdAt,
+        ultimoAcesso: u.lastLogin || u.createdAt,
+        modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
+      })
+    }
+  }
 
   const clients = masterClients
 

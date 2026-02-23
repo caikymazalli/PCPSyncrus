@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 // ── Rota principal do módulo Suprimentos ──────────────────────────────────────
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { quotations, purchaseOrders, suppliers, stockItems, products, imports } = mockData as any
 
   const statusInfo: Record<string, { label: string, color: string, bg: string }> = {
@@ -1799,7 +1803,7 @@ app.get('/', (c) => {
   </script>
   `
 
-  return c.html(layout('Suprimentos', content, 'suprimentos'))
+  return c.html(layout('Suprimentos', content, 'suprimentos', userInfo))
 })
 
 // ── Interface pública para fornecedor responder cotação ─────────────────────

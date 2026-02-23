@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 // Produtos page
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { products, bomItems, suppliers, productSuppliers } = mockData as any
 
   // Count stock status
@@ -615,7 +619,7 @@ app.get('/', (c) => {
   }, 8000);
   </script>
   `
-  return c.html(layout('Produtos', content, 'produtos'))
+  return c.html(layout('Produtos', content, 'produtos', userInfo))
 })
 
 export default app

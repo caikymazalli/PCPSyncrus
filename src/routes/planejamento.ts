@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { mrpEntries, productionOrders, chartData, plants } = mockData as any
 
   // Itens em shortfall com data de falta
@@ -357,7 +361,7 @@ app.get('/', (c) => {
   setTimeout(() => { const el = document.getElementById('mrpAlertPopup'); if(el) el.style.display='none'; }, 12000);
   </script>
   `
-  return c.html(layout('Planejamento & MRP', content, 'planejamento'))
+  return c.html(layout('Planejamento & MRP', content, 'planejamento', userInfo))
 })
 
 export default app

@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { mockData } from '../data'
+// mockData replaced by per-session data
+import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
 
 app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
   const { users } = mockData
 
   const roleLabel: Record<string, string> = {
@@ -609,7 +613,7 @@ app.get('/', (c) => {
   }
   </script>
   `
-  return c.html(layout('Administração', content, 'admin'))
+  return c.html(layout('Administração', content, 'admin', userInfo))
 })
 
 export default app
