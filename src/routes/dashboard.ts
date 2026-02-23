@@ -9,7 +9,12 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { kpis, productionOrders, chartData, machines, products, stockItems } = mockData
+  const kpis = (mockData as any).kpis || { totalOrders:0,activeOrders:0,plannedOrders:0,completedOrders:0,cancelledOrders:0,totalProduced:0,totalRejected:0,totalProducts:0,totalMachines:0,totalPlants:0,completionRate:0,qualityRate:100 }
+  const productionOrders = (mockData as any).productionOrders || []
+  const chartData = (mockData as any).chartData || {}
+  const machines = (mockData as any).machines || []
+  const products = (mockData as any).products || []
+  const stockItems = (mockData as any).stockItems || []
   // Import data from mock
   const imports = (mockData as any).imports || []
   const inTransit = imports.filter((imp: any) => ['waiting_ship','in_transit','customs'].includes(imp.status)).length
@@ -37,9 +42,10 @@ app.get('/', (c) => {
   }
 
   // Stock metrics
-  const stockStatusSummary = chartData.stockStatus
-  const criticalProducts = products.filter(p => p.stockStatus === 'critical').length
-  const criticalItems = stockItems.filter(s => s.status === 'critical').length
+  // Safe fallbacks for new users
+  const stockStatusSummary = (chartData.stockStatus) || { critical: 0, normal: 0, purchase_needed: 0, manufacture_needed: 0 }
+  const criticalProducts = products.filter((p: any) => p.stockStatus === 'critical').length
+  const criticalItems = stockItems.filter((s: any) => s.status === 'critical').length
 
   const content = `
   <!-- KPIs Row 1 -->
@@ -308,8 +314,9 @@ app.get('/', (c) => {
   <!-- Capacity Utilization -->
   <div class="card" style="padding:20px;margin-top:20px;">
     <h3 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0 0 16px;">Utilização de Capacidade por Planta</h3>
+    ${Object.keys(chartData.capacityUtilization||{}).length===0 ? `<div style="text-align:center;padding:20px;color:#9ca3af;"><i class="fas fa-chart-bar" style="font-size:28px;margin-bottom:8px;opacity:0.4;"></i><div>Cadastre plantas para ver a utilização. <a href="/recursos" style="color:#2980B9;">Cadastrar recursos →</a></div></div>` : `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
-      ${Object.entries(chartData.capacityUtilization).map(([plant, val]) => `
+      ${Object.entries(chartData.capacityUtilization||{}).map(([plant, val]: [string,any]) => `
       <div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
           <span style="font-size:13px;font-weight:600;color:#374151;">${plant}</span>
@@ -319,7 +326,7 @@ app.get('/', (c) => {
           <div class="progress-fill" style="width:${val}%;background:${val > 80 ? '#E74C3C' : val > 60 ? '#F39C12' : '#27AE60'};"></div>
         </div>
       </div>`).join('')}
-    </div>
+    </div>`}
   </div>
 
   <script>
@@ -331,7 +338,7 @@ app.get('/', (c) => {
       labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
       datasets: [{
         label: 'Produção',
-        data: ${JSON.stringify(chartData.productionPerDay)},
+        data: ${JSON.stringify(chartData.productionPerDay || [0,0,0,0,0,0,0])},
         backgroundColor: 'rgba(41,128,185,0.7)',
         borderColor: '#2980B9',
         borderWidth: 1.5,
@@ -362,7 +369,7 @@ app.get('/', (c) => {
     data: {
       labels: ['Planejadas', 'Em Progresso', 'Concluídas', 'Canceladas'],
       datasets: [{
-        data: [${chartData.statusDistribution.planned}, ${chartData.statusDistribution.in_progress}, ${chartData.statusDistribution.completed}, ${chartData.statusDistribution.cancelled}],
+        data: [${(chartData.statusDistribution||{}).planned||0}, ${(chartData.statusDistribution||{}).in_progress||0}, ${(chartData.statusDistribution||{}).completed||0}, ${(chartData.statusDistribution||{}).cancelled||0}],
         backgroundColor: ['#3498DB', '#27AE60', '#1B4F72', '#E74C3C'],
         borderWidth: 3,
         borderColor: '#fff',
@@ -383,7 +390,7 @@ app.get('/', (c) => {
       labels: ['Crítico', 'Normal', 'Nec. Compra', 'Nec. Manufatura'],
       datasets: [{
         label: 'Itens',
-        data: [${stockStatusSummary.critical}, ${stockStatusSummary.normal}, ${stockStatusSummary.purchase_needed}, ${stockStatusSummary.manufacture_needed}],
+        data: [${stockStatusSummary.critical||0}, ${stockStatusSummary.normal||0}, ${stockStatusSummary.purchase_needed||0}, ${stockStatusSummary.manufacture_needed||0}],
         backgroundColor: ['#fca5a5', '#86efac', '#fcd34d', '#c4b5fd'],
         borderColor: ['#dc2626', '#16a34a', '#d97706', '#7c3aed'],
         borderWidth: 1.5,

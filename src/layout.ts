@@ -10,8 +10,8 @@ export interface UserInfo {
 
 export function layout(title: string, content: string, activePage: string = '', userInfo?: UserInfo) {
   // Compute display values from userInfo or use defaults
-  const displayNome    = userInfo?.nome    || 'Carlos Silva'
-  const displayEmpresa = userInfo?.empresa || 'Empresa Alpha'
+  const displayNome    = userInfo?.nome    || 'Usuário'
+  const displayEmpresa = userInfo?.empresa || 'Minha Empresa'
   const displayPlano   = userInfo?.plano   || 'starter'
   const displayInitials = (userInfo?.nome || 'CS')
     .split(' ')
@@ -34,7 +34,7 @@ export function layout(title: string, content: string, activePage: string = '', 
   }
   const planLabel: Record<string,string> = { starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise' }
   const trialBanner = (isTrialing || !userInfo)
-    ? `<div style="margin:8px;padding:12px;background:rgba(230,126,34,0.15);border-radius:8px;border:1px solid rgba(230,126,34,0.3);"><div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><i class="fas fa-clock" style="color:#E67E22;font-size:13px;"></i><span style="font-size:12px;font-weight:700;color:#E67E22;">Trial ${planLabel[displayPlano]||displayPlano}: ${!userInfo ? 11 : trialDias} dias</span></div><div style="font-size:10px;color:rgba(230,126,34,0.8);margin-bottom:6px;">Sem cartão de crédito</div><a href="/assinatura" style="display:block;text-align:center;padding:6px;background:#E67E22;border-radius:6px;color:white;font-size:11px;font-weight:700;text-decoration:none;">Fazer Upgrade</a></div>`
+    ? `<div style="margin:8px;padding:12px;background:rgba(230,126,34,0.15);border-radius:8px;border:1px solid rgba(230,126,34,0.3);"><div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><i class="fas fa-clock" style="color:#E67E22;font-size:13px;"></i><span style="font-size:12px;font-weight:700;color:#E67E22;">Trial ${planLabel[displayPlano]||displayPlano}: ${!userInfo ? 14 : trialDias} dias</span></div><div style="font-size:10px;color:rgba(230,126,34,0.8);margin-bottom:6px;">Sem cartão de crédito</div><a href="/assinatura" style="display:block;text-align:center;padding:6px;background:#E67E22;border-radius:6px;color:white;font-size:11px;font-weight:700;text-decoration:none;">Fazer Upgrade</a></div>`
     : '';
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -155,7 +155,7 @@ export function layout(title: string, content: string, activePage: string = '', 
     .stock-manufacture { color: #7c3aed; background: #f5f3ff; }
   </style>
 </head>
-<body>
+<body data-user-name="${displayNome}" data-user-empresa="${displayEmpresa}">
 <!-- Sidebar Overlay -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
@@ -179,10 +179,7 @@ export function layout(title: string, content: string, activePage: string = '', 
       <i class="fas fa-filter" style="margin-right:4px;"></i>Visualizando
     </div>
     <select id="empresaFilterSelect" onchange="onEmpresaFilterChange()" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:white;font-size:12px;font-weight:600;padding:6px 8px;cursor:pointer;outline:none;">
-      <option value="all" style="background:#0f2d4a;color:white;">🏢 Grupo — Todas as Empresas</option>
-      <option value="e1" style="background:#0f2d4a;color:white;">📍 Empresa Alpha (Matriz)</option>
-      <option value="e2" style="background:#0f2d4a;color:white;">📍 Alpha Nordeste (Filial)</option>
-      <option value="e3" style="background:#0f2d4a;color:white;">📍 Alpha Sul (Filial)</option>
+      <option value="all" style="background:#0f2d4a;color:white;">🏢 ${displayEmpresa}</option>
     </select>
     <div id="empresaFilterBadge" style="margin-top:6px;display:none;">
       <span style="font-size:10px;background:#27AE60;color:white;padding:2px 8px;border-radius:10px;font-weight:600;">

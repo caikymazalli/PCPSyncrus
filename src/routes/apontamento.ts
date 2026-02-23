@@ -11,7 +11,9 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { productionEntries, productionOrders, nonConformances } = mockData
+  const productionEntries = (mockData as any).productionEntries || []
+  const productionOrders = (mockData as any).productionOrders || []
+  const nonConformances = (mockData as any).nonConformances || []
   const activeOrders = productionOrders.filter(o => o.status === 'in_progress' || o.status === 'planned')
 
   const content = `

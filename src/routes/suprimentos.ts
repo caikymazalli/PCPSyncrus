@@ -10,7 +10,12 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { quotations, purchaseOrders, suppliers, stockItems, products, imports } = mockData as any
+  const quotations = (mockData as any).quotations || []
+  const purchaseOrders = (mockData as any).purchaseOrders || []
+  const suppliers = (mockData as any).suppliers || []
+  const stockItems = (mockData as any).stockItems || []
+  const products = (mockData as any).products || []
+  const imports = (mockData as any).imports || []
 
   const statusInfo: Record<string, { label: string, color: string, bg: string }> = {
     sent:               { label: 'Enviada',            color: '#3498DB', bg: '#d1ecf1' },
@@ -1672,7 +1677,7 @@ app.get('/', (c) => {
       // Registra no histórico
       if (fechCurrentImp) {
         if (!fechDocumentos[fechCurrentImp.id]) fechDocumentos[fechCurrentImp.id] = [];
-        fechDocumentos[fechCurrentImp.id].push({ doc:docName, file:f.name, date:new Date().toLocaleString('pt-BR'), user:'Carlos Silva' });
+        fechDocumentos[fechCurrentImp.id].push({ doc:docName, file:f.name, date:new Date().toLocaleString('pt-BR'), user:document.querySelector('[data-user-name]')?.dataset?.userName||'Usuário' });
         buildFechHistorico(fechCurrentImp);
         buildFechAuditoria(fechCurrentImp);
       }
@@ -1684,7 +1689,7 @@ app.get('/', (c) => {
     for (const f of files) {
       if (fechCurrentImp) {
         if (!fechDocumentos[fechCurrentImp.id]) fechDocumentos[fechCurrentImp.id] = [];
-        fechDocumentos[fechCurrentImp.id].push({ doc:'Geral', file:f.name, date:new Date().toLocaleString('pt-BR'), user:'Carlos Silva' });
+        fechDocumentos[fechCurrentImp.id].push({ doc:'Geral', file:f.name, date:new Date().toLocaleString('pt-BR'), user:document.querySelector('[data-user-name]')?.dataset?.userName||'Usuário' });
       }
     }
     if (fechCurrentImp) { buildFechHistorico(fechCurrentImp); buildFechAuditoria(fechCurrentImp); }
@@ -1719,7 +1724,7 @@ app.get('/', (c) => {
   function buildFechAuditoria(imp) {
     const docs = fechDocumentos[imp.id] || [];
     const auditRows = [
-      { acao:'Processo criado', data:imp.timeline[0]?.date||'—', user:'Carlos Silva', obs:'Abertura do processo de importação' },
+      { acao:'Processo criado', data:imp.timeline[0]?.date||'—', user:imp.timeline[0]?.user||'Usuário', obs:'Abertura do processo de importação' },
       ...imp.timeline.filter(t=>t.user).map(t=>({ acao:t.event, data:t.date, user:t.user, obs:'Atualização de status' })),
       ...docs.map(d=>({ acao:'Upload de documento', data:d.date, user:d.user, obs:d.doc+': '+d.file }))
     ];
@@ -1809,7 +1814,9 @@ app.get('/', (c) => {
 // ── Interface pública para fornecedor responder cotação ─────────────────────
 app.get('/cotacao/:id/responder', (c) => {
   const quotId = c.req.param('id')
-  const { quotations, suppliers, productSuppliers } = mockData as any
+  const quotations = (mockData as any).quotations || []
+  const suppliers = (mockData as any).suppliers || []
+  const productSuppliers = (mockData as any).productSuppliers || []
   const q = quotations.find((x: any) => x.id === quotId)
 
   if (!q) {
@@ -1859,7 +1866,7 @@ app.get('/cotacao/:id/responder', (c) => {
       </div>` : `
       <div style="margin-bottom:20px;">
         <div style="font-size:14px;color:#6c757d;margin-bottom:4px;">Solicitante</div>
-        <div style="font-size:16px;font-weight:700;color:#1B4F72;">Empresa Alpha — PCP Planner</div>
+        <div style="font-size:16px;font-weight:700;color:#1B4F72;">${userInfo.empresa} — PCP Planner</div>
         <div style="font-size:13px;color:#9ca3af;">Data: ${new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR')}</div>
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:16px;margin-bottom:20px;">

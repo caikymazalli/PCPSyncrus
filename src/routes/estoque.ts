@@ -9,7 +9,12 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { stockItems, separationOrders, stockExits, products, serialNumbers, kardexMovements } = mockData as any
+  const stockItems       = (mockData as any).stockItems        || []
+  const separationOrders = (mockData as any).separationOrders  || []
+  const stockExits       = (mockData as any).stockExits        || []
+  const products         = (mockData as any).products          || []
+  const serialNumbers    = (mockData as any).serialNumbers     || []
+  const kardexMovements  = (mockData as any).kardexMovements   || []
 
   const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
     critical:          { label: 'Crítico',         color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle' },
@@ -526,9 +531,7 @@ app.get('/', (c) => {
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
         ${[
-          { id: 'alm1', name: 'Almoxarifado Central', code: 'ALM-001', empresa: 'Empresa Alpha (Matriz)', city: 'São Paulo', state: 'SP', responsavel: 'Carlos Silva', custodio: 'Ana Souza', items: 7, status: 'ativo', color: '#27AE60' },
-          { id: 'alm2', name: 'Almoxarifado Nordeste', code: 'ALM-002', empresa: 'Alpha Nordeste (Filial)', city: 'Fortaleza', state: 'CE', responsavel: 'Fernanda Costa', custodio: 'Fernanda Costa', items: 4, status: 'ativo', color: '#27AE60' },
-          { id: 'alm3', name: 'Almoxarifado Sul', code: 'ALM-003', empresa: 'Alpha Sul (Filial)', city: 'Porto Alegre', state: 'RS', responsavel: 'Ricardo Mendes', custodio: 'Ricardo Mendes', items: 3, status: 'manutencao', color: '#E67E22' },
+          { id: 'alm1', name: 'Almoxarifado Principal', code: 'ALM-001', empresa: userInfo.empresa, city: '', state: '', responsavel: userInfo.nome, custodio: userInfo.nome, items: stockItems ? stockItems.length : 0, status: 'ativo', color: '#27AE60' },
         ].map(alm => `
         <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${alm.color};">
           <div style="padding:16px 20px;">
@@ -601,9 +604,7 @@ app.get('/', (c) => {
             </tr></thead>
             <tbody>
               ${[
-                { id: 'TRF-001', item: 'Barra de Aço SAE 1020', code: 'MAT-001', qty: 50, unit: 'kg', origem: 'ALM-001 (Alpha)', destino: 'ALM-002 (Nordeste)', solicitante: 'Fernanda Costa', separador: 'Carlos Silva', custodio: 'Ana Souza', date: '2024-02-10', status: 'pendente', sc: '#E67E22', sb: '#fffbeb' },
-                { id: 'TRF-002', item: 'Rolamento 6205-2RS', code: 'ROL-001', qty: 20, unit: 'un', origem: 'ALM-001 (Alpha)', destino: 'ALM-003 (Sul)', solicitante: 'Ricardo Mendes', separador: 'Carlos Silva', custodio: 'Carlos Silva', date: '2024-02-11', status: 'em_transito', sc: '#2980B9', sb: '#e8f4fd' },
-                { id: 'TRF-003', item: 'Anel de Retenção', code: 'ANL-001', qty: 100, unit: 'un', origem: 'ALM-002 (Nordeste)', destino: 'ALM-001 (Alpha)', solicitante: 'Carlos Silva', separador: 'Fernanda Costa', custodio: 'Carlos Silva', date: '2024-02-08', status: 'concluida', sc: '#27AE60', sb: '#f0fdf4' },
+                // Transferências serão geradas dinamicamente quando houver filiais cadastradas
               ].map(t => `
               <tr>
                 <td><span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${t.id}</span></td>
@@ -647,9 +648,7 @@ app.get('/', (c) => {
           <div class="form-group"><label class="form-label">Código *</label><input class="form-control" type="text" placeholder="Ex: ALM-004"></div>
           <div class="form-group"><label class="form-label">Empresa / Filial *</label>
             <select class="form-control">
-              <option>Empresa Alpha (Matriz)</option>
-              <option>Alpha Nordeste (Filial)</option>
-              <option>Alpha Sul (Filial)</option>
+              <option>${userInfo.empresa}</option>
             </select>
           </div>
           <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" type="text" placeholder="Ex: Curitiba"></div>

@@ -9,7 +9,8 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { workInstructions, products } = mockData
+  const workInstructions = (mockData as any).workInstructions || (mockData as any).instructions || []
+  const products = (mockData as any).products || []
 
   const statusBadge = (s: string) => {
     const map: Record<string, string> = { published: 'badge-success', approved: 'badge-info', review: 'badge-warning', draft: 'badge-secondary' }

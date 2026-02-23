@@ -10,7 +10,10 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { products, bomItems, suppliers, productSuppliers } = mockData as any
+  const products = (mockData as any).products || []
+  const bomItems = (mockData as any).bomItems || []
+  const suppliers = (mockData as any).suppliers || []
+  const productSuppliers = (mockData as any).productSuppliers || []
 
   // Count stock status
   const criticalCount = products.filter(p => p.stockStatus === 'critical').length
@@ -412,7 +415,7 @@ app.get('/', (c) => {
       </div>
       <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:20px;font-size:12px;color:#92400e;">
         <i class="fas fa-bell" style="margin-right:6px;"></i>
-        <strong>Gestor notificado:</strong> Ana Souza (gestor_pcp) foi notificada via e-mail sobre a geração automática desta OP. A aprovação é necessária para iniciar a produção.
+        <strong>Gestor notificado:</strong> O gestor PCP da sua conta foi notificado via e-mail sobre a geração automática desta OP. A aprovação é necessária para iniciar a produção.
       </div>
       <div style="display:flex;gap:10px;">
         <button onclick="document.getElementById('autoOPPopup').style.display='none'" class="btn btn-secondary" style="flex:1;justify-content:center;">Fechar</button>

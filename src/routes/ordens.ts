@@ -9,7 +9,7 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
-  const { productionOrders } = mockData
+  const productionOrders = (mockData as any).productionOrders || []
 
   const priorityColors: Record<string, string> = {
     urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#65a30d'
