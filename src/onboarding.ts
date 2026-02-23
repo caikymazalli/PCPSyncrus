@@ -416,7 +416,12 @@ export function onboardingPage(): string {
   }
 
   function enterApp() {
-    window.location.href = '/';
+    // Redirecionar para dashboard vazio — sem dados de demonstração
+    const nome = document.getElementById('s1_nome')?.value?.trim() || '';
+    const empresa = document.getElementById('s2_empresa')?.value?.trim() || '';
+    const plan = selectedPlan;
+    const params = new URLSearchParams({ empresa, nome, plano: plan });
+    window.location.href = '/novo?' + params.toString();
   }
 
   // ── Seleção de plano ──────────────────────────────────────────────────────

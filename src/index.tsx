@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { serveStatic } from 'hono/cloudflare-workers'
+import { setCookie, deleteCookie } from 'hono/cookie'
 import dashboardApp from './routes/dashboard'
 import ordensApp from './routes/ordens'
 import recursosApp from './routes/recursos'
@@ -18,6 +19,7 @@ import { welcomePage } from './welcome'
 import cadastrosApp from './routes/cadastros'
 import suprimentosApp from './routes/suprimentos'
 import masterApp from './routes/master'
+import { newUserDashboard } from './newuser'
 
 const app = new Hono()
 
@@ -32,6 +34,22 @@ app.get('/welcome', (c) => {
   const nome = c.req.query('nome') || ''
   const plano = c.req.query('plano') || 'starter'
   return c.html(welcomePage(empresa, nome, plano))
+})
+
+// Rota de dashboard para novo usuário (sem dados demo) — acessada após cadastro
+app.get('/novo', (c) => {
+  const empresa = c.req.query('empresa') || ''
+  const nome = c.req.query('nome') || ''
+  const plano = c.req.query('plano') || 'starter'
+  // Setar cookie indicando novo usuário (sem dados demo)
+  setCookie(c, 'new_user', '1', { path: '/', maxAge: 86400 * 30, sameSite: 'Lax' })
+  return c.html(newUserDashboard(empresa, nome, plano))
+})
+
+// Rota para "sair" do modo novo usuário (usar o demo)
+app.get('/usar-demo', (c) => {
+  deleteCookie(c, 'new_user', { path: '/' })
+  return c.redirect('/')
 })
 
 // Module routes
