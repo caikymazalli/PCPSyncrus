@@ -1003,7 +1003,7 @@ app.get('/', (c) => {
         <button class="btn btn-secondary btn-sm" onclick="imprimirLI()"><i class="fas fa-print"></i> Imprimir / PDF</button>
         <div style="display:flex;gap:10px;">
           <button onclick="closeModal('rascunhoLIModal')" class="btn btn-secondary">Fechar</button>
-          <button onclick="alert('✅ Rascunho de LI salvo!\\nEnviado ao despachante para análise.')" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Enviar ao Despachante</button>
+          <button onclick="showToastSup('✅ Rascunho de LI enviado ao despachante!', 'success')" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Enviar ao Despachante</button>
         </div>
       </div>
     </div>
@@ -1114,7 +1114,7 @@ app.get('/', (c) => {
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novoPCModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('✅ Pedido de Compra PC-2024-003 gerado!\\n📧 E-mail enviado ao fornecedor com os detalhes do pedido.');closeModal('novoPCModal')" class="btn btn-primary"><i class="fas fa-save"></i> Criar Pedido</button>
+        <button onclick="salvarNovoPedidoCompra()" class="btn btn-primary" id="btnCriarPC"><i class="fas fa-save"></i> Criar Pedido</button>
       </div>
     </div>
   </div>
@@ -1127,41 +1127,70 @@ app.get('/', (c) => {
   const allItemsData = ${JSON.stringify([...stockItems, ...products])};
 
   // ── Cotações ──────────────────────────────────────────────────────────────
-  function approveQuotation(id, code, supplierName) {
-    if (!confirm('Aprovar cotação ' + code + '?\\n\\nApós aprovação:\\n• E-mail de confirmação será enviado a: ' + supplierName + '\\n• Pedido de Compra gerado automaticamente.')) return;
-    // Simular envio de email
-    setTimeout(() => {
-      alert('✅ Cotação ' + code + ' APROVADA!\\n\\n📧 E-mail enviado para: ' + supplierName + '\\n   Assunto: Aprovação de Cotação — ' + code + '\\n\\n📋 Pedido de Compra PC-' + (2024) + '-' + (Math.floor(Math.random()*100)+10) + ' gerado automaticamente.\\n\\nO fornecedor foi notificado sobre a aprovação.');
-    }, 300);
+  async function approveQuotation(id, code, supplierName) {
+    if (!confirm('Aprovar cotação ' + code + '?\nUm Pedido de Compra será gerado automaticamente.')) return;
+    try {
+      const res = await fetch('/suprimentos/api/quotations/' + id + '/approve', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ supplierName })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('✅ Cotação ' + code + ' aprovada! PC ' + (data.pcCode||'') + ' gerado.', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } else { showToastSup(data.error || 'Erro ao aprovar', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
-  function recusarCotacao(id, code) {
+  async function recusarCotacao(id, code) {
     const motivo = prompt('Motivo da recusa da cotação ' + code + ':');
-    if (motivo) alert('❌ Cotação ' + code + ' recusada.\\nMotivo: ' + motivo + '\\n\\nO fornecedor será notificado por e-mail.');
+    if (!motivo) return;
+    try {
+      const res = await fetch('/suprimentos/api/quotations/' + id + '/reject', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ motivo })
+      });
+      const data = await res.json();
+      if (data.ok) { showToastSup('❌ Cotação ' + code + ' recusada.', 'success'); setTimeout(() => location.reload(), 1000); }
+      else { showToastSup(data.error || 'Erro ao recusar', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
-  function reenviarCotacao(code) {
-    alert('📧 Cotação ' + code + ' reenviada!\\n\\nLink enviado novamente para todos os fornecedores vinculados.\\nPrazo para resposta: 7 dias.');
+  function reenviarCotacao(id, code) {
+    showToastSup('📧 Cotação ' + code + ' reenviada para os fornecedores.', 'success');
   }
 
   function dispararCotacao(supId, supName, supEmail) {
-    if (!confirm('Disparar cotação individual para ' + supName + '?\\n\\nE-mail será enviado para: ' + supEmail)) return;
-    alert('📧 Cotação disparada para ' + supName + '!\\n\\nLink de resposta enviado para: ' + supEmail + '\\n\\nVocê será notificado quando a cotação for respondida.');
+    if (!confirm('Disparar cotação individual para ' + supName + '?')) return;
+    showToastSup('📧 Cotação enviada para ' + supName + '!', 'success');
   }
 
   function gerarCotacoesCriticos() {
-    alert('✅ Cotações geradas para todos os itens críticos!\\n\\n📧 E-mails enviados separadamente por fornecedor.\\n\\nFornecedores notificados:\\n• Aços Nacionais — 2 itens\\n• FastFix Co. — 1 item\\n\\nAcompanhe as respostas na aba Cotações.');
+    showToastSup('✅ Cotações geradas para itens críticos!', 'success');
   }
 
-  function salvarCotacao() {
+  async function salvarCotacao() {
     const tipo = document.getElementById('cotTipo').value;
-    const newCode = 'COT-2024-00' + (quotationsData.length + 1);
-    if (tipo === 'critico') {
-      alert('✅ ' + newCode + ' gerada (automático — itens críticos)!\\n\\n📧 E-mails disparados separadamente para cada fornecedor vinculado.\\n\\nVocê será notificado quando as respostas chegarem.');
-    } else {
-      alert('✅ ' + newCode + ' gerada!\\n\\n📧 E-mails disparados para os fornecedores selecionados.\\n\\nVocê será notificado quando as respostas chegarem.');
-    }
-    closeModal('gerarCotacaoModal');
+    const descricao = document.getElementById('cotDescricao')?.value?.trim() || 'Cotação de suprimentos';
+    const items = [];
+    document.querySelectorAll('.cot-item').forEach(row => {
+      const sel = row.querySelector('select');
+      const inputs = row.querySelectorAll('input');
+      if (sel && sel.value) items.push({ productCode: sel.value, productName: sel.options[sel.selectedIndex]?.text || sel.value, quantity: parseInt(inputs[0]?.value||'1')||1, unit: inputs[1]?.value||'un' });
+    });
+    const supplierIds = [];
+    document.querySelectorAll('.cot-sup select').forEach(sel => { if (sel.value) supplierIds.push(sel.value); });
+    if (items.length === 0 && tipo !== 'critico') { showToastSup('Adicione pelo menos 1 item!', 'error'); return; }
+    try {
+      const res = await fetch('/suprimentos/api/quotations/create', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ tipo, descricao, items, supplierIds })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('✅ Cotação ' + (data.code||'') + ' criada com sucesso!', 'success');
+        closeModal('gerarCotacaoModal');
+        setTimeout(() => location.reload(), 1000);
+      } else { showToastSup(data.error || 'Erro ao criar cotação', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
   function onCotTipoChange() {
@@ -1169,12 +1198,11 @@ app.get('/', (c) => {
     document.getElementById('cotItensSection').style.opacity = v === 'critico' ? '0.5' : '1';
     document.getElementById('cotItensSection').style.pointerEvents = v === 'critico' ? 'none' : '';
   }
-
   function copySupplierLink(quotId) {
     const link = window.location.origin + '/suprimentos/cotacao/' + quotId + '/responder';
     navigator.clipboard?.writeText(link).then(() => {
-      alert('🔗 Link copiado!\\n\\n' + link + '\\n\\nEnvie este link ao fornecedor para que ele preencha os valores.');
-    }).catch(() => alert('Link da cotação:\\n' + link));
+      showToastSup('🔗 Link copiado: ' + link, 'success');
+    }).catch(() => { showToastSup('Link: ' + link, 'success'); });
   }
 
   function addCotItem() {
@@ -1542,16 +1570,26 @@ app.get('/', (c) => {
     if (document.getElementById('impResumoCusto')) document.getElementById('impResumoCusto').textContent = custoStr;
   }
 
-  function salvarImportacao() {
-    const inv = document.getElementById('impInvoice')?.value;
-    const forn = document.getElementById('impFornecedor')?.options[document.getElementById('impFornecedor')?.selectedIndex]?.text;
+  async function salvarImportacao() {
+    const inv = document.getElementById('impInvoice')?.value?.trim();
+    const fornEl = document.getElementById('impFornecedor');
+    const fornId = fornEl?.value || '';
+    const forn = fornEl?.options[fornEl?.selectedIndex]?.text || '';
+    if (!inv) { showToastSup('⚠️ Informe o número da Invoice!', 'error'); switchImpTab(1); return; }
+    if (!fornId) { showToastSup('⚠️ Selecione o fornecedor!', 'error'); return; }
     const mod = document.querySelector('input[name="impModalidade"]:checked')?.value || 'maritimo';
-    const modLabel = { aereo:'Aéreo', terrestre:'Terrestre', maritimo:'Marítimo' }[mod];
-    const totalBRL = document.getElementById('numTotal')?.value || 'R$ 0,00';
-    const itens = document.querySelectorAll('[id^="impItem"]').length;
-    if (!inv) { alert('⚠️ Informe o número da Invoice antes de salvar.'); switchImpTab(1); return; }
-    alert('✅ Processo de importação criado com sucesso!\\n\\nCódigo: IMP-2024-00'+(importsData2.length+2)+'\\nFornecedor: '+forn+'\\nInvoice: '+inv+'\\nModalidade: '+modLabel+'\\nItens na Invoice: '+itens+'\\nCusto Desembaraçado: '+totalBRL+'\\n\\nStatus inicial: Aguardando Embarque\\n\\nRascunho de LI disponível na subseção LI.');
-    closeModal('novaImportacaoModal');
+    try {
+      const res = await fetch('/suprimentos/api/imports/create', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ invoiceNumber: inv, supplierId: fornId, supplierName: forn, modality: mod })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('✅ Importação ' + (data.code||'') + ' criada!', 'success');
+        closeModal('novaImportacaoModal');
+        setTimeout(() => location.reload(), 1000);
+      } else { showToastSup(data.error || 'Erro ao criar importação', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
   function printNumerario() {
@@ -1798,6 +1836,41 @@ app.get('/', (c) => {
     const a = document.createElement('a');
     a.href = url; a.download = 'produtos_importados.csv'; a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // ── Toast helper ─────────────────────────────────────────────────────────
+  function showToastSup(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:380px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type==='success'?'<i class="fas fa-check-circle"></i>':type==='error'?'<i class="fas fa-exclamation-circle"></i>':'<i class="fas fa-info-circle"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity='0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+
+  // ── Salvar Novo Pedido de Compra ───────────────────────────────────────────
+  async function salvarNovoPedidoCompra() {
+    const supplierId = document.getElementById('pc_supplier')?.value || '';
+    const supplierName = document.getElementById('pc_supplier')?.options[document.getElementById('pc_supplier')?.selectedIndex]?.text || '';
+    const expectedDelivery = document.getElementById('pc_delivery')?.value || '';
+    const currency = document.getElementById('pc_currency')?.value || 'BRL';
+    const notes = document.getElementById('pc_notes')?.value?.trim() || '';
+    if (!supplierId) { showToastSup('Selecione o fornecedor!', 'error'); return; }
+    const btn = document.getElementById('btnCriarPC');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Criando...'; }
+    try {
+      const res = await fetch('/suprimentos/api/purchase-orders/create', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ supplierId, supplierName, expectedDelivery, currency, notes })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('✅ Pedido de Compra ' + (data.code||'') + ' criado!', 'success');
+        closeModal('novoPCModal');
+        setTimeout(() => location.reload(), 1000);
+      } else { showToastSup(data.error || 'Erro ao criar pedido', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Criar Pedido'; }
   }
 
   // ── Misc ──────────────────────────────────────────────────────────────────
@@ -2073,6 +2146,115 @@ app.delete('/api/order/:id', async (c) => {
 app.get('/api/list', (c) => {
   const tenant = getCtxTenant(c)
   return ok(c, { quotations: tenant.quotations, orders: tenant.purchaseOrders, imports: tenant.imports })
+})
+
+// ── API: POST /suprimentos/api/quotations/create (new format) ─────────────────
+app.post('/api/quotations/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const id = genId('cot')
+  const code = `COT-${new Date().getFullYear()}-${String(tenant.quotations.length + 1).padStart(3,'0')}`
+  const quotation = {
+    id, code,
+    descricao: body.descricao || 'Cotação de suprimentos',
+    tipo: body.tipo || 'manual',
+    items: body.items || [],
+    supplierIds: body.supplierIds || [],
+    status: 'sent',
+    createdBy: 'Admin',
+    createdAt: new Date().toISOString(),
+    supplierResponses: [],
+  }
+  tenant.quotations.push(quotation)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'quotations', {
+      id, user_id: userId, title: quotation.descricao, status: 'sent',
+      deadline: '', notes: JSON.stringify({ items: quotation.items }),
+    })
+  }
+  return ok(c, { quotation, code })
+})
+
+// ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
+app.post('/api/quotations/:id/approve', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
+  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  tenant.quotations[idx].status = 'approved'
+  tenant.quotations[idx].approvedBy = 'Admin'
+  tenant.quotations[idx].approvedAt = new Date().toISOString()
+  // Auto-create purchase order
+  const pcId = genId('pc')
+  const pcCode = `PC-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(3,'0')}`
+  const pc = { id: pcId, code: pcCode, quotationId: id, supplierId: body.supplierName || '', supplierName: body.supplierName || 'Fornecedor', status: 'pending', totalValue: 0, currency: 'BRL', createdAt: new Date().toISOString() }
+  tenant.purchaseOrders.push(pc)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'purchase_orders', { id: pcId, user_id: userId, supplier_id: pc.supplierId, status: 'pending', total_value: 0, expected_date: '', notes: `Gerado da cotação ${tenant.quotations[idx].code || id}` })
+  }
+  return ok(c, { pcCode })
+})
+
+// ── API: POST /suprimentos/api/quotations/:id/reject ─────────────────────────
+app.post('/api/quotations/:id/reject', async (c) => {
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
+  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  tenant.quotations[idx].status = 'rejected'
+  tenant.quotations[idx].rejectionReason = body.motivo || ''
+  return ok(c)
+})
+
+// ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
+app.post('/api/purchase-orders/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.supplierId) return err(c, 'Fornecedor obrigatório')
+  const id = genId('pc')
+  const code = `PC-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(3,'0')}`
+  const order = {
+    id, code, supplierId: body.supplierId, supplierName: body.supplierName || '',
+    status: 'pending', totalValue: 0, currency: body.currency || 'BRL',
+    expectedDelivery: body.expectedDelivery || '', notes: body.notes || '',
+    createdAt: new Date().toISOString(),
+  }
+  tenant.purchaseOrders.push(order)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'purchase_orders', {
+      id, user_id: userId, supplier_id: order.supplierId,
+      status: 'pending', total_value: 0,
+      expected_date: order.expectedDelivery, notes: order.notes,
+    })
+  }
+  return ok(c, { order, code })
+})
+
+// ── API: POST /suprimentos/api/imports/create ────────────────────────────────
+app.post('/api/imports/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.invoiceNumber) return err(c, 'Número da Invoice obrigatório')
+  const id = genId('imp')
+  const code = `IMP-${new Date().getFullYear()}-${String((tenant.imports?.length || 0) + 1).padStart(3,'0')}`
+  const imp = {
+    id, code, invoiceNumber: body.invoiceNumber,
+    supplierId: body.supplierId || '', supplierName: body.supplierName || '',
+    modality: body.modality || 'maritimo', status: 'waiting_ship',
+    createdAt: new Date().toISOString(),
+  }
+  if (!tenant.imports) (tenant as any).imports = []
+  tenant.imports.push(imp)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'imports', {
+      id, user_id: userId, code, invoice_number: imp.invoiceNumber,
+      supplier_id: imp.supplierId, status: 'waiting_ship',
+    })
+  }
+  return ok(c, { imp, code })
 })
 
 export default app

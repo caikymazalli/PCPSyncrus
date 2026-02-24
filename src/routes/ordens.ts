@@ -134,9 +134,9 @@ app.get('/', (c) => {
                 <div style="display:flex;gap:4px;">
                   <div class="tooltip-wrap" data-tooltip="Ver detalhes"><button class="btn btn-secondary btn-sm" onclick="showOrderDetail('${o.id}')"><i class="fas fa-eye"></i></button></div>
                   <div class="tooltip-wrap" data-tooltip="Editar ordem"><button class="btn btn-secondary btn-sm" onclick="openModal('novaOrdemModal')"><i class="fas fa-edit"></i></button></div>
-                  ${o.status === 'planned' ? `<div class="tooltip-wrap" data-tooltip="Iniciar produção"><button class="btn btn-success btn-sm" onclick="alert('Ordem ${o.code} iniciada!')"><i class="fas fa-play"></i></button></div>` : ''}
-                  ${o.status === 'in_progress' ? `<div class="tooltip-wrap" data-tooltip="Concluir ordem"><button class="btn btn-warning btn-sm" onclick="alert('Ordem ${o.code} concluída!')"><i class="fas fa-check"></i></button></div>` : ''}
-                  ${(o.status === 'planned' || o.status === 'in_progress') ? `<div class="tooltip-wrap" data-tooltip="Cancelar ordem"><button class="btn btn-danger btn-sm" onclick="alert('Cancelar ${o.code}?')"><i class="fas fa-times"></i></button></div>` : ''}
+                  ${o.status === 'planned' ? `<div class="tooltip-wrap" data-tooltip="Iniciar produção"><button class="btn btn-success btn-sm" onclick="updateOrderStatus('${o.id}','in_progress','${o.code}')"><i class="fas fa-play"></i></button></div>` : ''}
+                  ${o.status === 'in_progress' ? `<div class="tooltip-wrap" data-tooltip="Concluir ordem"><button class="btn btn-warning btn-sm" onclick="updateOrderStatus('${o.id}','completed','${o.code}')"><i class="fas fa-check"></i></button></div>` : ''}
+                  ${(o.status === 'planned' || o.status === 'in_progress') ? `<div class="tooltip-wrap" data-tooltip="Cancelar ordem"><button class="btn btn-danger btn-sm" onclick="updateOrderStatus('${o.id}','cancelled','${o.code}')"><i class="fas fa-times"></i></button></div>` : ''}
                 </div>
               </td>
             </tr>`
@@ -167,61 +167,68 @@ app.get('/', (c) => {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-group" style="grid-column:span 2;">
             <label class="form-label">Produto *</label>
-            <select class="form-control">
-              <option>Selecione o produto...</option>
-              ${mockData.products.map(p => `<option>${p.name} (${p.code})</option>`).join('')}
-            </select>
+            <input class="form-control" id="novaOrdemProduct" type="text" placeholder="Nome do produto" list="productsList">
+            <datalist id="productsList">
+              ${mockData.products.map(p => `<option value="${p.name}">${p.name} (${p.code || ''})</option>`).join('')}
+            </datalist>
           </div>
           <div class="form-group">
             <label class="form-label">Código da Ordem *</label>
-            <input class="form-control" type="text" placeholder="OP-2024-009" value="OP-2024-009">
+            <input class="form-control" id="novaOrdemCode" type="text" placeholder="OP-2024-009">
           </div>
           <div class="form-group">
             <label class="form-label">Quantidade *</label>
-            <input class="form-control" type="number" placeholder="0">
+            <input class="form-control" id="novaOrdemQty" type="number" placeholder="0" min="1">
           </div>
           <!-- Novos campos: Pedido e Cliente -->
           <div class="form-group">
             <label class="form-label"><i class="fas fa-file-invoice" style="margin-right:5px;color:#2980B9;"></i>Pedido de Venda</label>
-            <input class="form-control" type="text" placeholder="PV-2024-0XXX">
+            <input class="form-control" id="novaOrdemPedido" type="text" placeholder="PV-2024-0XXX">
           </div>
           <div class="form-group">
             <label class="form-label"><i class="fas fa-building" style="margin-right:5px;color:#2980B9;"></i>Nome do Cliente</label>
-            <input class="form-control" type="text" placeholder="Razão social do cliente">
+            <input class="form-control" id="novaOrdemCliente" type="text" placeholder="Razão social do cliente">
           </div>
           <div class="form-group">
             <label class="form-label">Data de Início *</label>
-            <input class="form-control" type="date">
+            <input class="form-control" id="novaOrdemStart" type="date">
           </div>
           <div class="form-group">
             <label class="form-label">Data de Entrega *</label>
-            <input class="form-control" type="date">
+            <input class="form-control" id="novaOrdemEnd" type="date">
           </div>
           <div class="form-group">
             <label class="form-label">Planta</label>
-            <select class="form-control">
-              <option>Selecione...</option>
-              ${mockData.plants.map(p => `<option>${p.name}</option>`).join('')}
+            <select class="form-control" id="novaOrdemPlant">
+              <option value="">Selecione...</option>
+              ${mockData.plants.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">Prioridade</label>
-            <select class="form-control">
+            <select class="form-control" id="novaOrdemPriority">
               <option value="low">Baixa</option>
               <option value="medium" selected>Média</option>
               <option value="high">Alta</option>
               <option value="urgent">Urgente</option>
             </select>
           </div>
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-control" id="novaOrdemStatus">
+              <option value="planned" selected>Planejada</option>
+              <option value="in_progress">Em Progresso</option>
+            </select>
+          </div>
           <div class="form-group" style="grid-column:span 2;">
             <label class="form-label">Observações</label>
-            <textarea class="form-control" rows="3" placeholder="Notas adicionais..."></textarea>
+            <textarea class="form-control" id="novaOrdemNotes" rows="3" placeholder="Notas adicionais..."></textarea>
           </div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novaOrdemModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Ordem criada com sucesso!');closeModal('novaOrdemModal')" class="btn btn-primary"><i class="fas fa-save"></i> Criar Ordem</button>
+        <button onclick="salvarOrdem()" class="btn btn-primary" id="btnCriarOrdem"><i class="fas fa-save"></i> Criar Ordem</button>
       </div>
     </div>
   </div>
@@ -296,17 +303,38 @@ app.get('/', (c) => {
   }
 
 
+  async function updateOrderStatus(id, newStatus, code) {
+    const labels = { in_progress: 'iniciada', completed: 'concluída', cancelled: 'cancelada' };
+    if (!confirm('Deseja marcar a ordem ' + code + ' como ' + (labels[newStatus] || newStatus) + '?')) return;
+    try {
+      const res = await fetch('/ordens/api/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Ordem ' + code + ' ' + (labels[newStatus] || newStatus) + '!');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao atualizar ordem', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+    }
+  }
+
   async function salvarOrdem() {
-    const code = document.getElementById('novaOrdemCode')?.value || '';
-    const productName = document.getElementById('novaOrdemProduct')?.value || '';
-    const quantity = document.getElementById('novaOrdemQty')?.value || 1;
+    const code = document.getElementById('novaOrdemCode')?.value?.trim() || '';
+    const productName = document.getElementById('novaOrdemProduct')?.value?.trim() || '';
+    const quantity = parseInt(document.getElementById('novaOrdemQty')?.value || '1') || 1;
     const startDate = document.getElementById('novaOrdemStart')?.value || '';
     const endDate = document.getElementById('novaOrdemEnd')?.value || '';
     const priority = document.getElementById('novaOrdemPriority')?.value || 'medium';
     const status = document.getElementById('novaOrdemStatus')?.value || 'planned';
-    const cliente = document.getElementById('novaOrdemCliente')?.value || '';
-    const pedido = document.getElementById('novaOrdemPedido')?.value || '';
-    const notes = document.getElementById('novaOrdemNotes')?.value || '';
+    const cliente = document.getElementById('novaOrdemCliente')?.value?.trim() || '';
+    const pedido = document.getElementById('novaOrdemPedido')?.value?.trim() || '';
+    const notes = document.getElementById('novaOrdemNotes')?.value?.trim() || '';
     
     if (!productName) { showToast('Informe o produto!', 'error'); return; }
     

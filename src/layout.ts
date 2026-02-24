@@ -208,7 +208,6 @@ export function layout(title: string, content: string, activePage: string = '', 
     <div class="nav-section-title">Qualidade</div>
     <a href="/qualidade" class="nav-item ${activePage === 'qualidade' ? 'active' : ''}" title="Não Conformidades — NC" style="position:relative;">
       <span class="icon"><i class="fas fa-clipboard-check"></i></span> Não Conformidades
-      <span style="margin-left:auto;background:#E74C3C;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;">3</span>
     </a>
 
     <div class="nav-section-title">Planejamento</div>

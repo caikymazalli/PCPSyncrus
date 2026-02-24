@@ -43,6 +43,34 @@ app.use('*', async (c, next) => {
   await next()
 })
 
+// ── Middleware: protect main app routes (require login) ────────────────────────
+// Routes that require authentication (non-demo access)
+const PROTECTED_ROUTES = ['/', '/ordens', '/recursos', '/engenharia', '/planejamento',
+  '/apontamento', '/instrucoes', '/produtos', '/admin', '/assinatura', '/qualidade',
+  '/estoque', '/cadastros', '/suprimentos']
+
+app.use('*', async (c, next) => {
+  const path = new URL(c.req.url).pathname
+  const isProtected = PROTECTED_ROUTES.some(r => path === r || path.startsWith(r + '/'))
+  const isApi = path.includes('/api/')
+  
+  if (isProtected && !isApi) {
+    // Check for token in cookie
+    const token = getCookie(c, SESSION_COOKIE)
+    if (!token) {
+      return c.redirect('/login')
+    }
+    // Session should be loaded by previous middleware; if still not found, redirect
+    const session = getSession(token)
+    if (!session) {
+      // Session expired or invalid
+      deleteCookie(c, SESSION_COOKIE, { path: '/' })
+      return c.redirect('/login')
+    }
+  }
+  await next()
+})
+
 // ── Auth: POST /login ──────────────────────────────────────────────────────────
 app.post('/login', async (c) => {
   const body = await c.req.parseBody()
