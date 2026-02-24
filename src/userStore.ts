@@ -1,11 +1,14 @@
 /**
- * userStore.ts — Multi-tenant in-memory store
+ * userStore.ts — Multi-tenant store backed by Cloudflare D1
  *
- * Each user session has isolated data.
- * Demo accounts share the mockData (read-only copy used as seed).
- * New users start with empty arrays.
+ * Each user (tenant) has completely isolated data in D1.
+ * Sessions are stored in D1 for persistence across worker restarts.
+ * Demo accounts use in-memory mock data (read-only).
  *
- * In production this would be backed by Cloudflare D1.
+ * Architecture:
+ * - registered_users table: all tenant accounts
+ * - sessions table: active sessions (with expiry)
+ * - All other tables: per-tenant data with user_id column
  */
 
 import { mockData } from './data'
@@ -40,8 +43,7 @@ export interface TenantData {
   boms: any[]
   instructions: any[]
   qualityChecks: any[]
-  users: any[]        // sub-users of this account
-  // extra fields from mockData
+  users: any[]
   kpis: any
   chartData: any
   bomItems: any[]
@@ -49,14 +51,6 @@ export interface TenantData {
   workOrders: any[]
 }
 
-// ── In-memory stores ───────────────────────────────────────────────────────────
-// sessions: token → UserSession
-export const sessions: Record<string, UserSession> = {}
-
-// tenants: userId → TenantData
-export const tenants: Record<string, TenantData> = {}
-
-// registeredUsers: email → { userId, pwdHash, nome, empresa, plano, role, ... }
 export interface RegisteredUser {
   userId: string
   email: string
@@ -75,7 +69,14 @@ export interface RegisteredUser {
   trialStart: string
   trialEnd: string
 }
+
+// ── In-memory fallback (used when DB is unavailable or for demo) ───────────────
+// sessions: token → UserSession (in-memory for fast access + D1 for persistence)
+export const sessions: Record<string, UserSession> = {}
+// registeredUsers: email → RegisteredUser (in-memory cache)
 export const registeredUsers: Record<string, RegisteredUser> = {}
+// tenants: userId → TenantData (in-memory for demo only; real tenants use D1)
+export const tenants: Record<string, TenantData> = {}
 
 // ── Demo users (pre-seeded) ────────────────────────────────────────────────────
 const demoUserId = 'demo-tenant'
@@ -86,7 +87,7 @@ export const DEMO_USERS = [
   { email: 'joao@empresa.com',   pwdHash: '', nome: 'João',   sobrenome: 'Oliveira', role: 'operador' },
 ]
 
-// Seed demo tenant once
+// Seed demo tenant in memory
 const _md = mockData as any
 tenants[demoUserId] = {
   plants:            JSON.parse(JSON.stringify(_md.plants            || [])),
@@ -131,6 +132,16 @@ export async function makeToken(email: string): Promise<string> {
   return sha256(email + Date.now().toString() + Math.random().toString() + USER_SALT)
 }
 
+// ── D1 helpers ─────────────────────────────────────────────────────────────────
+export function getDB(c: any): D1Database | null {
+  try {
+    return c.env?.DB || null
+  } catch {
+    return null
+  }
+}
+
+// ── Session management ─────────────────────────────────────────────────────────
 export function getSession(token: string | undefined): UserSession | null {
   if (!token) return null
   const s = sessions[token]
@@ -139,9 +150,49 @@ export function getSession(token: string | undefined): UserSession | null {
   return s
 }
 
+/** Load session from D1 if not in memory */
+export async function getSessionAsync(token: string | undefined, db: D1Database | null): Promise<UserSession | null> {
+  if (!token) return null
+  
+  // Check in-memory cache first
+  const cached = sessions[token]
+  if (cached) {
+    if (Date.now() > cached.expiresAt) { delete sessions[token]; return null }
+    return cached
+  }
+  
+  // Check D1
+  if (!db) return null
+  try {
+    const row = await db.prepare(
+      'SELECT * FROM sessions WHERE token = ? AND expires_at > ?'
+    ).bind(token, Date.now()).first() as any
+    
+    if (!row) return null
+    
+    const session: UserSession = {
+      token: row.token,
+      userId: row.user_id,
+      email: row.email,
+      nome: row.nome,
+      empresa: row.empresa,
+      plano: row.plano,
+      role: row.role,
+      isDemo: row.is_demo === 1,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+    }
+    
+    // Cache in memory
+    sessions[token] = session
+    return session
+  } catch {
+    return null
+  }
+}
+
 export function getTenantData(userId: string): TenantData {
   if (!tenants[userId]) {
-    // Create empty tenant for new user
     tenants[userId] = {
       plants: [], machines: [], workbenches: [],
       products: [], productionOrders: [], productionEntries: [],
@@ -151,7 +202,7 @@ export function getTenantData(userId: string): TenantData {
       kpis: { totalOrders:0, activeOrders:0, plannedOrders:0, completedOrders:0,
                cancelledOrders:0, totalProduced:0, totalRejected:0, totalProducts:0,
                totalMachines:0, totalPlants:0, completionRate:0, qualityRate:100 },
-      chartData: { labels:[], planned:[], produced:[], rejected:[] },
+      chartData: { labels:[], planned:[], produced:[], rejected:[], stockStatus: { critical:0, normal:0, purchase_needed:0, manufacture_needed:0 } },
       bomItems: [], productSuppliers: [], workOrders: [],
     }
   }
@@ -165,9 +216,12 @@ export function getEffectiveTenantId(session: UserSession | null): string {
 
 const SESSION_DURATION = 60 * 60 * 8 * 1000 // 8h in ms
 
-export async function createSession(user: RegisteredUser): Promise<string> {
+export async function createSession(user: RegisteredUser, db?: D1Database | null): Promise<string> {
   const token = await makeToken(user.email)
-  sessions[token] = {
+  const expiresAt = Date.now() + SESSION_DURATION
+  const createdAt = new Date().toISOString()
+  
+  const session: UserSession = {
     token,
     userId:    user.userId,
     email:     user.email,
@@ -176,26 +230,57 @@ export async function createSession(user: RegisteredUser): Promise<string> {
     plano:     user.plano,
     role:      user.role,
     isDemo:    user.isDemo,
-    createdAt: new Date().toISOString(),
-    expiresAt: Date.now() + SESSION_DURATION,
+    createdAt,
+    expiresAt,
   }
-  user.lastLogin = new Date().toISOString()
+  
+  // Store in memory
+  sessions[token] = session
+  user.lastLogin = createdAt
+  
+  // Persist to D1 if available
+  if (db && !user.isDemo) {
+    try {
+      await db.prepare(`
+        INSERT OR REPLACE INTO sessions (token, user_id, email, nome, empresa, plano, role, is_demo, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(token, user.userId, user.email, session.nome, user.empresa, user.plano, user.role, 0, createdAt, expiresAt).run()
+      
+      // Update last_login
+      await db.prepare('UPDATE registered_users SET last_login = ? WHERE id = ?')
+        .bind(createdAt, user.userId).run()
+    } catch (e) {
+      // D1 unavailable — continue with in-memory session
+    }
+  }
+  
   return token
 }
 
-/** Register a new user (from onboarding) */
+/** Register a new user — persists to D1 */
 export async function registerUser(params: {
   email: string; pwd: string; nome: string; sobrenome: string
   empresa: string; plano: string; tel: string; setor: string; porte: string
-}): Promise<{ ok: boolean; error?: string; user?: RegisteredUser }> {
+}, db?: D1Database | null): Promise<{ ok: boolean; error?: string; user?: RegisteredUser }> {
   const emailKey = params.email.toLowerCase().trim()
 
-  // Check demo emails
   if (DEMO_USERS.find(d => d.email === emailKey)) {
     return { ok: false, error: 'Este e-mail é reservado para a conta de demonstração.' }
   }
+
+  // Check in-memory cache
   if (registeredUsers[emailKey]) {
     return { ok: false, error: 'E-mail já cadastrado.' }
+  }
+
+  // Check D1 if available
+  if (db) {
+    try {
+      const existing = await db.prepare('SELECT id FROM registered_users WHERE email = ?').bind(emailKey).first()
+      if (existing) {
+        return { ok: false, error: 'E-mail já cadastrado.' }
+      }
+    } catch {}
   }
 
   const pwdHash = await hashPassword(params.pwd)
@@ -216,25 +301,32 @@ export async function registerUser(params: {
     trialEnd,
   }
 
+  // Store in memory cache
   registeredUsers[emailKey] = user
-
-  // Create empty tenant for this user
   getTenantData(userId)
 
-  // Note: masterClients is now populated dynamically in master.ts
-  // by reading registeredUsers directly when the master panel is accessed.
+  // Persist to D1 if available
+  if (db) {
+    try {
+      await db.prepare(`
+        INSERT INTO registered_users (id, email, pwd_hash, nome, sobrenome, empresa, plano, role, tel, setor, porte, is_demo, created_at, trial_start, trial_end)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      `).bind(userId, emailKey, pwdHash, params.nome, params.sobrenome, params.empresa, params.plano, 'admin', params.tel, params.setor, params.porte, today, today, trialEnd).run()
+    } catch (e) {
+      // Continue with in-memory only
+    }
+  }
 
   return { ok: true, user }
 }
 
-/** Login — returns token or error */
-export async function loginUser(email: string, pwd: string): Promise<{ ok: boolean; error?: string; token?: string; session?: UserSession }> {
+/** Login — checks D1 first, then in-memory */
+export async function loginUser(email: string, pwd: string, db?: D1Database | null): Promise<{ ok: boolean; error?: string; token?: string; session?: UserSession }> {
   const emailKey = email.toLowerCase().trim()
 
-  // Check demo accounts
+  // Check demo accounts (in-memory only)
   const demoUser = DEMO_USERS.find(d => d.email === emailKey)
   if (demoUser) {
-    // Demo: any password works (or 'demo123' / 'senha123')
     const demoReg: RegisteredUser = {
       userId: demoUserId,
       email: emailKey,
@@ -251,16 +343,88 @@ export async function loginUser(email: string, pwd: string): Promise<{ ok: boole
       trialStart: '2024-01-01',
       trialEnd: '2099-12-31',
     }
-    const token = await createSession(demoReg)
+    const token = await createSession(demoReg, null)
     return { ok: true, token, session: sessions[token] }
   }
 
-  const user = registeredUsers[emailKey]
+  // Try D1 first
+  let user: RegisteredUser | null = null
+  if (db) {
+    try {
+      const row = await db.prepare('SELECT * FROM registered_users WHERE email = ?').bind(emailKey).first() as any
+      if (row) {
+        user = {
+          userId: row.id,
+          email: row.email,
+          pwdHash: row.pwd_hash,
+          nome: row.nome,
+          sobrenome: row.sobrenome || '',
+          empresa: row.empresa,
+          plano: row.plano,
+          role: row.role,
+          tel: row.tel || '',
+          setor: row.setor || '',
+          porte: row.porte || '',
+          isDemo: row.is_demo === 1,
+          createdAt: row.created_at,
+          lastLogin: row.last_login,
+          trialStart: row.trial_start,
+          trialEnd: row.trial_end,
+        }
+        // Update in-memory cache
+        registeredUsers[emailKey] = user
+        getTenantData(user.userId)
+      }
+    } catch {}
+  }
+
+  // Fallback to in-memory
+  if (!user) {
+    user = registeredUsers[emailKey] || null
+  }
+
   if (!user) return { ok: false, error: 'E-mail não encontrado.' }
 
   const hash = await hashPassword(pwd)
   if (hash !== user.pwdHash) return { ok: false, error: 'Senha incorreta.' }
 
-  const token = await createSession(user)
+  const token = await createSession(user, db)
   return { ok: true, token, session: sessions[token] }
+}
+
+/** Load all registered users from D1 into memory (for admin panel) */
+export async function loadAllUsersFromDB(db: D1Database): Promise<RegisteredUser[]> {
+  try {
+    const rows = await db.prepare('SELECT * FROM registered_users WHERE is_demo = 0 ORDER BY created_at DESC').all()
+    const users: RegisteredUser[] = (rows.results || []).map((row: any) => ({
+      userId: row.id,
+      email: row.email,
+      pwdHash: row.pwd_hash,
+      nome: row.nome,
+      sobrenome: row.sobrenome || '',
+      empresa: row.empresa,
+      plano: row.plano,
+      role: row.role,
+      tel: row.tel || '',
+      setor: row.setor || '',
+      porte: row.porte || '',
+      isDemo: row.is_demo === 1,
+      createdAt: row.created_at,
+      lastLogin: row.last_login,
+      trialStart: row.trial_start,
+      trialEnd: row.trial_end,
+    }))
+    // Update in-memory cache
+    users.forEach(u => { registeredUsers[u.email] = u; getTenantData(u.userId) })
+    return users
+  } catch {
+    return Object.values(registeredUsers).filter(u => !u.isDemo)
+  }
+}
+
+/** Clean expired sessions from D1 */
+export async function cleanExpiredSessions(db: D1Database): Promise<void> {
+  try {
+    await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Date.now()).run()
+  } catch {}
 }

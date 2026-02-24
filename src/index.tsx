@@ -20,9 +20,13 @@ import cadastrosApp from './routes/cadastros'
 import suprimentosApp from './routes/suprimentos'
 import masterApp from './routes/master'
 import { newUserDashboard } from './newuser'
-import { loginUser, registerUser, getSession, sessions } from './userStore'
+import { loginUser, registerUser, getSession, getSessionAsync, sessions } from './userStore'
 
-const app = new Hono()
+type Bindings = {
+  DB: D1Database
+}
+
+const app = new Hono<{ Bindings: Bindings }>()
 
 const SESSION_COOKIE = 'pcp_session'
 const SESSION_MAX_AGE = 60 * 60 * 8
@@ -30,13 +34,22 @@ const SESSION_MAX_AGE = 60 * 60 * 8
 // Static files
 app.use('/static/*', serveStatic({ root: './public' }))
 
+// ── Middleware: load session from D1 if not in memory ──────────────────────────
+app.use('*', async (c, next) => {
+  const token = getCookie(c, SESSION_COOKIE)
+  if (token && !getSession(token) && c.env?.DB) {
+    await getSessionAsync(token, c.env.DB)
+  }
+  await next()
+})
+
 // ── Auth: POST /login ──────────────────────────────────────────────────────────
 app.post('/login', async (c) => {
   const body = await c.req.parseBody()
   const email = (body['email'] as string || '').trim()
   const pwd   = (body['pwd']   as string || body['password'] as string || '').trim()
 
-  const result = await loginUser(email, pwd)
+  const result = await loginUser(email, pwd, c.env?.DB || null)
   if (!result.ok || !result.token) {
     return c.html(loginPage('E-mail ou senha incorretos.'))
   }
@@ -45,7 +58,7 @@ app.post('/login', async (c) => {
     maxAge: SESSION_MAX_AGE, path: '/', httpOnly: true, sameSite: 'Lax'
   })
 
-  // If new (non-demo) user, go to /novo; else dashboard
+  // New (non-demo) user → /novo; else dashboard
   if (result.session && !result.session.isDemo) {
     const params = new URLSearchParams({
       empresa: result.session.empresa,
@@ -72,14 +85,14 @@ app.post('/cadastro', async (c) => {
     tel:       body.tel       || '',
     setor:     body.setor     || '',
     porte:     body.porte     || '',
-  })
+  }, c.env?.DB || null)
 
   if (!result.ok || !result.user) {
     return c.json({ ok: false, error: result.error || 'Erro ao cadastrar.' }, 400)
   }
 
   // Auto-login after registration
-  const loginResult = await loginUser(body.email, body.pwd)
+  const loginResult = await loginUser(body.email, body.pwd, c.env?.DB || null)
   if (loginResult.ok && loginResult.token) {
     setCookie(c, SESSION_COOKIE, loginResult.token, {
       maxAge: SESSION_MAX_AGE, path: '/', httpOnly: true, sameSite: 'Lax'
@@ -102,9 +115,17 @@ app.get('/login', (c) => {
 })
 
 // ── Auth: GET /logout ──────────────────────────────────────────────────────────
-app.get('/logout', (c) => {
+app.get('/logout', async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
-  if (token) delete sessions[token]
+  if (token) {
+    delete sessions[token]
+    // Remove from D1
+    if (c.env?.DB) {
+      try {
+        await c.env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run()
+      } catch {}
+    }
+  }
   deleteCookie(c, SESSION_COOKIE, { path: '/' })
   return c.redirect('/login')
 })
@@ -127,7 +148,7 @@ app.get('/novo', (c) => {
   return c.html(newUserDashboard(empresa, nome, plano))
 })
 
-// ── /usar-demo — switch para dados demo ────────────────────────────────────────
+// ── /usar-demo ─────────────────────────────────────────────────────────────────
 app.get('/usar-demo', (c) => c.redirect('/'))
 
 // ── Module routes ──────────────────────────────────────────────────────────────

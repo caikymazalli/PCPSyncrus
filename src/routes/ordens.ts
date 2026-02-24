@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -294,9 +294,167 @@ app.get('/', (c) => {
     \`;
     openModal('orderDetailModal');
   }
+
+
+  async function salvarOrdem() {
+    const code = document.getElementById('novaOrdemCode')?.value || '';
+    const productName = document.getElementById('novaOrdemProduct')?.value || '';
+    const quantity = document.getElementById('novaOrdemQty')?.value || 1;
+    const startDate = document.getElementById('novaOrdemStart')?.value || '';
+    const endDate = document.getElementById('novaOrdemEnd')?.value || '';
+    const priority = document.getElementById('novaOrdemPriority')?.value || 'medium';
+    const status = document.getElementById('novaOrdemStatus')?.value || 'planned';
+    const cliente = document.getElementById('novaOrdemCliente')?.value || '';
+    const pedido = document.getElementById('novaOrdemPedido')?.value || '';
+    const notes = document.getElementById('novaOrdemNotes')?.value || '';
+    
+    if (!productName) { showToast('Informe o produto!', 'error'); return; }
+    
+    try {
+      const res = await fetch('/ordens/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, productName, quantity, startDate, endDate, priority, status, cliente, pedido, notes })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Ordem criada com sucesso!');
+        closeModal('novaOrdemModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao criar ordem', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+    }
+  }
+
+  async function deleteOrdem(id) {
+    if (!confirm('Excluir esta ordem?')) return;
+    try {
+      const res = await fetch('/ordens/api/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Ordem excluída!');
+        const row = document.getElementById('order-' + id);
+        if (row) row.remove();
+      } else {
+        showToast(data.error || 'Erro ao excluir', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+    }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
   </script>
   `
   return c.html(layout('Ordens de Produção', content, 'ordens', userInfo))
+})
+
+// ── API: POST /ordens/api/create ─────────────────────────────────────────────
+app.post('/api/create', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+
+  const id = genId('op')
+  const order = {
+    id,
+    code: body.code || `OP-${Date.now().toString().slice(-6)}`,
+    productName: body.productName || '',
+    productId: body.productId || '',
+    quantity: parseInt(body.quantity) || 1,
+    completedQuantity: 0,
+    status: body.status || 'planned',
+    priority: body.priority || 'medium',
+    startDate: body.startDate || new Date().toISOString().split('T')[0],
+    endDate: body.endDate || '',
+    plantId: body.plantId || '',
+    plantName: body.plantName || '',
+    pedido: body.pedido || '',
+    cliente: body.cliente || '',
+    notes: body.notes || '',
+    createdAt: new Date().toISOString(),
+  }
+
+  // Add to in-memory tenant
+  tenant.productionOrders.push(order)
+
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'production_orders', {
+      id, user_id: userId,
+      code: order.code, product_name: order.productName,
+      quantity: order.quantity, completed_quantity: 0,
+      status: order.status, priority: order.priority,
+      start_date: order.startDate, end_date: order.endDate,
+      plant_id: order.plantId, notes: order.notes,
+    })
+  }
+
+  return ok(c, { order })
+})
+
+// ── API: PUT /ordens/api/:id ─────────────────────────────────────────────────
+app.put('/api/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+
+  const idx = tenant.productionOrders.findIndex((o: any) => o.id === id)
+  if (idx === -1) return err(c, 'Ordem não encontrada', 404)
+
+  Object.assign(tenant.productionOrders[idx], body)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'production_orders', id, userId, {
+      status: body.status,
+      priority: body.priority,
+      completed_quantity: body.completedQuantity,
+      end_date: body.endDate,
+      notes: body.notes,
+    })
+  }
+
+  return ok(c, { order: tenant.productionOrders[idx] })
+})
+
+// ── API: DELETE /ordens/api/:id ──────────────────────────────────────────────
+app.delete('/api/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+
+  const idx = tenant.productionOrders.findIndex((o: any) => o.id === id)
+  if (idx === -1) return err(c, 'Ordem não encontrada', 404)
+  tenant.productionOrders.splice(idx, 1)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbDelete(db, 'production_orders', id, userId)
+  }
+
+  return ok(c)
+})
+
+// ── API: GET /ordens/api/list ────────────────────────────────────────────────
+app.get('/api/list', async (c) => {
+  const tenant = getCtxTenant(c)
+  return ok(c, { orders: tenant.productionOrders })
 })
 
 export default app

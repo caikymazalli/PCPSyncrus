@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -620,9 +620,148 @@ app.get('/', (c) => {
     const popup = document.getElementById('criticalStockPopup');
     if (popup) popup.style.display = 'none';
   }, 8000);
+
+
+  async function salvarNovoProduto() {
+    const typeEl = document.querySelector('input[name="newProdType"]:checked');
+    const type = typeEl ? typeEl.value : 'external';
+    const nome = document.querySelector('#novoProdModal input[placeholder="Nome do produto"]')?.value || '';
+    const code = document.querySelector('#novoProdModal input[placeholder="Código"]')?.value || '';
+    const unit = document.querySelector('#novoProdModal select')?.value || 'un';
+    if (!nome) { showToast('⚠ Informe o nome do produto!', 'error'); return; }
+    const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
+    const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
+    const critPct = parseInt(document.getElementById('newProdCritPct')?.value) || 50;
+    
+    try {
+      const res = await fetch('/produtos/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, code, unit, type, stockMin, stockCurrent, criticalPercentage: critPct })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Produto criado com sucesso!');
+        closeModal('novoProdModal');
+        setTimeout(() => location.reload(), 800);
+        if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
+          setTimeout(() => showAutoOPPopup(nome, stockCurrent, stockMin), 900);
+        }
+      } else {
+        showToast(data.error || 'Erro ao criar produto', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+    }
+  }
+
+  async function deleteProduto(id) {
+    if (!confirm('Excluir este produto?')) return;
+    try {
+      const res = await fetch('/produtos/api/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Produto excluído!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
   </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
 })
 
+// ── API: POST /produtos/api/create ───────────────────────────────────────────
+app.post('/api/create', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name) return err(c, 'Nome do produto obrigatório')
+
+  const id = genId('prod')
+  const product = {
+    id, name: body.name, code: body.code || id.slice(-6).toUpperCase(),
+    unit: body.unit || 'un', type: body.type || 'external',
+    stockMin: parseInt(body.stockMin) || 0,
+    stockMax: parseInt(body.stockMax) || 0,
+    stockCurrent: parseInt(body.stockCurrent) || 0,
+    criticalPercentage: parseInt(body.criticalPercentage) || 50,
+    stockStatus: 'normal', supplierId: body.supplierId || '',
+    supplierName: body.supplierName || '', price: parseFloat(body.price) || 0,
+    notes: body.notes || '', createdAt: new Date().toISOString(),
+  }
+
+  tenant.products.push(product)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'products', {
+      id, user_id: userId, name: product.name, code: product.code,
+      unit: product.unit, type: product.type,
+      stock_min: product.stockMin, stock_max: product.stockMax,
+      stock_current: product.stockCurrent, price: product.price,
+      notes: product.notes,
+    })
+  }
+
+  return ok(c, { product })
+})
+
+// ── API: PUT /produtos/api/:id ───────────────────────────────────────────────
+app.put('/api/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+
+  const idx = tenant.products.findIndex((p: any) => p.id === id)
+  if (idx === -1) return err(c, 'Produto não encontrado', 404)
+  Object.assign(tenant.products[idx], body)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'products', id, userId, {
+      name: body.name, code: body.code, unit: body.unit,
+      stock_min: body.stockMin, stock_max: body.stockMax,
+      stock_current: body.stockCurrent, price: body.price, notes: body.notes,
+    })
+  }
+
+  return ok(c, { product: tenant.products[idx] })
+})
+
+// ── API: DELETE /produtos/api/:id ────────────────────────────────────────────
+app.delete('/api/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+
+  const idx = tenant.products.findIndex((p: any) => p.id === id)
+  if (idx === -1) return err(c, 'Produto não encontrado', 404)
+  tenant.products.splice(idx, 1)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbDelete(db, 'products', id, userId)
+  }
+
+  return ok(c)
+})
+
+// ── API: GET /produtos/api/list ──────────────────────────────────────────────
+app.get('/api/list', async (c) => {
+  const tenant = getCtxTenant(c)
+  return ok(c, { products: tenant.products })
+})
+
 export default app
+

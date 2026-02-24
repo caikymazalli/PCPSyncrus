@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -252,9 +252,107 @@ app.get('/', (c) => {
     document.querySelectorAll('[data-tab-group="eng"] .tab-btn').forEach((b,i) => i === 2 ? b.classList.add('active') : b.classList.remove('active'));
     document.querySelectorAll('[data-tab-group="eng"] .tab-content').forEach((c,i) => i === 2 ? c.classList.add('active') : c.classList.remove('active'));
   }
+
+
+  async function salvarBomItem() {
+    const productId = document.getElementById('bom_produto')?.value || '';
+    const productName = document.getElementById('bom_produto_nome')?.value || document.getElementById('bom_produto')?.options[document.getElementById('bom_produto')?.selectedIndex]?.text || '';
+    const componentName = document.getElementById('bom_componente')?.value || '';
+    const componentCode = document.getElementById('bom_codigo')?.value || '';
+    const quantity = document.getElementById('bom_quantidade')?.value || 1;
+    const unit = document.getElementById('bom_unidade')?.value || 'un';
+    
+    if (!productId || !componentName) { showToast('Selecione o produto e informe o componente!', 'error'); return; }
+    
+    try {
+      const res = await fetch('/engenharia/api/bom/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, productName, componentName, componentCode, quantity, unit })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Componente adicionado à BOM!');
+        closeModal('novoBomModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao salvar', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function deleteBomItem(id) {
+    if (!confirm('Remover este componente da BOM?')) return;
+    try {
+      const res = await fetch('/engenharia/api/bom/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Componente removido!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
   </script>
   `
   return c.html(layout('Engenharia de Produto', content, 'engenharia', userInfo))
 })
+
+// ── API: POST /engenharia/api/bom/create ─────────────────────────────────────
+app.post('/api/bom/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.productId || !body.componentName) return err(c, 'Dados obrigatórios')
+  const id = genId('bom')
+  const bom = {
+    id, productId: body.productId, productName: body.productName || '',
+    componentId: body.componentId || '', componentName: body.componentName,
+    componentCode: body.componentCode || '', quantity: parseFloat(body.quantity) || 1,
+    unit: body.unit || 'un', notes: body.notes || '', createdAt: new Date().toISOString(),
+  }
+  tenant.bomItems.push(bom)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'boms', {
+      id, user_id: userId, product_id: bom.productId, component_id: bom.componentId,
+      component_name: bom.componentName, component_code: bom.componentCode,
+      quantity: bom.quantity, unit: bom.unit, notes: bom.notes,
+    })
+  }
+  return ok(c, { bom })
+})
+
+app.put('/api/bom/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const idx = tenant.bomItems.findIndex((b: any) => b.id === id)
+  if (idx === -1) return err(c, 'Item de BOM não encontrado', 404)
+  Object.assign(tenant.bomItems[idx], body)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'boms', id, userId, {
+      component_name: body.componentName, quantity: body.quantity, unit: body.unit, notes: body.notes,
+    })
+  }
+  return ok(c, { bom: tenant.bomItems[idx] })
+})
+
+app.delete('/api/bom/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.bomItems.findIndex((b: any) => b.id === id)
+  if (idx === -1) return err(c, 'Item não encontrado', 404)
+  tenant.bomItems.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'boms', id, userId)
+  return ok(c)
+})
+
+app.get('/api/boms', (c) => ok(c, { boms: getCtxTenant(c).bomItems }))
 
 export default app

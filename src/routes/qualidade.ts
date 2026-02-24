@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -372,10 +372,118 @@ app.get('/', (c) => {
       reader.readAsDataURL(file);
     });
   }
-  </script>
+  
+
+  async function salvarNC() {
+    const title = document.getElementById('nc_titulo')?.value || '';
+    const type = document.getElementById('nc_tipo')?.value || 'processo';
+    const severity = document.getElementById('nc_gravidade')?.value || 'medium';
+    const product = document.getElementById('nc_produto')?.value || '';
+    const department = document.getElementById('nc_setor')?.value || '';
+    const description = document.getElementById('nc_descricao')?.value || '';
+    const responsible = document.getElementById('nc_responsavel')?.value || '';
+    const dueDate = document.getElementById('nc_prazo')?.value || '';
+    
+    if (!title) { showToast('Informe o título!', 'error'); return; }
+    
+    try {
+      const res = await fetch('/qualidade/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, type, severity, product, department, description, responsible, dueDate })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ NC registrada com sucesso!');
+        closeModal('novaNcModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao registrar NC', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function deleteNC(id) {
+    if (!confirm('Excluir esta NC?')) return;
+    try {
+      const res = await fetch('/qualidade/api/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('NC excluída!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+</script>
   `
 
   return c.html(layout('Qualidade — NCs', content, 'qualidade', userInfo))
 })
+
+// ── API: POST /qualidade/api/create ─────────────────────────────────────────
+app.post('/api/create', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.title) return err(c, 'Título obrigatório')
+
+  const id = genId('nc')
+  const nc = {
+    id, title: body.title, code: body.code || `NC-${Date.now().toString().slice(-6)}`,
+    type: body.type || 'processo', severity: body.severity || 'medium',
+    status: body.status || 'open', product: body.product || '',
+    productId: body.productId || '', department: body.department || '',
+    description: body.description || '', rootCause: body.rootCause || '',
+    correctiveAction: body.correctiveAction || '', responsible: body.responsible || '',
+    dueDate: body.dueDate || '', openedAt: new Date().toISOString().split('T')[0],
+    images: [], createdAt: new Date().toISOString(),
+  }
+  tenant.nonConformances.push(nc)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'non_conformances', {
+      id, user_id: userId, title: nc.title, type: nc.type,
+      severity: nc.severity, status: nc.status, product: nc.product,
+      description: nc.description, responsible: nc.responsible, due_date: nc.dueDate,
+    })
+  }
+  return ok(c, { nc })
+})
+
+app.put('/api/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const idx = tenant.nonConformances.findIndex((n: any) => n.id === id)
+  if (idx === -1) return err(c, 'NC não encontrada', 404)
+  Object.assign(tenant.nonConformances[idx], body)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'non_conformances', id, userId, {
+      status: body.status, severity: body.severity, responsible: body.responsible,
+      corrective_action: body.correctiveAction, root_cause: body.rootCause,
+    })
+  }
+  return ok(c, { nc: tenant.nonConformances[idx] })
+})
+
+app.delete('/api/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.nonConformances.findIndex((n: any) => n.id === id)
+  if (idx === -1) return err(c, 'NC não encontrada', 404)
+  tenant.nonConformances.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'non_conformances', id, userId)
+  return ok(c)
+})
+
+app.get('/api/list', (c) => ok(c, { ncs: getCtxTenant(c).nonConformances }))
 
 export default app

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -525,10 +525,116 @@ app.get('/', (c) => {
 
   // Auto close alert after 8s
   setTimeout(() => { const el = document.getElementById('noSupplierAlert'); if(el) el.style.display='none'; }, 8000);
-  </script>
+  
+
+  async function salvarFornecedor() {
+    const name = document.getElementById('sup_nome')?.value || '';
+    const cnpj = document.getElementById('sup_cnpj')?.value || '';
+    const email = document.getElementById('sup_email')?.value || '';
+    const phone = document.getElementById('sup_tel')?.value || '';
+    const contact = document.getElementById('sup_contato')?.value || '';
+    const city = document.getElementById('sup_cidade')?.value || '';
+    const state = document.getElementById('sup_estado')?.value || '';
+    const category = document.getElementById('sup_categoria')?.value || '';
+    const paymentTerms = document.getElementById('sup_pagamento')?.value || '';
+    const deliveryLeadDays = document.getElementById('sup_prazo')?.value || 0;
+    const notes = document.getElementById('sup_obs')?.value || '';
+    
+    if (!name) { showToast('Informe o nome!', 'error'); return; }
+    
+    try {
+      const res = await fetch('/cadastros/api/supplier/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, cnpj, email, phone, contact, city, state, category, paymentTerms, deliveryLeadDays, notes })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Fornecedor cadastrado!');
+        closeModal('novoFornecedorModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao cadastrar', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function deleteFornecedor(id) {
+    if (!confirm('Excluir este fornecedor?')) return;
+    try {
+      const res = await fetch('/cadastros/api/supplier/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Fornecedor excluído!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+</script>
   `
 
   return c.html(layout('Cadastros — Fornecedores', content, 'cadastros', userInfo))
 })
+
+// ── API: POST /cadastros/api/supplier/create ─────────────────────────────────
+app.post('/api/supplier/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name) return err(c, 'Nome obrigatório')
+  const id = genId('sup')
+  const supplier = {
+    id, name: body.name, cnpj: body.cnpj || '', email: body.email || '',
+    phone: body.phone || '', contact: body.contact || '', city: body.city || '',
+    state: body.state || '', category: body.category || '', active: true,
+    rating: 0, paymentTerms: body.paymentTerms || '', deliveryLeadDays: parseInt(body.deliveryLeadDays) || 0,
+    notes: body.notes || '', createdAt: new Date().toISOString(),
+  }
+  tenant.suppliers.push(supplier)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'suppliers', {
+      id, user_id: userId, name: supplier.name, cnpj: supplier.cnpj,
+      email: supplier.email, phone: supplier.phone, contact: supplier.contact,
+      city: supplier.city, state: supplier.state, active: 1,
+    })
+  }
+  return ok(c, { supplier })
+})
+
+app.put('/api/supplier/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const idx = tenant.suppliers.findIndex((s: any) => s.id === id)
+  if (idx === -1) return err(c, 'Fornecedor não encontrado', 404)
+  Object.assign(tenant.suppliers[idx], body)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'suppliers', id, userId, {
+      name: body.name, cnpj: body.cnpj, email: body.email, phone: body.phone,
+      contact: body.contact, city: body.city, state: body.state,
+      active: body.active ? 1 : 0, notes: body.notes,
+    })
+  }
+  return ok(c, { supplier: tenant.suppliers[idx] })
+})
+
+app.delete('/api/supplier/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.suppliers.findIndex((s: any) => s.id === id)
+  if (idx === -1) return err(c, 'Fornecedor não encontrado', 404)
+  tenant.suppliers.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'suppliers', id, userId)
+  return ok(c)
+})
+
+app.get('/api/suppliers', (c) => ok(c, { suppliers: getCtxTenant(c).suppliers }))
 
 export default app

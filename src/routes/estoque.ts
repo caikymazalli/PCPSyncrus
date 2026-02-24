@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -1198,9 +1198,126 @@ app.get('/', (c) => {
   function openTransfDetail(id) {
     alert('Detalhes da transferência ' + id + '\\n\\nEm uma implementação completa, abrirá um modal com:\\n- Itens detalhados\\n- Histórico de status\\n- Documentos anexos\\n- Assinatura digital do custodiante');
   }
+
+
+  async function salvarItemEstoque() {
+    const name = document.getElementById('item_nome')?.value || '';
+    const code = document.getElementById('item_codigo')?.value || '';
+    const unit = document.getElementById('item_unidade')?.value || 'un';
+    const category = document.getElementById('item_categoria')?.value || '';
+    const currentQty = document.getElementById('item_qty_atual')?.value || 0;
+    const minQty = document.getElementById('item_qty_min')?.value || 0;
+    const location = document.getElementById('item_localizacao')?.value || '';
+    if (!name) { showToast('Informe o nome!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/item/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, code, unit, category, currentQty, minQty, location })
+      });
+      const data = await res.json();
+      if (data.ok) { showToast('✅ Item cadastrado!'); closeModal('novoItemModal'); setTimeout(() => location.reload(), 800); }
+      else showToast(data.error || 'Erro ao cadastrar', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+  async function deleteItemEstoque(id) {
+    if (!confirm('Excluir este item do estoque?')) return;
+    try {
+      const res = await fetch('/estoque/api/item/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Item excluído!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
   </script>
   `
   return c.html(layout('Estoque', content, 'estoque', userInfo))
+})
+
+
+// ── API: POST /estoque/api/item/create ───────────────────────────────────────
+app.post('/api/item/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name) return err(c, 'Nome obrigatório')
+  const id = genId('stk')
+  const item = {
+    id, name: body.name, code: body.code || id.slice(-6).toUpperCase(),
+    unit: body.unit || 'un', category: body.category || '',
+    currentQty: parseFloat(body.currentQty) || 0,
+    minQty: parseFloat(body.minQty) || 0,
+    maxQty: parseFloat(body.maxQty) || 0,
+    location: body.location || '', stockStatus: 'normal',
+    almoxarifadoId: body.almoxarifadoId || '',
+    createdAt: new Date().toISOString(),
+  }
+  tenant.stockItems.push(item)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'stock_items', {
+      id, user_id: userId, name: item.name, code: item.code,
+      unit: item.unit, category: item.category,
+      current_qty: item.currentQty, min_qty: item.minQty, max_qty: item.maxQty,
+      location: item.location,
+    })
+  }
+  return ok(c, { item })
+})
+
+app.put('/api/item/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
+  if (idx === -1) return err(c, 'Item não encontrado', 404)
+  Object.assign(tenant.stockItems[idx], body)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'stock_items', id, userId, {
+      name: body.name, current_qty: body.currentQty,
+      min_qty: body.minQty, max_qty: body.maxQty, location: body.location,
+    })
+  }
+  return ok(c, { item: tenant.stockItems[idx] })
+})
+
+app.delete('/api/item/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
+  if (idx === -1) return err(c, 'Item não encontrado', 404)
+  tenant.stockItems.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'stock_items', id, userId)
+  return ok(c)
+})
+
+app.get('/api/items', (c) => ok(c, { items: getCtxTenant(c).stockItems }))
+
+// Kardex / Movimentação
+app.post('/api/movement', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.itemId) return err(c, 'Dados inválidos')
+  const item = tenant.stockItems.find((s: any) => s.id === body.itemId)
+  if (!item) return err(c, 'Item não encontrado', 404)
+  const qty = parseFloat(body.qty) || 0
+  if (body.type === 'entrada') { item.currentQty = (item.currentQty || 0) + qty }
+  else if (body.type === 'saida') { item.currentQty = Math.max(0, (item.currentQty || 0) - qty) }
+  const movement = {
+    id: genId('mv'), itemId: body.itemId, itemName: item.name,
+    type: body.type, qty, reason: body.reason || '', user: body.user || '',
+    createdAt: new Date().toISOString(),
+  }
+  if (!tenant.stockMovements) (tenant as any).stockMovements = []
+  ;(tenant as any).stockMovements.push(movement)
+  return ok(c, { movement, newQty: item.currentQty })
 })
 
 export default app

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -321,9 +321,113 @@ app.get('/', (c) => {
     alert('✅ Instrução "' + titulo + '" salva como ' + stLabel + '!\\n\\nPassos registrados: ' + steps.length);
     closeModal('novaITModal');
   }
+
+
+  async function saveIT(status) {
+    const titulo = document.getElementById('it_titulo')?.value || '';
+    const codigo = document.getElementById('it_codigo')?.value || '';
+    const version = document.getElementById('it_versao')?.value || '1.0';
+    const operation = document.getElementById('it_operacao')?.value || '';
+    const estimatedTime = document.getElementById('it_tempo')?.value || 0;
+    const steps = Array.from(document.querySelectorAll('.step-edit-item input[type="text"]')).map(i => i.value).filter(Boolean);
+    
+    if (!titulo || !codigo) { showToast('Preencha o título e código!', 'error'); return; }
+    if (steps.length === 0) { showToast('Adicione pelo menos um passo!', 'error'); return; }
+    
+    try {
+      const res = await fetch('/instrucoes/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: titulo, code: codigo, version, operation, estimatedTime, steps, status })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const stLabel = { draft: 'Rascunho', review: 'Revisão', published: 'Publicada' }[status] || status;
+        showToast('✅ Instrução "' + titulo + '" salva como ' + stLabel + '!');
+        closeModal('novaITModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao salvar', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function deleteIT(id) {
+    if (!confirm('Excluir esta instrução?')) return;
+    try {
+      const res = await fetch('/instrucoes/api/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Instrução excluída!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
   </script>
   `
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
+
+// ── API: POST /instrucoes/api/create ─────────────────────────────────────────
+app.post('/api/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.title || !body.code) return err(c, 'Título e código obrigatórios')
+  const id = genId('it')
+  const instruction = {
+    id, title: body.title, code: body.code, version: body.version || '1.0',
+    status: body.status || 'draft', productId: body.productId || '',
+    operation: body.operation || '', estimatedTime: parseInt(body.estimatedTime) || 0,
+    steps: body.steps || [], tools: body.tools || [], epi: body.epi || [],
+    approvedBy: body.approvedBy || '', createdAt: new Date().toISOString(),
+  }
+  tenant.instructions.push(instruction)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instructions', {
+      id, user_id: userId, title: instruction.title, code: instruction.code,
+      version: instruction.version, status: instruction.status,
+      product_id: instruction.productId, operation: instruction.operation,
+      estimated_time: instruction.estimatedTime,
+      steps: JSON.stringify(instruction.steps),
+    })
+  }
+  return ok(c, { instruction })
+})
+
+app.put('/api/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const idx = tenant.instructions.findIndex((i: any) => i.id === id)
+  if (idx === -1) return err(c, 'Instrução não encontrada', 404)
+  Object.assign(tenant.instructions[idx], body)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'work_instructions', id, userId, {
+      title: body.title, status: body.status, version: body.version,
+      steps: JSON.stringify(body.steps || []),
+    })
+  }
+  return ok(c, { instruction: tenant.instructions[idx] })
+})
+
+app.delete('/api/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.instructions.findIndex((i: any) => i.id === id)
+  if (idx === -1) return err(c, 'Instrução não encontrada', 404)
+  tenant.instructions.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'work_instructions', id, userId)
+  return ok(c)
+})
+
+app.get('/api/list', (c) => ok(c, { instructions: getCtxTenant(c).instructions }))
 
 export default app

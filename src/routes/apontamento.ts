@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -593,10 +593,100 @@ app.get('/', (c) => {
     document.getElementById('imagePreviewGrid').innerHTML = '';
     selectedImages = [];
   }
-  </script>
+  
+
+  async function saveApontamento() {
+    const orderId = document.getElementById('apt_ordem')?.value || '';
+    const orderCode = document.getElementById('apt_codigo')?.value || '';
+    const productName = document.getElementById('apt_produto')?.value || '';
+    const operator = document.getElementById('apt_operador')?.value || '';
+    const machine = document.getElementById('apt_maquina')?.value || '';
+    const produced = document.getElementById('apt_produzido')?.value || 0;
+    const rejected = document.getElementById('apt_refugo')?.value || 0;
+    const shift = document.getElementById('apt_turno')?.value || 'manha';
+    const notes = document.getElementById('apt_obs')?.value || '';
+    
+    if (!productName && !orderCode) { showToast('Informe a ordem ou produto!', 'error'); return; }
+    
+    try {
+      const res = await fetch('/apontamento/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, orderCode, productName, operator, machine, produced, rejected, shift, notes, startTime: new Date().toISOString(), endTime: new Date().toISOString() })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Apontamento registrado!');
+        closeModal('novoApontamentoModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao salvar', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function deleteApontamento(id) {
+    if (!confirm('Excluir este apontamento?')) return;
+    try {
+      const res = await fetch('/apontamento/api/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Apontamento excluído!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+</script>
   `
 
   return c.html(layout('Apontamento', content, 'apontamento', userInfo))
 })
+
+// ── API: POST /apontamento/api/create ────────────────────────────────────────
+app.post('/api/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const id = genId('apt')
+  const entry = {
+    id, orderId: body.orderId || '', orderCode: body.orderCode || '',
+    productName: body.productName || '', operator: body.operator || '',
+    machine: body.machine || '', startTime: body.startTime || '',
+    endTime: body.endTime || '', produced: parseInt(body.produced) || 0,
+    rejected: parseInt(body.rejected) || 0, reason: body.reason || '',
+    notes: body.notes || '', shift: body.shift || 'manha',
+    createdAt: new Date().toISOString(),
+  }
+  tenant.productionEntries.push(entry)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'apontamentos', {
+      id, user_id: userId, order_id: entry.orderId, order_code: entry.orderCode,
+      product_name: entry.productName, operator: entry.operator,
+      machine: entry.machine, start_time: entry.startTime, end_time: entry.endTime,
+      produced: entry.produced, rejected: entry.rejected, shift: entry.shift, notes: entry.notes,
+    })
+  }
+  return ok(c, { entry })
+})
+
+app.delete('/api/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.productionEntries.findIndex((e: any) => e.id === id)
+  if (idx === -1) return err(c, 'Apontamento não encontrado', 404)
+  tenant.productionEntries.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'apontamentos', id, userId)
+  return ok(c)
+})
+
+app.get('/api/list', (c) => ok(c, { entries: getCtxTenant(c).productionEntries }))
 
 export default app

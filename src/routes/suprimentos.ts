@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -1955,9 +1955,124 @@ app.get('/cotacao/:id/responder', (c) => {
       '<p style="color:#6c757d;font-size:12px;margin-top:12px;">A equipe de compras será notificada e entrará em contato em caso de aprovação.</p>' +
       '</div></div>';
   }
-  </script>
+  
+
+  async function salvarCotacao() {
+    const title = document.getElementById('cot_titulo')?.value || '';
+    const deadline = document.getElementById('cot_prazo')?.value || '';
+    const notes = document.getElementById('cot_obs')?.value || '';
+    if (!title) { showToast('Informe o título!', 'error'); return; }
+    try {
+      const res = await fetch('/suprimentos/api/quotation/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, deadline, notes })
+      });
+      const data = await res.json();
+      if (data.ok) { showToast('✅ Cotação criada!'); closeModal('novaCotacaoModal'); setTimeout(() => location.reload(), 800); }
+      else showToast(data.error || 'Erro ao criar', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+  async function salvarPedidoCompra() {
+    const supplierId = document.getElementById('oc_fornecedor')?.value || '';
+    const supplierName = document.getElementById('oc_fornecedor')?.options[document.getElementById('oc_fornecedor')?.selectedIndex]?.text || '';
+    const expectedDate = document.getElementById('oc_prazo')?.value || '';
+    const notes = document.getElementById('oc_obs')?.value || '';
+    if (!supplierId) { showToast('Selecione o fornecedor!', 'error'); return; }
+    try {
+      const res = await fetch('/suprimentos/api/order/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supplierId, supplierName, expectedDate, notes })
+      });
+      const data = await res.json();
+      if (data.ok) { showToast('✅ Pedido criado!'); closeModal('novaOCModal'); setTimeout(() => location.reload(), 800); }
+      else showToast(data.error || 'Erro ao criar', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+</script>
 </body>
 </html>`)
+})
+
+
+// ── API: POST /suprimentos/api/quotation/create ──────────────────────────────
+app.post('/api/quotation/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.title) return err(c, 'Título obrigatório')
+  const id = genId('cot')
+  const quotation = {
+    id, title: body.title, code: body.code || `COT-${Date.now().toString().slice(-6)}`,
+    status: 'draft', suppliersCount: 0, itemsCount: 0,
+    deadline: body.deadline || '', notes: body.notes || '',
+    createdAt: new Date().toISOString(),
+  }
+  tenant.quotations.push(quotation)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'quotations', {
+      id, user_id: userId, title: quotation.title, status: 'draft',
+      deadline: quotation.deadline, notes: quotation.notes,
+    })
+  }
+  return ok(c, { quotation })
+})
+
+app.delete('/api/quotation/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
+  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  tenant.quotations.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'quotations', id, userId)
+  return ok(c)
+})
+
+// Purchase Orders
+app.post('/api/order/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.supplierId) return err(c, 'Fornecedor obrigatório')
+  const id = genId('oc')
+  const order = {
+    id, code: body.code || `OC-${Date.now().toString().slice(-6)}`,
+    supplierId: body.supplierId, supplierName: body.supplierName || '',
+    status: 'draft', totalValue: 0,
+    expectedDate: body.expectedDate || '', notes: body.notes || '',
+    createdAt: new Date().toISOString(),
+  }
+  tenant.purchaseOrders.push(order)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'purchase_orders', {
+      id, user_id: userId, supplier_id: order.supplierId,
+      status: 'draft', total_value: 0,
+      expected_date: order.expectedDate, notes: order.notes,
+    })
+  }
+  return ok(c, { order })
+})
+
+app.delete('/api/order/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.purchaseOrders.findIndex((o: any) => o.id === id)
+  if (idx === -1) return err(c, 'Pedido não encontrado', 404)
+  tenant.purchaseOrders.splice(idx, 1)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'purchase_orders', id, userId)
+  return ok(c)
+})
+
+app.get('/api/list', (c) => {
+  const tenant = getCtxTenant(c)
+  return ok(c, { quotations: tenant.quotations, orders: tenant.purchaseOrders, imports: tenant.imports })
 })
 
 export default app
