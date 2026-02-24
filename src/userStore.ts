@@ -321,7 +321,7 @@ export async function registerUser(params: {
 }
 
 /** Login — checks D1 first, then in-memory */
-export async function loginUser(email: string, pwd: string, db?: D1Database | null): Promise<{ ok: boolean; error?: string; token?: string; session?: UserSession }> {
+export async function loginUser(email: string, pwd: string, db?: D1Database | null): Promise<{ ok: boolean; error?: string; token?: string; session?: UserSession; isNewUser?: boolean }> {
   const emailKey = email.toLowerCase().trim()
 
   // Check demo accounts (in-memory only)
@@ -344,7 +344,7 @@ export async function loginUser(email: string, pwd: string, db?: D1Database | nu
       trialEnd: '2099-12-31',
     }
     const token = await createSession(demoReg, null)
-    return { ok: true, token, session: sessions[token] }
+    return { ok: true, token, session: sessions[token], isNewUser: false }
   }
 
   // Try D1 first
@@ -388,8 +388,11 @@ export async function loginUser(email: string, pwd: string, db?: D1Database | nu
   const hash = await hashPassword(pwd)
   if (hash !== user.pwdHash) return { ok: false, error: 'Senha incorreta.' }
 
+  // Capture lastLogin BEFORE createSession updates it
+  const hadPreviousLogin = !!user.lastLogin
+
   const token = await createSession(user, db)
-  return { ok: true, token, session: sessions[token] }
+  return { ok: true, token, session: sessions[token], isNewUser: !hadPreviousLogin }
 }
 
 /** Load all registered users from D1 into memory (for admin panel) */

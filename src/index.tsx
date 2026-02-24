@@ -55,15 +55,17 @@ app.use('*', async (c, next) => {
   const isApi = path.includes('/api/')
   
   if (isProtected && !isApi) {
-    // Check for token in cookie
     const token = getCookie(c, SESSION_COOKIE)
     if (!token) {
       return c.redirect('/login')
     }
-    // Session should be loaded by previous middleware; if still not found, redirect
-    const session = getSession(token)
+    // Try in-memory first, then D1 (workers may not share memory between isolates)
+    let session = getSession(token)
+    if (!session && c.env?.DB) {
+      session = await getSessionAsync(token, c.env.DB)
+    }
     if (!session) {
-      // Session expired or invalid
+      // Session truly expired/invalid — clear cookie and redirect
       deleteCookie(c, SESSION_COOKIE, { path: '/' })
       return c.redirect('/login')
     }
@@ -86,8 +88,8 @@ app.post('/login', async (c) => {
     maxAge: SESSION_MAX_AGE, path: '/', httpOnly: true, sameSite: 'Lax'
   })
 
-  // New (non-demo) user → /novo; else dashboard
-  if (result.session && !result.session.isDemo) {
+  // New (non-demo) user first login → /novo; returning user or demo → dashboard
+  if (result.session && !result.session.isDemo && result.isNewUser) {
     const params = new URLSearchParams({
       empresa: result.session.empresa,
       nome: result.session.nome,
@@ -167,9 +169,13 @@ app.get('/welcome', (c) => {
 })
 
 // ── /novo — dashboard vazio para novo usuário ──────────────────────────────────
-app.get('/novo', (c) => {
+app.get('/novo', async (c) => {
   const token  = getCookie(c, SESSION_COOKIE)
-  const session = getSession(token)
+  // Try async session load first (handles worker restart / new isolate)
+  let session = getSession(token)
+  if (!session && token && c.env?.DB) {
+    session = await getSessionAsync(token, c.env.DB)
+  }
   const empresa = session?.empresa || c.req.query('empresa') || ''
   const nome    = session?.nome    || c.req.query('nome')    || ''
   const plano   = session?.plano   || c.req.query('plano')   || 'starter'

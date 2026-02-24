@@ -1,5 +1,15 @@
 // Login page - no layout wrapper (standalone page)
-export function loginPage(): string {
+export function loginPage(errorMsg?: string): string {
+  const errHtml = errorMsg
+    ? `<div id="loginError" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#dc2626;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-exclamation-circle" style="flex-shrink:0;"></i>
+        <span>${errorMsg}</span>
+      </div>`
+    : `<div id="loginError" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#dc2626;align-items:center;gap:8px;">
+        <i class="fas fa-exclamation-circle" style="flex-shrink:0;"></i>
+        <span id="loginErrorMsg"></span>
+      </div>`
+
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -14,6 +24,7 @@ export function loginPage(): string {
     .form-control:focus { border-color: #1B4F72; box-shadow: 0 0 0 3px rgba(27,79,114,0.1); }
     .btn-primary { background: #1B4F72; color: white; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; width: 100%; transition: background 0.2s; }
     .btn-primary:hover { background: #154360; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
     .grid-bg { background-color: #0f2d4a; background-image: linear-gradient(rgba(41,128,185,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(41,128,185,0.1) 1px, transparent 1px); background-size: 40px 40px; }
   </style>
 </head>
@@ -63,12 +74,14 @@ export function loginPage(): string {
           <p style="font-size:14px;color:#6c757d;margin:0;">Faça login para acessar o PCP Planner</p>
         </div>
 
+        ${errHtml}
+
         <form onsubmit="doLogin(event)">
           <div style="margin-bottom:20px;">
             <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">E-mail</label>
             <div style="position:relative;">
               <i class="fas fa-envelope" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;"></i>
-              <input class="form-control" type="email" id="emailInput" placeholder="seu@email.com" value="carlos@empresa.com" style="padding-left:42px;">
+              <input class="form-control" type="email" id="emailInput" placeholder="seu@email.com" style="padding-left:42px;" autocomplete="email">
             </div>
           </div>
 
@@ -79,7 +92,7 @@ export function loginPage(): string {
             </div>
             <div style="position:relative;">
               <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;"></i>
-              <input class="form-control" type="password" id="passwordInput" placeholder="••••••••" value="senha123" style="padding-left:42px;">
+              <input class="form-control" type="password" id="passwordInput" placeholder="••••••••" style="padding-left:42px;" autocomplete="current-password">
               <button type="button" onclick="togglePwd()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;">
                 <i class="fas fa-eye" id="eyeIcon"></i>
               </button>
@@ -100,14 +113,14 @@ export function loginPage(): string {
 
         <!-- Demo accounts -->
         <div style="margin-top:24px;background:#f8f9fa;border-radius:12px;padding:16px;">
-          <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Contas Demo</div>
+          <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Contas Demo (senha: demo123)</div>
           <div style="display:flex;flex-direction:column;gap:6px;">
             ${[
               { name: 'Administrador', email: 'carlos@empresa.com', role: 'admin' },
               { name: 'Gestor PCP', email: 'ana@empresa.com', role: 'gestor_pcp' },
               { name: 'Operador', email: 'joao@empresa.com', role: 'operador' },
             ].map(u => `
-            <button onclick="fillCredentials('${u.email}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:white;border:1px solid #e9ecef;border-radius:8px;cursor:pointer;text-align:left;width:100%;">
+            <button onclick="fillCredentials('${u.email}', 'demo123')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:white;border:1px solid #e9ecef;border-radius:8px;cursor:pointer;text-align:left;width:100%;">
               <div style="width:28px;height:28px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${u.name[0]}</div>
               <div style="flex:1;">
                 <div style="font-size:12px;font-weight:600;color:#374151;">${u.name}</div>
@@ -122,12 +135,46 @@ export function loginPage(): string {
   </div>
 
   <script>
-  function doLogin(e) {
+  async function doLogin(e) {
     e.preventDefault();
     const btn = document.getElementById('loginBtn');
+    const email = document.getElementById('emailInput').value.trim();
+    const pwd = document.getElementById('passwordInput').value;
+
+    if (!email || !pwd) {
+      showError('Preencha e-mail e senha.');
+      return;
+    }
+
     btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Entrando...';
     btn.disabled = true;
-    setTimeout(() => { window.location.href = '/'; }, 1200);
+
+    // Submit as a real HTML form to properly receive the Set-Cookie header and follow redirect
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/login';
+
+    const emailInput = document.createElement('input');
+    emailInput.type = 'hidden';
+    emailInput.name = 'email';
+    emailInput.value = email;
+
+    const pwdInput = document.createElement('input');
+    pwdInput.type = 'hidden';
+    pwdInput.name = 'pwd';
+    pwdInput.value = pwd;
+
+    form.appendChild(emailInput);
+    form.appendChild(pwdInput);
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('loginError');
+    const msgEl = document.getElementById('loginErrorMsg');
+    if (el && msgEl) { msgEl.textContent = msg; el.style.display = 'flex'; }
+    else if (el) { el.style.display = 'flex'; }
   }
 
   function togglePwd() {
@@ -142,9 +189,9 @@ export function loginPage(): string {
     }
   }
 
-  function fillCredentials(email) {
+  function fillCredentials(email, pwd) {
     document.getElementById('emailInput').value = email;
-    document.getElementById('passwordInput').value = 'demo123';
+    document.getElementById('passwordInput').value = pwd || 'demo123';
   }
   </script>
 </body>

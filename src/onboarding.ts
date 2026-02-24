@@ -312,6 +312,9 @@ export function onboardingPage(): string {
             </button>
           </div>
 
+          <!-- Mensagem de erro -->
+          <div id="createError" style="display:none;margin-top:12px;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#dc2626;text-align:center;"></div>
+
           <!-- Termos -->
           <div style="margin-top:16px;font-size:11px;color:#9ca3af;text-align:center;line-height:1.6;">
             Ao criar sua conta você concorda com os
@@ -398,30 +401,59 @@ export function onboardingPage(): string {
     showStep(3);
   }
 
-  function createAccount() {
+  async function createAccount() {
     const btn = document.getElementById('createBtn');
     btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Criando sua conta...';
     btn.disabled = true;
 
-    const nome = document.getElementById('s1_nome').value.trim();
-    const empresa = document.getElementById('s2_empresa').value.trim();
+    const nome      = document.getElementById('s1_nome').value.trim();
+    const sobrenome = document.getElementById('s1_sobrenome').value.trim();
+    const email     = document.getElementById('s1_email').value.trim();
+    const pwd       = document.getElementById('s1_senha').value;
+    const empresa   = document.getElementById('s2_empresa').value.trim();
+    const setor     = document.getElementById('s2_setor').value;
+    const porte     = document.getElementById('s2_porte').value;
+    const tel       = document.getElementById('s1_tel').value.trim();
 
-    setTimeout(() => {
+    try {
+      const res = await fetch('/cadastro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, sobrenome, email, pwd, empresa, setor, porte, tel, plano: selectedPlan }),
+        credentials: 'include'
+      });
+
+      const data = await res.json();
+
+      if (!data.ok) {
+        btn.innerHTML = '<i class="fas fa-rocket" style="margin-right:8px;"></i>Criar minha conta gratuita';
+        btn.disabled = false;
+        const errDiv = document.getElementById('createError');
+        if (errDiv) { errDiv.textContent = data.error || 'Erro ao criar conta. Tente novamente.'; errDiv.style.display = 'block'; }
+        else { alert(data.error || 'Erro ao criar conta. Tente novamente.'); }
+        return;
+      }
+
+      // Sucesso — mostrar tela de sucesso
       document.getElementById('successMsg').textContent =
         'Olá, ' + nome + '! Sua conta na empresa "' + empresa + '" foi criada com sucesso no plano ' +
         { starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise' }[selectedPlan] +
         '. Aproveite seus 14 dias gratuitos!';
       showStep(4);
-    }, 1800);
+
+      // Guardar redirect para o botão "Acessar"
+      window._redirectUrl = data.redirect || '/novo?empresa=' + encodeURIComponent(empresa) + '&nome=' + encodeURIComponent(nome) + '&plano=' + selectedPlan;
+
+    } catch(e) {
+      btn.innerHTML = '<i class="fas fa-rocket" style="margin-right:8px;"></i>Criar minha conta gratuita';
+      btn.disabled = false;
+      alert('Erro de conexão. Verifique sua internet e tente novamente.');
+    }
   }
 
   function enterApp() {
-    // Redirecionar para dashboard vazio — sem dados de demonstração
-    const nome = document.getElementById('s1_nome')?.value?.trim() || '';
-    const empresa = document.getElementById('s2_empresa')?.value?.trim() || '';
-    const plan = selectedPlan;
-    const params = new URLSearchParams({ empresa, nome, plano: plan });
-    window.location.href = '/novo?' + params.toString();
+    // Usar URL retornada pelo servidor (com sessão já criada)
+    window.location.href = window._redirectUrl || '/novo';
   }
 
   // ── Seleção de plano ──────────────────────────────────────────────────────
