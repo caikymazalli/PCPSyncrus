@@ -299,7 +299,7 @@ app.get('/', async (c) => {
               <h4 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-paper-plane" style="margin-right:8px;"></i>Convites Enviados</h4>
               <button class="btn btn-primary btn-sm" onclick="openModal('convidarModal')"><i class="fas fa-plus"></i> Novo Convite</button>
             </div>
-            ${pendingInvites.length === 0 ? `
+            ${pendingInvites.length === 0 && acceptedInvites.length === 0 ? `
             <div style="padding:40px 20px;text-align:center;color:#9ca3af;">
               <i class="fas fa-paper-plane" style="font-size:32px;margin-bottom:12px;display:block;opacity:0.3;"></i>
               <p style="margin:0 0 12px;">Nenhum convite enviado ainda.</p>
@@ -314,31 +314,40 @@ app.get('/', async (c) => {
                   <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Nome</th>
                   <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Função</th>
                   <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Expira</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Data</th>
                   <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ações</th>
                 </tr></thead>
                 <tbody>
-                  ${pendingInvites.map((inv: any) => {
-                    const expDate = new Date(inv.expires_at)
-                    const expired = expDate < new Date()
+                  ${[...pendingInvites, ...acceptedInvites].map((inv: any) => {
+                    const expDate  = new Date(inv.expires_at)
+                    const expired  = expDate < new Date() && inv.status === 'pending'
+                    const accepted = inv.status === 'accepted'
                     const roleL: Record<string,string> = { admin:'Admin', user:'Usuário', viewer:'Visualizador', operador:'Operador', gestor_pcp:'Gestor PCP', qualidade:'Qualidade', compras:'Compras' }
-                    return `<tr style="border-bottom:1px solid #f1f3f5;">
+                    const statusStyle = accepted
+                      ? 'background:#f0fdf4;color:#16a34a;'
+                      : expired
+                        ? 'background:#fef2f2;color:#dc2626;'
+                        : 'background:#fff7ed;color:#d97706;'
+                    const statusLabel = accepted ? '✓ Aceito' : expired ? 'Expirado' : 'Pendente'
+                    const dateLabel   = accepted
+                      ? new Date(inv.accepted_at || inv.created_at).toLocaleDateString('pt-BR')
+                      : expDate.toLocaleDateString('pt-BR')
+                    return `<tr style="border-bottom:1px solid #f1f3f5;${accepted ? 'opacity:0.7;' : ''}">
                       <td style="padding:10px 16px;font-weight:600;color:#374151;">${inv.email}</td>
                       <td style="padding:10px 16px;color:#6c757d;">${inv.nome || '—'}</td>
                       <td style="padding:10px 16px;text-align:center;"><span class="badge" style="background:#e8f4fd;color:#2980B9;">${roleL[inv.role] || inv.role}</span></td>
                       <td style="padding:10px 16px;text-align:center;">
-                        <span class="badge" style="${expired ? 'background:#fef2f2;color:#dc2626;' : 'background:#fff7ed;color:#d97706;'}">
-                          ${expired ? 'Expirado' : 'Pendente'}
-                        </span>
+                        <span class="badge" style="${statusStyle}">${statusLabel}</span>
                       </td>
-                      <td style="padding:10px 16px;font-size:11px;color:#9ca3af;">${expDate.toLocaleDateString('pt-BR')}</td>
+                      <td style="padding:10px 16px;font-size:11px;color:#9ca3af;">${dateLabel}</td>
                       <td style="padding:10px 16px;text-align:center;">
+                        ${!accepted ? `
                         <button class="btn btn-secondary btn-sm" onclick="copyInviteLink('${inv.token}')" title="Copiar link">
                           <i class="fas fa-copy"></i>
                         </button>
                         <button class="btn btn-secondary btn-sm" onclick="cancelInvite('${inv.id}')" title="Cancelar" style="color:#dc2626;margin-left:4px;">
                           <i class="fas fa-times"></i>
-                        </button>
+                        </button>` : `<span style="font-size:11px;color:#16a34a;"><i class="fas fa-check-circle"></i> Membro</span>`}
                       </td>
                     </tr>`
                   }).join('')}
