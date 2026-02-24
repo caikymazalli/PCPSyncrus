@@ -5,7 +5,8 @@ export interface UserInfo {
   plano: string
   isDemo: boolean
   role: string
-  trialEnd?: string   // ISO date string
+  trialEnd?: string         // ISO date string
+  ownerId?: string | null   // null/undefined = conta principal; preenchido = usuário convidado
 }
 
 export function layout(title: string, content: string, activePage: string = '', userInfo?: UserInfo) {

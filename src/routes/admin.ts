@@ -25,36 +25,95 @@ app.get('/', async (c) => {
     ? Math.max(0, Math.ceil((new Date(trialEnd).getTime() - Date.now()) / 86400000))
     : 14
 
+  // Labels e cores de perfil
   const roleLabel: Record<string, string> = {
     admin: 'Administrador', gestor_pcp: 'Gestor PCP', qualidade: 'Qualidade',
-    operador: 'Operador', compras: 'Compras', grupo_admin: 'Admin do Grupo'
+    operador: 'Operador', compras: 'Compras', grupo_admin: 'Admin do Grupo',
+    user: 'Usuário', viewer: 'Visualizador'
   }
   const roleColor: Record<string, string> = {
     admin: '#1B4F72', gestor_pcp: '#27AE60', qualidade: '#8E44AD',
-    operador: '#E67E22', compras: '#2980B9', grupo_admin: '#dc2626'
+    operador: '#E67E22', compras: '#2980B9', grupo_admin: '#dc2626',
+    user: '#6c757d', viewer: '#9ca3af'
   }
 
   const plants  = tenant.plants  || []
-  const users   = tenant.users   || []
+
+  // ── Carregar membros da empresa do D1 ─────────────────────────────────────
+  // Inclui: o próprio dono (owner_id IS NULL) + todos os convidados (owner_id = ownerId)
+  // Se o usuário logado for um membro convidado (tem ownerId), usa o ownerId para buscar
+  // os colegas de empresa. Caso contrário, usa o próprio userId como ownerId da empresa.
+
+  // Determinar o "dono" da empresa:
+  // Buscamos o owner_id do usuário logado no D1 para descobrir se ele é dono ou membro convidado
+  let userOwnerId: string | null = null
+  if (db && !isDemo && userId) {
+    try {
+      const myRow = await db.prepare(
+        'SELECT owner_id FROM registered_users WHERE id = ? AND is_demo = 0'
+      ).bind(userId).first() as any
+      userOwnerId = myRow?.owner_id || null
+    } catch {}
+  }
+  // Se não há owner_id, este usuário é o dono; caso contrário, o dono é quem o convidou
+  const companyOwnerId = userOwnerId || userId   // userId do dono real da empresa
+  const isOwnerAccount = !userOwnerId            // true se este usuário é o dono
 
   const currentUserEntry = {
-    id: session?.userId || 'u1',
-    name: userName,
-    email: userEmail,
-    role: userRole,
-    empresa: 'e1',
+    id:          userId,
+    name:        userName,
+    email:       userEmail,
+    role:        userRole,
     empresaName: userEmpresa,
-    scope: 'empresa'
+    isOwner:     isOwnerAccount,
+    lastLogin:   null as string | null,
   }
 
-  const allUsers = [currentUserEntry, ...users.filter((u: any) => u.id !== currentUserEntry.id)]
+  let dbMembers: Array<{
+    id: string; name: string; email: string; role: string
+    empresaName: string; isOwner: boolean; lastLogin: string | null
+  }> = []
 
+  if (db && !isDemo) {
+    try {
+      // Busca: o dono + todos os membros convidados (owner_id = companyOwnerId)
+      const rows = await db.prepare(
+        `SELECT id, nome, sobrenome, email, role, last_login, owner_id
+         FROM registered_users
+         WHERE (id = ? OR owner_id = ?) AND is_demo = 0
+         ORDER BY owner_id ASC, created_at ASC`
+      ).bind(companyOwnerId, companyOwnerId).all()
+
+      for (const row of (rows.results || []) as any[]) {
+        const isThisOwner = !row.owner_id // sem owner_id = é o dono
+        dbMembers.push({
+          id:          row.id,
+          name:        row.nome + (row.sobrenome ? ' ' + row.sobrenome : ''),
+          email:       row.email,
+          role:        row.role || 'user',
+          empresaName: userEmpresa,
+          isOwner:     isThisOwner,
+          lastLogin:   row.last_login || null,
+        })
+      }
+    } catch {
+      // Fallback: pelo menos o usuário atual
+      dbMembers = [currentUserEntry]
+    }
+  } else {
+    dbMembers = [currentUserEntry]
+  }
+
+  // Garantir que o usuário atual está sempre na lista
+  if (!dbMembers.find(m => m.id === userId)) {
+    dbMembers.unshift(currentUserEntry)
+  }
+
+  const allUsers = dbMembers
   const empresas = [{
     id: 'e1', name: userEmpresa, cnpj: '', city: '', state: '',
     type: 'matriz', status: 'ativa', users: allUsers.length, plants: plants.length
   }]
-
-  const grupo = { name: userEmpresa, cnpj: '', since: new Date().getFullYear().toString() }
 
   const planoLabel: Record<string,string> = {
     starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise', trial: 'Trial'
@@ -67,22 +126,25 @@ app.get('/', async (c) => {
   }
   const planoBilling = isDemo ? 'Demo' : (trialDaysLeft > 0 ? `Trial — ${trialDaysLeft} dias restantes` : planoLabel[userPlano] || userPlano)
 
-  // Carregar convites pendentes do D1
+  // Carregar todos os convites do D1 (sempre usando o ID do dono da empresa)
   let pendingInvites: any[] = []
+  let acceptedInvites: any[] = []
   if (db && !isDemo) {
     try {
       const rows = await db.prepare(
-        `SELECT * FROM invites WHERE user_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 20`
-      ).bind(userId).all()
-      pendingInvites = rows.results as any[]
+        `SELECT * FROM invites WHERE user_id = ? ORDER BY created_at DESC LIMIT 40`
+      ).bind(companyOwnerId).all()
+      const allInvites = rows.results as any[]
+      pendingInvites  = allInvites.filter((i: any) => i.status === 'pending')
+      acceptedInvites = allInvites.filter((i: any) => i.status === 'accepted').slice(0, 10)
     } catch {}
   }
 
-  // Config de e-mail
+  // Config de e-mail (sempre do dono da empresa)
   let emailConfigExists = false
   if (db && !isDemo) {
     try {
-      const cfg = await db.prepare('SELECT id FROM email_config WHERE user_id = ? AND active = 1').bind(userId).first()
+      const cfg = await db.prepare('SELECT id FROM email_config WHERE user_id = ? AND active = 1').bind(companyOwnerId).first()
       emailConfigExists = !!cfg
     } catch {}
   }
@@ -177,23 +239,54 @@ app.get('/', async (c) => {
         <div class="tab-content active" id="tabUsuarios">
           <div class="card" style="overflow:hidden;">
             <div style="padding:14px 20px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-              <h4 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;">Membros e Colaboradores</h4>
+              <h4 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;">
+                <i class="fas fa-users" style="margin-right:8px;color:#2980B9;"></i>
+                Membros e Colaboradores
+                <span style="font-size:12px;font-weight:400;color:#9ca3af;margin-left:8px;">${allUsers.length} ${allUsers.length === 1 ? 'membro' : 'membros'}</span>
+              </h4>
               <button class="btn btn-primary btn-sm" onclick="openModal('convidarModal')"><i class="fas fa-user-plus"></i> Convidar</button>
             </div>
-            <div style="padding:8px 0;" id="usersListContainer">
-              ${allUsers.map((u: any) => `
-              <div class="user-row" style="display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid #f8f9fa;">
-                <div class="avatar" style="background:${roleColor[u.role] || '#9ca3af'};">${u.name.split(' ').map((n: string) => n[0]).slice(0,2).join('')}</div>
-                <div style="flex:1;">
-                  <div style="font-size:14px;font-weight:600;color:#374151;">${u.name}</div>
-                  <div style="font-size:12px;color:#9ca3af;">${u.email}</div>
+            <div id="usersListContainer">
+              ${allUsers.length === 0 ? `
+              <div style="padding:40px 20px;text-align:center;color:#9ca3af;">
+                <i class="fas fa-users" style="font-size:32px;margin-bottom:12px;display:block;opacity:0.3;"></i>
+                <p style="margin:0;">Nenhum membro ainda.</p>
+              </div>` : allUsers.map((u: any) => `
+              <div style="display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid #f8f9fa;transition:background 0.1s;" onmouseenter="this.style.background='#f8f9fa'" onmouseleave="this.style.background=''">
+                <!-- Avatar com iniciais -->
+                <div style="width:40px;height:40px;border-radius:50%;background:${(roleColor as any)[u.role] || '#9ca3af'};color:white;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;">
+                  ${u.name.split(' ').filter(Boolean).slice(0,2).map((n: string) => n[0].toUpperCase()).join('')}
                 </div>
-                <div style="text-align:center;min-width:100px;">
-                  <span class="badge" style="font-size:10px;background:#e8f4fd;color:#2980B9;">
-                    <i class="fas fa-building" style="font-size:8px;"></i> ${u.empresaName || userEmpresa}
+                <!-- Info -->
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span style="font-size:14px;font-weight:600;color:#374151;">${u.name}</span>
+                    ${u.isOwner ? `<span style="font-size:10px;background:#e8f4fd;color:#2980B9;border-radius:4px;padding:1px 6px;font-weight:700;">DONO</span>` : ''}
+                  </div>
+                  <div style="font-size:12px;color:#9ca3af;margin-top:1px;">${u.email}</div>
+                  ${u.lastLogin ? `<div style="font-size:11px;color:#d1d5db;margin-top:1px;"><i class="fas fa-clock" style="font-size:9px;"></i> Último acesso: ${new Date(u.lastLogin).toLocaleDateString('pt-BR')}</div>` : ''}
+                </div>
+                <!-- Empresa -->
+                <div style="text-align:center;min-width:110px;">
+                  <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:3px;">Empresa</div>
+                  <span style="font-size:11px;background:#f8f9fa;color:#374151;border-radius:6px;padding:3px 8px;font-weight:600;">
+                    <i class="fas fa-building" style="font-size:9px;color:#2980B9;"></i> ${u.empresaName || userEmpresa}
                   </span>
                 </div>
-                <span class="badge badge-primary" style="background:${roleColor[u.role] || '#9ca3af'}1A;color:${roleColor[u.role] || '#9ca3af'};">${roleLabel[u.role] || u.role}</span>
+                <!-- Perfil -->
+                <div style="text-align:center;min-width:90px;">
+                  <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:3px;">Perfil</div>
+                  <span style="font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;background:${(roleColor as any)[u.role] || '#9ca3af'}18;color:${(roleColor as any)[u.role] || '#9ca3af'};">
+                    ${(roleLabel as any)[u.role] || u.role}
+                  </span>
+                </div>
+                <!-- Ações (apenas membros não-donos e conta real) -->
+                ${!u.isOwner && !isDemo ? `
+                <div style="display:flex;gap:6px;">
+                  <button class="btn btn-secondary btn-sm" onclick="removeMember('${u.id}','${u.name.replace(/'/g,'')}')" title="Remover membro" style="color:#dc2626;border-color:#fecaca;">
+                    <i class="fas fa-user-times"></i>
+                  </button>
+                </div>` : ''}
               </div>`).join('')}
             </div>
           </div>
@@ -659,6 +752,22 @@ app.get('/', async (c) => {
     showToast('Solicitação registrada! Você receberá instruções por e-mail.', 'success');
     closeModal('novaEmpresaModal');
   }
+
+  async function removeMember(id, name) {
+    if (!confirm('Remover ' + name + ' da empresa? O acesso deste usuário será revogado.')) return;
+    const res = await fetch('/admin/api/remove-member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(name + ' removido da empresa.', 'success');
+      setTimeout(() => location.reload(), 900);
+    } else {
+      showToast(data.error || 'Erro ao remover.', 'error');
+    }
+  }
   </script>
   `
   return c.html(layout('Administração', content, 'admin', userInfo))
@@ -786,6 +895,35 @@ app.post('/api/email-test', async (c) => {
   }, db)
 
   return c.json(result)
+})
+
+// ── POST /api/remove-member — remover membro da empresa ───────────────────────
+app.post('/api/remove-member', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ ok: false, error: 'Não autorizado.' }, 401)
+  if (!db) return c.json({ ok: false, error: 'Banco indisponível.' }, 503)
+
+  const body = await c.req.json() as any
+  const memberId = body.id
+
+  if (!memberId) return c.json({ ok: false, error: 'ID do membro não informado.' })
+
+  // Só pode remover membros que têm owner_id = userId do dono (evita remoção de outros)
+  const member = await db.prepare(
+    'SELECT id, email FROM registered_users WHERE id = ? AND owner_id = ?'
+  ).bind(memberId, session.userId).first() as any
+
+  if (!member) return c.json({ ok: false, error: 'Membro não encontrado ou não pertence a esta empresa.' })
+
+  // Invalidar sessões ativas do membro
+  await db.prepare('DELETE FROM sessions WHERE email = ?').bind(member.email).run()
+
+  // Remover o usuário do D1
+  await db.prepare('DELETE FROM registered_users WHERE id = ? AND owner_id = ?')
+    .bind(memberId, session.userId).run()
+
+  return c.json({ ok: true })
 })
 
 export default app

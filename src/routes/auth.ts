@@ -442,7 +442,7 @@ app.post('/invite/:token', async (c) => {
       .bind(invite.email).first()
     if (existing) return c.html(invitePageHtml({ ...invite, token }, 'E-mail já cadastrado. Faça login normalmente.', 'error'))
 
-    // Criar usuário
+    // Criar usuário com owner_id apontando para o dono da empresa
     const { registerUser: _reg, ..._ } = await import('../userStore')
     const result = await _reg({
       email:     invite.email,
@@ -454,6 +454,8 @@ app.post('/invite/:token', async (c) => {
       tel:       '',
       setor:     '',
       porte:     '',
+      ownerId:   invite.user_id,          // ← quem convidou = dono da conta
+      role:      invite.role || 'user',   // ← papel definido no convite
     }, db)
 
     if (!result.ok) return c.html(invitePageHtml({ ...invite, token }, result.error || 'Erro ao criar conta.', 'error'))

@@ -25,6 +25,7 @@ export interface UserSession {
   isDemo: boolean
   createdAt: string
   expiresAt: number
+  ownerId?: string | null   // null/undefined = conta principal; preenchido = usuário convidado
 }
 
 export interface TenantData {
@@ -68,6 +69,7 @@ export interface RegisteredUser {
   lastLogin: string | null
   trialStart: string
   trialEnd: string
+  ownerId?: string | null  // null = conta principal; preenchido = usuário convidado
 }
 
 // ── In-memory fallback (used when DB is unavailable or for demo) ───────────────
@@ -182,6 +184,13 @@ export async function getSessionAsync(token: string | undefined, db: D1Database 
       createdAt: row.created_at,
       expiresAt: row.expires_at,
     }
+
+    // Carregar owner_id do usuário para suportar conta de convidado
+    try {
+      const userRow = await db.prepare('SELECT owner_id FROM registered_users WHERE id = ?')
+        .bind(row.user_id).first() as any
+      if (userRow) session.ownerId = userRow.owner_id || null
+    } catch {}
     
     // Cache in memory
     sessions[token] = session
@@ -232,6 +241,7 @@ export async function createSession(user: RegisteredUser, db?: D1Database | null
     isDemo:    user.isDemo,
     createdAt,
     expiresAt,
+    ownerId:   user.ownerId || null,   // ← propaga owner_id na sessão
   }
   
   // Store in memory
@@ -261,6 +271,8 @@ export async function createSession(user: RegisteredUser, db?: D1Database | null
 export async function registerUser(params: {
   email: string; pwd: string; nome: string; sobrenome: string
   empresa: string; plano: string; tel: string; setor: string; porte: string
+  ownerId?: string | null   // id do admin da empresa (para convidados)
+  role?: string             // papel do usuário (default: 'admin')
 }, db?: D1Database | null): Promise<{ ok: boolean; error?: string; user?: RegisteredUser }> {
   const emailKey = params.email.toLowerCase().trim()
 
@@ -288,17 +300,20 @@ export async function registerUser(params: {
   const today   = new Date().toISOString().split('T')[0]
   const trialEnd = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
 
+  const effectiveRole = params.ownerId ? (params.role || 'user') : 'admin'
+
   const user: RegisteredUser = {
     userId, email: emailKey,
     pwdHash, nome: params.nome, sobrenome: params.sobrenome,
     empresa: params.empresa, plano: params.plano,
-    role: 'admin', tel: params.tel,
+    role: effectiveRole, tel: params.tel,
     setor: params.setor, porte: params.porte,
     isDemo: false,
     createdAt: today,
     lastLogin: null,
     trialStart: today,
     trialEnd,
+    ownerId: params.ownerId || null,
   }
 
   // Store in memory cache
@@ -309,9 +324,9 @@ export async function registerUser(params: {
   if (db) {
     try {
       await db.prepare(`
-        INSERT INTO registered_users (id, email, pwd_hash, nome, sobrenome, empresa, plano, role, tel, setor, porte, is_demo, created_at, trial_start, trial_end)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-      `).bind(userId, emailKey, pwdHash, params.nome, params.sobrenome, params.empresa, params.plano, 'admin', params.tel, params.setor, params.porte, today, today, trialEnd).run()
+        INSERT INTO registered_users (id, email, pwd_hash, nome, sobrenome, empresa, plano, role, tel, setor, porte, is_demo, created_at, trial_start, trial_end, owner_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      `).bind(userId, emailKey, pwdHash, params.nome, params.sobrenome, params.empresa, params.plano, effectiveRole, params.tel, params.setor, params.porte, today, today, trialEnd, params.ownerId || null).run()
     } catch (e) {
       // Continue with in-memory only
     }
@@ -370,6 +385,7 @@ export async function loginUser(email: string, pwd: string, db?: D1Database | nu
           lastLogin: row.last_login,
           trialStart: row.trial_start,
           trialEnd: row.trial_end,
+          ownerId: row.owner_id || null,
         }
         // Update in-memory cache
         registeredUsers[emailKey] = user
@@ -416,6 +432,7 @@ export async function loadAllUsersFromDB(db: D1Database): Promise<RegisteredUser
       lastLogin: row.last_login,
       trialStart: row.trial_start,
       trialEnd: row.trial_end,
+      ownerId: row.owner_id || null,
     }))
     // Update in-memory cache
     users.forEach(u => { registeredUsers[u.email] = u; getTenantData(u.userId) })

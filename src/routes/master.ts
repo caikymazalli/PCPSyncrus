@@ -71,7 +71,8 @@ async function ensureInit() {
   })
 }
 
-const masterClients: Array<{
+// ── Tipo de cliente master ─────────────────────────────────────────────────────
+type MasterClient = {
   id: string; empresa: string; fantasia: string; cnpj: string; setor: string; porte: string;
   responsavel: string; email: string; tel: string; plano: string; billing: string; valor: number;
   status: string; trialStart: string | null; trialEnd: string | null;
@@ -80,7 +81,12 @@ const masterClients: Array<{
   modulos: string[]; cnpjsExtras: number;
   pagamentos: Array<{ mes: string; valor: number; status: string; data: string }>;
   obs: string
-}> = []
+}
+
+// Cache de clientes — limpo e reconstruído a cada GET / a partir do D1
+// Mantido globalmente apenas para que as routes de API (migrate-plan, save-obs, etc.)
+// possam ler/escrever dados temporários de configuração entre requests
+const masterClients: MasterClient[] = []
 
 const auditLog: Array<{ ts: string; user: string; action: string; detail: string }> = []
 
@@ -379,37 +385,52 @@ app.get('/', async (c) => {
   if (!auth) return c.html(loginRedirect())
   const db = c.env?.DB || null
 
+  // Limpar e reconstruir masterClients a cada request a partir do D1
+  // Isto evita acúmulo de duplicatas entre requests no mesmo isolate
+  masterClients.length = 0
+
   // Carregar usuários do D1 (garante lista sempre atualizada após deploy/cold-start)
+  // IMPORTANTE: owner_id = NULL → conta principal (empresa)
+  //             owner_id != NULL → membro convidado (pertence à empresa do owner)
   if (db) {
     try {
       const dbUsers = await loadAllUsersFromDB(db)
-      const registeredEmails = new Set(masterClients.map(mc => mc.email))
-      for (const u of dbUsers) {
-        if (!u.isDemo && !registeredEmails.has(u.email)) {
-          registeredEmails.add(u.email)
-          masterClients.push({
-            id: u.userId,
-            empresa: u.empresa, fantasia: u.empresa,
-            cnpj: '', setor: u.setor, porte: u.porte,
-            responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
-            email: u.email, tel: u.tel,
-            plano: u.plano, billing: 'trial', valor: 0,
-            status: 'trial',
-            trialStart: u.trialStart, trialEnd: u.trialEnd,
-            empresas: 1, usuarios: 1, plantas: 0,
-            criadoEm: u.createdAt,
-            ultimoAcesso: u.lastLogin || u.createdAt,
-            modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
-          })
-        }
+
+      // Separa donos (owner_id = null) de membros convidados
+      const ownerUsers  = dbUsers.filter(u => !u.ownerId)
+      const memberUsers = dbUsers.filter(u =>  u.ownerId)
+
+      // Mapa: ownerId → count de membros convidados
+      const memberCount: Record<string, number> = {}
+      for (const m of memberUsers) {
+        if (m.ownerId) memberCount[m.ownerId] = (memberCount[m.ownerId] || 0) + 1
+      }
+
+      for (const u of ownerUsers) {
+        if (u.isDemo) continue
+        const extraMembers = memberCount[u.userId] || 0
+        masterClients.push({
+          id: u.userId,
+          empresa: u.empresa, fantasia: u.empresa,
+          cnpj: '', setor: u.setor, porte: u.porte,
+          responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
+          email: u.email, tel: u.tel,
+          plano: u.plano, billing: 'trial', valor: 0,
+          status: 'trial',
+          trialStart: u.trialStart, trialEnd: u.trialEnd,
+          empresas: 1,
+          usuarios: 1 + extraMembers,  // dono + membros convidados
+          plantas: 0,
+          criadoEm: u.createdAt,
+          ultimoAcesso: u.lastLogin || u.createdAt,
+          modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
+        })
       }
     } catch {}
   } else {
     // Fallback: usar memória (dev local sem D1)
-    const registeredEmails = new Set(masterClients.map(mc => mc.email))
     for (const u of Object.values(registeredUsers)) {
-      if (!u.isDemo && !registeredEmails.has(u.email)) {
-        registeredEmails.add(u.email)
+      if (!u.isDemo && !u.ownerId) {
         masterClients.push({
           id: u.userId,
           empresa: u.empresa, fantasia: u.empresa,

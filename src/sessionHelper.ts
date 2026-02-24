@@ -52,6 +52,7 @@ export function getCtxUserInfo(c: Context): UserInfo {
     isDemo:  session.isDemo,
     role:    session.role,
     trialEnd: regUser?.trialEnd,
+    ownerId:  session.ownerId ?? regUser?.ownerId ?? null,
   }
 }
 
