@@ -7,6 +7,8 @@ const app = new Hono()
 // ── Constantes ─────────────────────────────────────────────────────────────────
 const MASTER_SESSION_KEY = 'master_session'
 const SESSION_DURATION   = 60 * 60 * 8 // 8h em segundos
+const MASTER_JWT_SECRET  = 'syncrus-master-jwt-secret-2025-xK9pLmN3'
+const MASTER_PWD_SALT    = 'syncrus-master-salt-2025'
 
 // ── Utilidades ─────────────────────────────────────────────────────────────────
 async function sha256(text: string): Promise<string> {
@@ -17,19 +19,46 @@ async function sha256(text: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-// ── Armazenamento em memória ───────────────────────────────────────────────────
+// ── JWT simples baseado em HMAC-SHA256 (stateless, funciona em Workers) ────────
+async function signToken(payload: Record<string, any>): Promise<string> {
+  const header  = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const body    = btoa(JSON.stringify(payload))
+  const sigData = new TextEncoder().encode(header + '.' + body)
+  const keyData = new TextEncoder().encode(MASTER_JWT_SECRET)
+  const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sigBuf  = await crypto.subtle.sign('HMAC', key, sigData)
+  const sig     = btoa(String.fromCharCode(...new Uint8Array(sigBuf)))
+  return header + '.' + body + '.' + sig
+}
+
+async function verifyToken(token: string): Promise<Record<string, any> | null> {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const [header, body, sig] = parts
+    const sigData = new TextEncoder().encode(header + '.' + body)
+    const keyData = new TextEncoder().encode(MASTER_JWT_SECRET)
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+    const sigBuf = Uint8Array.from(atob(sig), c => c.charCodeAt(0))
+    const valid  = await crypto.subtle.verify('HMAC', key, sigBuf, sigData)
+    if (!valid) return null
+    const payload = JSON.parse(atob(body))
+    if (payload.exp && Date.now() / 1000 > payload.exp) return null
+    return payload
+  } catch { return null }
+}
+
+// ── Usuários master (em memória — cold start recria o default) ─────────────────
 const masterUsers: Array<{
   id: string; email: string; pwdHash: string; name: string;
   createdAt: string; lastLogin: string | null; active: boolean; role: string
 }> = []
 
-const activeSessions: Record<string, { email: string; expiresAt: number }> = {}
-
 let initialized = false
 async function ensureInit() {
   if (initialized) return
   initialized = true
-  const hash = await sha256('minhasenha' + 'syncrus-master-salt-2025')
+  const hash = await sha256('minhasenha' + MASTER_PWD_SALT)
   masterUsers.push({
     id: 'master1',
     email: 'master@syncrus.com.br',
@@ -62,13 +91,12 @@ const PLANS: Record<string, { label: string; monthlyBase: number; color: string;
 }
 
 // ── Auth helpers ───────────────────────────────────────────────────────────────
-function isAuthenticated(c: any): boolean {
+async function isAuthenticated(c: any): Promise<{ email: string; name: string } | null> {
   const token = getCookie(c, MASTER_SESSION_KEY)
-  if (!token) return false
-  const session = activeSessions[token]
-  if (!session) return false
-  if (Date.now() > session.expiresAt) { delete activeSessions[token]; return false }
-  return true
+  if (!token) return null
+  const payload = await verifyToken(token)
+  if (!payload) return null
+  return { email: payload.email, name: payload.name }
 }
 
 function loginRedirect() {
@@ -182,8 +210,8 @@ function masterLayout(title: string, content: string, loggedName: string = ''): 
 }
 
 // ── Rota: GET /login ───────────────────────────────────────────────────────────
-app.get('/login', (c) => {
-  if (isAuthenticated(c)) return c.redirect('/master')
+app.get('/login', async (c) => {
+  if (await isAuthenticated(c)) return c.redirect('/master')
   const err = c.req.query('err') || ''
   const errMsg = err === '1' ? 'E-mail ou senha incorretos.' :
                  err === '2' ? 'Usuário inativo. Contate o administrador.' :
@@ -201,38 +229,41 @@ app.post('/login', async (c) => {
   const user = masterUsers.find(u => u.email === email)
   if (!user) return c.redirect('/master/login?err=1')
 
-  const inputHash = await sha256(pwd + 'syncrus-master-salt-2025')
+  const inputHash = await sha256(pwd + MASTER_PWD_SALT)
   if (user.pwdHash !== inputHash) return c.redirect('/master/login?err=1')
   if (!user.active) return c.redirect('/master/login?err=2')
 
-  const token = await sha256(email + Date.now().toString() + Math.random().toString())
-  activeSessions[token] = { email, expiresAt: Date.now() + SESSION_DURATION * 1000 }
-  user.lastLogin = new Date().toISOString()
+  // Gera JWT stateless (funciona em Cloudflare Workers multi-isolate)
+  const jwt = await signToken({
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    exp: Math.floor(Date.now() / 1000) + SESSION_DURATION
+  })
 
-  setCookie(c, MASTER_SESSION_KEY, token, {
+  user.lastLogin = new Date().toISOString()
+  auditLog.unshift({ ts: new Date().toISOString(), user: user.name, action: 'LOGIN', detail: 'Login bem-sucedido' })
+
+  setCookie(c, MASTER_SESSION_KEY, jwt, {
     maxAge: SESSION_DURATION, path: '/master', httpOnly: true, sameSite: 'Lax'
   })
 
-  auditLog.unshift({ ts: new Date().toISOString(), user: user.name, action: 'LOGIN', detail: 'Login bem-sucedido' })
   return c.redirect('/master')
 })
 
 // ── Rota: GET /logout ──────────────────────────────────────────────────────────
 app.get('/logout', (c) => {
-  const token = getCookie(c, MASTER_SESSION_KEY)
-  if (token) delete activeSessions[token]
   deleteCookie(c, MASTER_SESSION_KEY, { path: '/master' })
   return c.redirect('/master/login')
 })
 
 // ── API: POST /api/add-client ──────────────────────────────────────────────────
 app.post('/api/add-client', async (c) => {
-  if (!isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
   await ensureInit()
   const body = await c.req.json() as any
-  const token = getCookie(c, MASTER_SESSION_KEY)!
-  const userEmail = activeSessions[token]?.email || '?'
-  const actor = masterUsers.find(u => u.email === userEmail)
+  const actor = masterUsers.find(u => u.email === auth.email) || { name: auth.name }
 
   const today = new Date().toISOString().split('T')[0]
   const trialEnd = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
@@ -261,18 +292,17 @@ app.post('/api/add-client', async (c) => {
   }
 
   masterClients.push(nc)
-  auditLog.unshift({ ts: new Date().toISOString(), user: actor?.name || userEmail, action: 'ADD_CLIENT', detail: `Cliente "${nc.empresa}" adicionado` })
+  auditLog.unshift({ ts: new Date().toISOString(), user: actor?.name || auth.name, action: 'ADD_CLIENT', detail: `Cliente "${nc.empresa}" adicionado` })
   return c.json({ ok: true, id: newId })
 })
 
 // ── API: POST /api/migrate-plan ────────────────────────────────────────────────
 app.post('/api/migrate-plan', async (c) => {
-  if (!isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
   await ensureInit()
   const body = await c.req.json() as any
-  const token = getCookie(c, MASTER_SESSION_KEY)!
-  const userEmail = activeSessions[token]?.email || '?'
-  const actor = masterUsers.find(u => u.email === userEmail)
+  const actor = masterUsers.find(u => u.email === auth.email) || { name: auth.name }
 
   const cli = masterClients.find(c2 => c2.id === body.clientId)
   if (!cli) return c.json({ error: 'Client not found' }, 404)
@@ -299,13 +329,13 @@ app.post('/api/migrate-plan', async (c) => {
     cli.status = 'active'
   }
 
-  auditLog.unshift({ ts: new Date().toISOString(), user: actor?.name || userEmail, action: 'MIGRATE_PLAN', detail: `${cli.fantasia}: ${body.acao} | ${oldPlan} → ${cli.plano} | ${body.motivo}` })
+  auditLog.unshift({ ts: new Date().toISOString(), user: actor?.name || auth.name, action: 'MIGRATE_PLAN', detail: `${cli.fantasia}: ${body.acao} | ${oldPlan} → ${cli.plano} | ${body.motivo}` })
   return c.json({ ok: true })
 })
 
 // ── API: POST /api/save-obs ────────────────────────────────────────────────────
 app.post('/api/save-obs', async (c) => {
-  if (!isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
   const body = await c.req.json() as any
   const cli = masterClients.find(c2 => c2.id === body.clientId)
   if (cli) cli.obs = body.obs || ''
@@ -314,18 +344,17 @@ app.post('/api/save-obs', async (c) => {
 
 // ── API: POST /api/add-master-user ─────────────────────────────────────────────
 app.post('/api/add-master-user', async (c) => {
-  if (!isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
   await ensureInit()
   const body = await c.req.json() as any
-  const token = getCookie(c, MASTER_SESSION_KEY)!
-  const userEmail = activeSessions[token]?.email || '?'
-  const actor = masterUsers.find(u => u.email === userEmail)
+  const actor = masterUsers.find(u => u.email === auth.email) || { name: auth.name }
 
   if (masterUsers.find(u => u.email === body.email)) {
     return c.json({ error: 'E-mail já cadastrado' }, 400)
   }
 
-  const pwdHash = await sha256((body.pwd || 'senha123') + 'syncrus-master-salt-2025')
+  const pwdHash = await sha256((body.pwd || 'senha123') + MASTER_PWD_SALT)
   masterUsers.push({
     id: 'mu' + Date.now(),
     email: body.email,
@@ -337,13 +366,13 @@ app.post('/api/add-master-user', async (c) => {
     role: body.role || 'viewer'
   })
 
-  auditLog.unshift({ ts: new Date().toISOString(), user: actor?.name || userEmail, action: 'ADD_MASTER_USER', detail: `Novo usuário: ${body.name} (${body.email})` })
+  auditLog.unshift({ ts: new Date().toISOString(), user: actor?.name || auth.name, action: 'ADD_MASTER_USER', detail: `Novo usuário: ${body.name} (${body.email})` })
   return c.json({ ok: true })
 })
 
 // ── API: POST /api/toggle-master-user ─────────────────────────────────────────
 app.post('/api/toggle-master-user', async (c) => {
-  if (!isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
   const body = await c.req.json() as any
   const u = masterUsers.find(u2 => u2.id === body.id)
   if (u) u.active = !u.active
@@ -353,9 +382,10 @@ app.post('/api/toggle-master-user', async (c) => {
 // ── Rota principal: GET / ──────────────────────────────────────────────────────
 app.get('/', async (c) => {
   await ensureInit()
-  if (!isAuthenticated(c)) return c.html(loginRedirect())
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.html(loginRedirect())
 
-  // Mesclar com usuários registrados
+  // Mesclar com usuários registrados (em memória — persiste dentro do mesmo worker isolate)
   const registeredEmails = new Set(masterClients.map(mc => mc.email))
   for (const u of Object.values(registeredUsers)) {
     if (!u.isDemo && !registeredEmails.has(u.email)) {
@@ -389,9 +419,7 @@ app.get('/', async (c) => {
   const planDist: Record<string, number> = { starter: 0, professional: 0, enterprise: 0 }
   clients.forEach(c2 => { if (planDist[c2.plano] !== undefined) planDist[c2.plano]++ })
 
-  const token = getCookie(c, MASTER_SESSION_KEY)!
-  const loggedEmail = activeSessions[token]?.email || ''
-  const loggedUser  = masterUsers.find(u => u.email === loggedEmail)
+  const loggedUser = masterUsers.find(u => u.email === auth.email)
 
   // ── Tabela de clientes ──────────────────────────────────────────────────────
   const clientRowsHtml = clients.length === 0
@@ -1124,7 +1152,7 @@ app.get('/', async (c) => {
   </script>
   `
 
-  return c.html(masterLayout(`${totalClients} Clientes`, content, loggedUser?.name || loggedEmail))
+  return c.html(masterLayout(`${totalClients} Clientes`, content, loggedUser?.name || auth.name))
 })
 
 // ── Helper: tabela de usuários master ─────────────────────────────────────────
