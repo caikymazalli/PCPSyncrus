@@ -197,13 +197,6 @@ function masterLayout(title: string, content: string, loggedName: string = ''): 
     c.appendChild(t);
     setTimeout(() => t.remove(), 3200);
   }
-  // Fechar modais ao clicar fora
-  document.addEventListener('click', function(e) {
-    if (e.target && (e.target as Element).classList.contains('moverlay')) {
-      (e.target as Element).style.display = 'none';
-      (e.target as Element).classList.remove('open');
-    }
-  });
   </script>
 </body>
 </html>`
@@ -465,20 +458,20 @@ app.get('/', async (c) => {
               <td style="padding:10px 14px;font-size:11px;color:#374151;">${new Date(cli.criadoEm+'T12:00:00').toLocaleDateString('pt-BR')}</td>
               <td style="padding:10px 14px;text-align:center;">
                 <div style="display:flex;gap:4px;justify-content:center;">
-                  <button class="abtn" onclick="openClientDetail('${cli.id}')" style="color:#2980B9;">
+                  <button class="abtn" data-action="detail" data-id="${cli.id}" style="color:#2980B9;">
                     <i class="fas fa-eye"></i>
                     <span class="tooltip-text">Ver detalhes</span>
                   </button>
-                  <button class="abtn" onclick="openMigrateModal('${cli.id}')" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;">
+                  <button class="abtn" data-action="migrate" data-id="${cli.id}" style="color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;">
                     <i class="fas fa-exchange-alt"></i>
                     <span class="tooltip-text">Migrar plano</span>
                   </button>
-                  <button class="abtn" onclick="openObsModal('${cli.id}')" style="color:#d97706;">
+                  <button class="abtn" data-action="obs" data-id="${cli.id}" style="color:#d97706;">
                     <i class="fas fa-sticky-note"></i>
                     <span class="tooltip-text">Anotações</span>
                   </button>
-                  ${cli.status === 'active' ? `<button class="abtn" onclick="suspenderCliente('${cli.id}')" style="color:#dc2626;border-color:#fecaca;"><i class="fas fa-ban"></i><span class="tooltip-text">Suspender</span></button>` : ''}
-                  ${cli.status === 'inactive' ? `<button class="abtn" onclick="reativarCliente('${cli.id}')" style="color:#16a34a;border-color:#86efac;"><i class="fas fa-check-circle"></i><span class="tooltip-text">Reativar</span></button>` : ''}
+                  ${cli.status === 'active' ? '<button class="abtn" data-action="suspend" data-id="' + cli.id + '" style="color:#dc2626;border-color:#fecaca;"><i class="fas fa-ban"></i><span class="tooltip-text">Suspender</span></button>' : ''}
+                  ${cli.status === 'inactive' ? '<button class="abtn" data-action="reactivate" data-id="' + cli.id + '" style="color:#16a34a;border-color:#86efac;"><i class="fas fa-check-circle"></i><span class="tooltip-text">Reativar</span></button>' : ''}
                 </div>
               </td>
             </tr>`
@@ -546,13 +539,13 @@ app.get('/', async (c) => {
 
   <!-- Abas de navegação -->
   <div style="display:flex;border-bottom:2px solid #e9ecef;margin-bottom:20px;overflow-x:auto;background:white;border-radius:12px 12px 0 0;padding:0 8px;">
-    <button class="panel-tab active" id="tabClientes" onclick="switchPanelTab('clientes')">
+    <button class="panel-tab active" id="tabClientes" data-tab="clientes">
       <i class="fas fa-building" style="margin-right:6px;"></i>Clientes <span id="badgeClientes" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${clients.length}</span>
     </button>
-    <button class="panel-tab" id="tabUsuarios" onclick="switchPanelTab('usuarios')">
+    <button class="panel-tab" id="tabUsuarios" data-tab="usuarios">
       <i class="fas fa-user-shield" style="margin-right:6px;"></i>Usuários Master <span id="badgeUsuarios" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${masterUsers.length}</span>
     </button>
-    <button class="panel-tab" id="tabAuditoria" onclick="switchPanelTab('auditoria')">
+    <button class="panel-tab" id="tabAuditoria" data-tab="auditoria">
       <i class="fas fa-history" style="margin-right:6px;"></i>Auditoria <span id="badgeAuditoria" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${auditLog.length}</span>
     </button>
   </div>
@@ -575,10 +568,10 @@ app.get('/', async (c) => {
       </select>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
         <span style="font-size:12px;color:#9ca3af;" id="clientCount">${clients.length} clientes</span>
-        <button class="btn btn-secondary" onclick="exportClientCSV()" title="Exportar lista em CSV">
+        <button class="btn btn-secondary" id="btnExportCSV">
           <i class="fas fa-file-csv" style="color:#27AE60;"></i> Exportar CSV
         </button>
-        <button class="btn btn-primary" onclick="openMM('addClientModal')">
+        <button class="btn btn-primary" id="btnNovoCliente">
           <i class="fas fa-plus"></i> Novo Cliente
         </button>
       </div>
@@ -593,7 +586,7 @@ app.get('/', async (c) => {
         <div style="font-size:14px;font-weight:700;color:#1B4F72;">Usuários com acesso ao Master Admin</div>
         <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Gerencie quem pode acessar este painel restrito</div>
       </div>
-      <button class="btn btn-primary" style="background:#7c3aed;" onclick="openMM('addMasterUserModal')">
+      <button class="btn btn-primary" style="background:#7c3aed;" id="btnNovoMasterUser">
         <i class="fas fa-plus"></i> Adicionar Usuário
       </button>
     </div>
@@ -638,20 +631,20 @@ app.get('/', async (c) => {
     <div class="mmodal" style="max-width:660px;max-height:88vh;display:flex;flex-direction:column;">
       <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
         <h3 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;" id="detailTitle"><i class="fas fa-building" style="margin-right:8px;"></i>Detalhes</h3>
-        <button onclick="closeMM('clientDetailModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button onclick="closeMM('clientDetailModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
       </div>
       <div style="display:flex;border-bottom:1px solid #e9ecef;padding:0 22px;background:#f8f9fa;flex-shrink:0;overflow-x:auto;">
-        <button class="mtab active" id="detTabInfo"       onclick="switchDetTab('info')">Informações</button>
-        <button class="mtab"        id="detTabModulos"    onclick="switchDetTab('modulos')">Módulos</button>
-        <button class="mtab"        id="detTabPagamentos" onclick="switchDetTab('pagamentos')">Pagamentos</button>
-        <button class="mtab"        id="detTabAtividade"  onclick="switchDetTab('atividade')">Atividade</button>
+        <button class="mtab active" id="detTabInfo"       data-det-tab="info">Informações</button>
+        <button class="mtab"        id="detTabModulos"    data-det-tab="modulos">Módulos</button>
+        <button class="mtab"        id="detTabPagamentos" data-det-tab="pagamentos">Pagamentos</button>
+        <button class="mtab"        id="detTabAtividade"  data-det-tab="atividade">Atividade</button>
       </div>
       <div style="padding:20px 22px;overflow-y:auto;flex:1;" id="detailBody"></div>
       <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-        <button onclick="openMigrateModal(window._curCliId);closeMM('clientDetailModal')" class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;font-weight:700;">
+        <button id="btnMigrarDetalhe" class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;font-weight:700;">
           <i class="fas fa-exchange-alt"></i> Migrar Plano
         </button>
-        <button onclick="closeMM('clientDetailModal')" class="btn btn-secondary">Fechar</button>
+        <button id="btnFecharDetalhe" class="btn btn-secondary">Fechar</button>
       </div>
     </div>
   </div>
@@ -661,12 +654,12 @@ app.get('/', async (c) => {
     <div class="mmodal" style="max-width:540px;">
       <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:15px;font-weight:700;color:#7c3aed;"><i class="fas fa-exchange-alt" style="margin-right:8px;"></i>Migrar / Ajustar Plano</h3>
-        <button onclick="closeMM('migrateModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button onclick="closeMM('migrateModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
       </div>
       <div style="padding:22px;" id="migrateBody"></div>
       <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeMM('migrateModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="confirmarMigracao()" class="btn btn-primary" style="background:#7c3aed;"><i class="fas fa-check"></i> Confirmar</button>
+        <button id="btnFecharMigracao" class="btn btn-secondary">Cancelar</button>
+        <button id="btnConfirmarMigracao" class="btn btn-primary" style="background:#7c3aed;"><i class="fas fa-check"></i> Confirmar</button>
       </div>
     </div>
   </div>
@@ -676,15 +669,15 @@ app.get('/', async (c) => {
     <div class="mmodal" style="max-width:420px;">
       <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-sticky-note" style="margin-right:8px;"></i>Anotações</h3>
-        <button onclick="closeMM('obsModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button onclick="closeMM('obsModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
       </div>
       <div style="padding:22px;">
         <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;" id="obsClientName"></div>
         <textarea class="form-control" id="obsText" rows="5" placeholder="Registre observações, pendências, acordos..."></textarea>
       </div>
       <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeMM('obsModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="salvarObs()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button id="btnFecharObs" class="btn btn-secondary">Cancelar</button>
+        <button id="btnSalvarObs" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -694,7 +687,7 @@ app.get('/', async (c) => {
     <div class="mmodal" style="max-width:540px;max-height:90vh;overflow-y:auto;">
       <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:white;z-index:1;">
         <h3 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-user-plus" style="margin-right:8px;color:#7c3aed;"></i>Adicionar Cliente</h3>
-        <button onclick="closeMM('addClientModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button onclick="closeMM('addClientModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
       </div>
       <div style="padding:22px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div style="grid-column:span 2;"><label class="form-label">Razão Social *</label><input class="form-control" id="ac_empresa" placeholder="Nome da empresa"></div>
@@ -736,7 +729,7 @@ app.get('/', async (c) => {
       </div>
       <div id="addClientError" style="display:none;margin:0 22px 14px;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#dc2626;"></div>
       <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeMM('addClientModal')" class="btn btn-secondary">Cancelar</button>
+        <button id="btnFecharAddClient" class="btn btn-secondary">Cancelar</button>
         <button onclick="salvarNovoCliente()" class="btn btn-primary" id="btnSalvarCliente"><i class="fas fa-save"></i> Adicionar Cliente</button>
       </div>
     </div>
@@ -747,7 +740,7 @@ app.get('/', async (c) => {
     <div class="mmodal" style="max-width:440px;">
       <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:15px;font-weight:700;color:#7c3aed;"><i class="fas fa-user-shield" style="margin-right:8px;"></i>Adicionar Usuário Master</h3>
-        <button onclick="closeMM('addMasterUserModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button onclick="closeMM('addMasterUserModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
       </div>
       <div style="padding:22px;display:flex;flex-direction:column;gap:14px;">
         <div><label class="form-label">Nome completo *</label><input class="form-control" id="mu_name" placeholder="Nome do usuário"></div>
@@ -770,7 +763,7 @@ app.get('/', async (c) => {
         </div>
       </div>
       <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeMM('addMasterUserModal')" class="btn btn-secondary">Cancelar</button>
+        <button id="btnFecharAddMasterUser" class="btn btn-secondary">Cancelar</button>
         <button onclick="salvarNovoMasterUser()" class="btn btn-primary" style="background:#7c3aed;"><i class="fas fa-save"></i> Criar Usuário</button>
       </div>
     </div>
@@ -783,6 +776,57 @@ app.get('/', async (c) => {
   let _curCliId = null;
   window._curCliId = null;
   let _curDetTab = 'info';
+
+  // ── Event delegation central (resolve todos os onclick com aspas simples) ─────
+  document.addEventListener('click', function(e) {
+    const el = e.target;
+
+    // data-action → botões de linha da tabela de clientes e usuários master
+    const actionBtn = el.closest('[data-action]');
+    if (actionBtn) {
+      const action = actionBtn.dataset.action;
+      const id     = actionBtn.dataset.id;
+      if (action === 'detail')                  openClientDetail(id);
+      else if (action === 'migrate')            openMigrateModal(id);
+      else if (action === 'obs')                openObsModal(id);
+      else if (action === 'suspend')            suspenderCliente(id);
+      else if (action === 'reactivate')         reativarCliente(id);
+      else if (action === 'toggle-master-user') toggleMasterUser(id);
+      else if (action === 'migrate-from-detail') { openMigrateModal(id); closeMM('clientDetailModal'); }
+      return;
+    }
+
+    // data-tab → abas do painel principal
+    const tabBtn = el.closest('[data-tab]');
+    if (tabBtn) { switchPanelTab(tabBtn.dataset.tab); return; }
+
+    // data-det-tab → abas do modal de detalhes do cliente
+    const detTabBtn = el.closest('[data-det-tab]');
+    if (detTabBtn) { switchDetTab(detTabBtn.dataset.detTab); return; }
+
+    // Fechar overlay ao clicar fora do modal
+    if (el.classList && el.classList.contains('moverlay')) {
+      el.style.display = 'none'; el.classList.remove('open'); return;
+    }
+
+    // Botões com ID fixo
+    const btn = el.closest('button');
+    if (!btn) return;
+    switch (btn.id) {
+      case 'btnNovoCliente':         openMM('addClientModal'); break;
+      case 'btnExportCSV':           exportClientCSV(); break;
+      case 'btnNovoMasterUser':      openMM('addMasterUserModal'); break;
+      case 'btnMigrarDetalhe':       openMigrateModal(window._curCliId); closeMM('clientDetailModal'); break;
+      case 'btnFecharDetalhe':       closeMM('clientDetailModal'); break;
+      case 'btnFecharMigracao':      closeMM('migrateModal'); break;
+      case 'btnConfirmarMigracao':   confirmarMigracao(); break;
+      case 'btnFecharObs':           closeMM('obsModal'); break;
+      case 'btnSalvarObs':           salvarObs(); break;
+      case 'btnSalvarCliente':       salvarNovoCliente(); break;
+      case 'btnFecharAddClient':     closeMM('addClientModal'); break;
+      case 'btnFecharAddMasterUser': closeMM('addMasterUserModal'); break;
+    }
+  });
 
   // ── Abas do painel ────────────────────────────────────────────────────────────
   function switchPanelTab(tab) {
@@ -868,7 +912,7 @@ app.get('/', async (c) => {
           '<i class="fas fa-clock" style="color:#dc2626;font-size:18px;"></i>' +
           '<div><div style="font-size:13px;font-weight:700;color:#dc2626;">Trial: '+dl+' dia(s) restantes</div>' +
           '<div style="font-size:11px;color:#9ca3af;">Expira: '+cli.trialEnd+'</div></div>' +
-          '<button onclick="openMigrateModal(\''+cli.id+'\');closeMM(\'clientDetailModal\')" class="btn btn-sm" style="margin-left:auto;background:#7c3aed;color:white;border:none;"><i class="fas fa-exchange-alt"></i> Migrar</button></div>';
+          '<button data-action="migrate-from-detail" data-id="'+cli.id+'" class="btn btn-sm" style="margin-left:auto;background:#7c3aed;color:white;border:none;"><i class="fas fa-exchange-alt"></i> Migrar</button></div>';
       }
     } else if (tab === 'modulos') {
       const allMods = ['Ordens','Planejamento','Estoque','Qualidade','Suprimentos','Engenharia','Apontamento','Importação','Recursos'];
@@ -1113,28 +1157,29 @@ app.get('/', async (c) => {
   // ── Exportar CSV ──────────────────────────────────────────────────────────────
   function exportClientCSV() {
     if (masterClientsData.length === 0) { showToast('Nenhum cliente para exportar.', 'error'); return; }
-    let csv = 'Empresa;Responsável;E-mail;Telefone;Plano;Status;Valor/mês;Empresas;Usuários;Criado em;Trial Expira\\n';
-    masterClientsData.forEach(c => {
-      const pl = plansData[c.plano];
-      const fields = [
-        '"'+c.empresa+'"', '"'+(c.responsavel||'')+'"', '"'+(c.email||'')+'"', '"'+(c.tel||'')+'"',
-        '"'+(pl?.label||c.plano)+'"', '"'+c.status+'"',
-        '"R$ '+(c.valor||0).toFixed(2)+'"', '"'+c.empresas+'"', '"'+c.usuarios+'"',
-        '"'+c.criadoEm+'"', '"'+(c.trialEnd||'—')+'"'
-      ];
-      csv += fields.join(';') + '\\n';
+    var NL = String.fromCharCode(13, 10);
+    var rows = ['Empresa;Responsavel;E-mail;Telefone;Plano;Status;Valor/mes;Empresas;Usuarios;Criado em;Trial Expira'];
+    masterClientsData.forEach(function(c) {
+      var pl = plansData[c.plano];
+      var v = [
+        c.empresa, c.responsavel||'', c.email||'', c.tel||'',
+        pl ? pl.label : c.plano, c.status,
+        'R$ '+(c.valor||0).toFixed(2), c.empresas, c.usuarios,
+        c.criadoEm, c.trialEnd||'sem trial'
+      ].map(function(x) { return '"'+String(x).replace(/"/g,'""')+'"'; });
+      rows.push(v.join(';'));
     });
-    const BOM = '\\uFEFF'; // UTF-8 BOM para Excel reconhecer acentos
-    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    var BOM = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    var blob = new Blob([BOM, rows.join(NL) + NL], { type: 'text/csv;charset=utf-8;' });
+    var url  = URL.createObjectURL(blob);
+    var a = document.createElement('a');
     a.href = url;
     a.download = 'clientes_pcpsyncrus_' + new Date().toISOString().split('T')[0] + '.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('✅ CSV exportado com sucesso!', 'success');
+    showToast('CSV exportado com sucesso!', 'success');
   }
 
   // ── Modal helpers ─────────────────────────────────────────────────────────────
@@ -1189,7 +1234,7 @@ function buildMasterUsersTable(users: typeof masterUsers): string {
       <td style="padding:11px 14px;font-size:12px;color:#374151;">${new Date(u.createdAt+'T12:00:00').toLocaleDateString('pt-BR')}</td>
       <td style="padding:11px 14px;font-size:12px;color:#6c757d;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : '— nunca —'}</td>
       <td style="padding:11px 14px;text-align:center;">
-        <button onclick="toggleMasterUser('${u.id}')" style="font-size:11px;font-weight:600;border-radius:6px;padding:5px 12px;cursor:pointer;border:1px solid ${u.active?'#fecaca':'#86efac'};background:${u.active?'#fef2f2':'#f0fdf4'};color:${u.active?'#dc2626':'#16a34a'};">
+        <button data-action="toggle-master-user" data-id="${u.id}" style="font-size:11px;font-weight:600;border-radius:6px;padding:5px 12px;cursor:pointer;border:1px solid ${u.active?'#fecaca':'#86efac'};background:${u.active?'#fef2f2':'#f0fdf4'};color:${u.active?'#dc2626':'#16a34a'};">
           <i class="fas ${u.active?'fa-ban':'fa-check'}"></i> ${u.active?'Desativar':'Ativar'}
         </button>
       </td>
