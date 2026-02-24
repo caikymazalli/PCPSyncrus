@@ -15,6 +15,12 @@ app.get('/', (c) => {
   const products         = (mockData as any).products          || []
   const serialNumbers    = (mockData as any).serialNumbers     || []
   const kardexMovements  = (mockData as any).kardexMovements   || []
+  const transferencias   = (mockData as any).transferencias    || []
+
+  // Contadores de transferências (baseados em dados reais)
+  const transfPendentes   = transferencias.filter((t: any) => t.status === 'pendente').length
+  const transfEmTransito  = transferencias.filter((t: any) => t.status === 'em_transito').length
+  const transfConcluidas  = transferencias.filter((t: any) => t.status === 'concluida').length
 
   const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
     critical:          { label: 'Crítico',         color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle' },
@@ -126,15 +132,14 @@ app.get('/', (c) => {
       <button class="tab-btn active" onclick="switchTab('tabEstoqueGeral','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Estoque Geral</button>
       <button class="tab-btn" onclick="switchTab('tabProdutosAcabados','estoque')"><i class="fas fa-box-open" style="margin-right:6px;"></i>Produtos Acabados</button>
       <button class="tab-btn" onclick="switchTab('tabSeparacao','estoque')"><i class="fas fa-dolly" style="margin-right:6px;"></i>Separação
-        <span style="background:#E67E22;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${separationOrders.filter((s: any) => s.status === 'pending').length}</span>
+        ${separationOrders.filter((s: any) => s.status === 'pending').length > 0 ? `<span style="background:#E67E22;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${separationOrders.filter((s: any) => s.status === 'pending').length}</span>` : ''}
       </button>
       <button class="tab-btn" onclick="switchTab('tabBaixas','estoque')"><i class="fas fa-minus-circle" style="margin-right:6px;"></i>Baixas</button>
       <button class="tab-btn" onclick="switchTab('tabKardex','estoque')"><i class="fas fa-history" style="margin-right:6px;"></i>Kardex
-        <span style="background:#2980B9;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${kardexMovements.length}</span>
+        ${kardexMovements.length > 0 ? `<span style="background:#2980B9;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${kardexMovements.length}</span>` : ''}
       </button>
       <button class="tab-btn" onclick="switchTab('tabAlmoxarifados','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Almoxarifados</button>
       <button class="tab-btn" onclick="switchTab('tabTransferencias','estoque')"><i class="fas fa-exchange-alt" style="margin-right:6px;"></i>Transferências
-        <span style="background:#7c3aed;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">2</span>
       </button>
     </div>
 
@@ -583,29 +588,36 @@ app.get('/', (c) => {
       <!-- KPIs Transferências -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px;">
         <div class="kpi-card" style="border-left:3px solid #E67E22;">
-          <div style="font-size:24px;font-weight:800;color:#E67E22;">2</div>
+          <div style="font-size:24px;font-weight:800;color:#E67E22;">${transfPendentes}</div>
           <div style="font-size:12px;color:#6c757d;margin-top:4px;">Pendentes</div>
         </div>
         <div class="kpi-card" style="border-left:3px solid #2980B9;">
-          <div style="font-size:24px;font-weight:800;color:#2980B9;">1</div>
+          <div style="font-size:24px;font-weight:800;color:#2980B9;">${transfEmTransito}</div>
           <div style="font-size:12px;color:#6c757d;margin-top:4px;">Em Trânsito</div>
         </div>
         <div class="kpi-card" style="border-left:3px solid #27AE60;">
-          <div style="font-size:24px;font-weight:800;color:#27AE60;">5</div>
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">${transfConcluidas}</div>
           <div style="font-size:12px;color:#6c757d;margin-top:4px;">Concluídas</div>
         </div>
       </div>
 
       <div class="card" style="overflow:hidden;">
+        ${transferencias.length === 0 ? `
+        <div style="padding:48px 20px;text-align:center;color:#9ca3af;">
+          <i class="fas fa-exchange-alt" style="font-size:36px;margin-bottom:14px;display:block;opacity:0.25;"></i>
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px;color:#6c757d;">Nenhuma transferência registrada</div>
+          <div style="font-size:13px;margin-bottom:16px;">Crie uma transferência para movimentar itens entre almoxarifados.</div>
+          <button class="btn btn-primary btn-sm" onclick="openModal('novaTransferenciaModal')">
+            <i class="fas fa-plus"></i> Nova Transferência
+          </button>
+        </div>` : `
         <div class="table-wrapper">
           <table>
             <thead><tr>
               <th>Nº Transfer.</th><th>Item</th><th>Qtd</th><th>Origem</th><th>Destino</th><th>Solicitante</th><th>Separador</th><th>Custodiante</th><th>Data</th><th>Status</th><th>Ações</th>
             </tr></thead>
             <tbody>
-              ${[
-                // Transferências serão geradas dinamicamente quando houver filiais cadastradas
-              ].map(t => `
+              ${transferencias.map((t: any) => `
               <tr>
                 <td><span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${t.id}</span></td>
                 <td>
@@ -616,10 +628,10 @@ app.get('/', (c) => {
                 <td style="font-size:12px;"><i class="fas fa-arrow-right" style="color:#6c757d;margin-right:4px;"></i>${t.origem}</td>
                 <td style="font-size:12px;"><i class="fas fa-map-marker-alt" style="color:#27AE60;margin-right:4px;"></i>${t.destino}</td>
                 <td style="font-size:12px;color:#374151;"><i class="fas fa-user" style="color:#9ca3af;margin-right:4px;"></i>${t.solicitante}</td>
-                <td style="font-size:12px;color:#374151;"><i class="fas fa-user-cog" style="color:#9ca3af;margin-right:4px;"></i>${t.separador}</td>
-                <td style="font-size:12px;color:#374151;"><i class="fas fa-shield-alt" style="color:#9ca3af;margin-right:4px;"></i>${t.custodio}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-user-cog" style="color:#9ca3af;margin-right:4px;"></i>${t.separador || '—'}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-shield-alt" style="color:#9ca3af;margin-right:4px;"></i>${t.custodio || '—'}</td>
                 <td style="font-size:12px;color:#9ca3af;">${new Date(t.date+'T12:00:00').toLocaleDateString('pt-BR')}</td>
-                <td><span class="badge" style="background:${t.sb};color:${t.sc};">${t.status==='pendente'?'Pendente':t.status==='em_transito'?'Em Trânsito':'Concluída'}</span></td>
+                <td><span class="badge" style="background:${t.sb||'#fff7ed'};color:${t.sc||'#d97706'};">${t.status==='pendente'?'Pendente':t.status==='em_transito'?'Em Trânsito':'Concluída'}</span></td>
                 <td>
                   <div style="display:flex;gap:4px;">
                     <button class="btn btn-secondary btn-sm" onclick="openTransfDetail('${t.id}')"><i class="fas fa-eye"></i></button>
@@ -629,7 +641,7 @@ app.get('/', (c) => {
               </tr>`).join('')}
             </tbody>
           </table>
-        </div>
+        </div>`}
       </div>
     </div>
 

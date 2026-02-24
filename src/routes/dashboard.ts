@@ -60,7 +60,7 @@ app.get('/', (c) => {
           <i class="fas fa-clipboard-list" style="color:#1B4F72;font-size:18px;"></i>
         </div>
       </div>
-      <div class="kpi-trend" style="color:#27AE60;"><i class="fas fa-arrow-up"></i> +12% vs mês ant.</div>
+      <div class="kpi-trend" style="color:${kpis.totalOrders > 0 ? '#27AE60' : '#9ca3af'};"><i class="fas ${kpis.totalOrders > 0 ? 'fa-arrow-up' : 'fa-minus'}"></i> ${kpis.totalOrders > 0 ? 'Ordens registradas' : 'Sem ordens ainda'}</div>
     </div>
 
     <div class="kpi-card">
@@ -175,12 +175,19 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <!-- Stock Status Row (NEW) -->
+  <!-- Stock Status Row -->
   <div class="card" style="padding:20px;margin-bottom:24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
       <h3 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0;"><i class="fas fa-warehouse" style="margin-right:8px;color:#E67E22;"></i>Situação do Estoque</h3>
       <a href="/estoque" class="btn btn-secondary btn-sm" title="Ver estoque completo">Ver Estoque <i class="fas fa-arrow-right"></i></a>
     </div>
+    ${stockItems.length === 0 ? `
+    <div style="text-align:center;padding:28px 20px;color:#9ca3af;">
+      <i class="fas fa-warehouse" style="font-size:32px;margin-bottom:10px;display:block;opacity:0.25;"></i>
+      <div style="font-size:14px;font-weight:600;color:#6c757d;margin-bottom:4px;">Nenhum item de estoque cadastrado</div>
+      <div style="font-size:12px;margin-bottom:14px;">Adicione itens para visualizar a situação do estoque.</div>
+      <a href="/estoque" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Cadastrar Itens</a>
+    </div>` : `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
       ${[
         { key: 'critical',          label: 'Crítico',          color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle', count: stockStatusSummary.critical },
@@ -197,7 +204,7 @@ app.get('/', (c) => {
       </a>`).join('')}
     </div>
     <!-- Mini stock status chart -->
-    <canvas id="stockStatusChart" style="max-height:130px;"></canvas>
+    <canvas id="stockStatusChart" style="max-height:130px;"></canvas>`}
   </div>
 
   <!-- Bottom Row -->
@@ -382,28 +389,31 @@ app.get('/', (c) => {
     }
   });
 
-  // Stock Status Chart (new)
-  const ssCtx = document.getElementById('stockStatusChart').getContext('2d');
-  new Chart(ssCtx, {
-    type: 'bar',
-    data: {
-      labels: ['Crítico', 'Normal', 'Nec. Compra', 'Nec. Manufatura'],
-      datasets: [{
-        label: 'Itens',
-        data: [${stockStatusSummary.critical||0}, ${stockStatusSummary.normal||0}, ${stockStatusSummary.purchase_needed||0}, ${stockStatusSummary.manufacture_needed||0}],
-        backgroundColor: ['#fca5a5', '#86efac', '#fcd34d', '#c4b5fd'],
-        borderColor: ['#dc2626', '#16a34a', '#d97706', '#7c3aed'],
-        borderWidth: 1.5,
-        borderRadius: 6,
-      }]
-    },
-    options: {
-      responsive: true,
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
-    }
-  });
+  // Stock Status Chart
+  const ssEl = document.getElementById('stockStatusChart');
+  if (ssEl) {
+    const ssCtx = ssEl.getContext('2d');
+    new Chart(ssCtx, {
+      type: 'bar',
+      data: {
+        labels: ['Crítico', 'Normal', 'Nec. Compra', 'Nec. Manufatura'],
+        datasets: [{
+          label: 'Itens',
+          data: [${stockStatusSummary.critical||0}, ${stockStatusSummary.normal||0}, ${stockStatusSummary.purchase_needed||0}, ${stockStatusSummary.manufacture_needed||0}],
+          backgroundColor: ['#fca5a5', '#86efac', '#fcd34d', '#c4b5fd'],
+          borderColor: ['#dc2626', '#16a34a', '#d97706', '#7c3aed'],
+          borderWidth: 1.5,
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      }
+    });
+  }
   </script>
   `
 
