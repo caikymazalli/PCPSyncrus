@@ -19,6 +19,7 @@ import { welcomePage } from './welcome'
 import cadastrosApp from './routes/cadastros'
 import suprimentosApp from './routes/suprimentos'
 import masterApp from './routes/master'
+import authApp from './routes/auth'
 import { newUserDashboard } from './newuser'
 import { loginUser, registerUser, getSession, getSessionAsync, sessions } from './userStore'
 
@@ -201,6 +202,7 @@ app.route('/estoque', estoqueApp)
 app.route('/cadastros', cadastrosApp)
 app.route('/suprimentos', suprimentosApp)
 app.route('/master', masterApp)
+app.route('/', authApp)
 
 // ── 404 ────────────────────────────────────────────────────────────────────────
 app.notFound((c) => {

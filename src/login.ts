@@ -88,7 +88,7 @@ export function loginPage(errorMsg?: string): string {
           <div style="margin-bottom:28px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <label style="font-size:13px;font-weight:600;color:#374151;">Senha</label>
-              <a href="#" style="font-size:12px;color:#2980B9;text-decoration:none;">Esqueceu a senha?</a>
+              <a href="/forgot-password" style="font-size:12px;color:#2980B9;text-decoration:none;">Esqueceu a senha?</a>
             </div>
             <div style="position:relative;">
               <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;"></i>

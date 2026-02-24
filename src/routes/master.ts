@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
-import { registeredUsers, DEMO_USERS } from '../userStore'
+import { registeredUsers, DEMO_USERS, loadAllUsersFromDB } from '../userStore'
 
-const app = new Hono()
+const app = new Hono<{ Bindings: { DB: D1Database } }>()
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
 const MASTER_SESSION_KEY = 'master_session'
@@ -377,26 +377,54 @@ app.get('/', async (c) => {
   await ensureInit()
   const auth = await isAuthenticated(c)
   if (!auth) return c.html(loginRedirect())
+  const db = c.env?.DB || null
 
-  // Mesclar com usuários registrados (em memória — persiste dentro do mesmo worker isolate)
-  const registeredEmails = new Set(masterClients.map(mc => mc.email))
-  for (const u of Object.values(registeredUsers)) {
-    if (!u.isDemo && !registeredEmails.has(u.email)) {
-      registeredEmails.add(u.email)
-      masterClients.push({
-        id: u.userId,
-        empresa: u.empresa, fantasia: u.empresa,
-        cnpj: '', setor: u.setor, porte: u.porte,
-        responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
-        email: u.email, tel: u.tel,
-        plano: u.plano, billing: 'trial', valor: 0,
-        status: 'trial',
-        trialStart: u.trialStart, trialEnd: u.trialEnd,
-        empresas: 1, usuarios: 1, plantas: 0,
-        criadoEm: u.createdAt,
-        ultimoAcesso: u.lastLogin || u.createdAt,
-        modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
-      })
+  // Carregar usuários do D1 (garante lista sempre atualizada após deploy/cold-start)
+  if (db) {
+    try {
+      const dbUsers = await loadAllUsersFromDB(db)
+      const registeredEmails = new Set(masterClients.map(mc => mc.email))
+      for (const u of dbUsers) {
+        if (!u.isDemo && !registeredEmails.has(u.email)) {
+          registeredEmails.add(u.email)
+          masterClients.push({
+            id: u.userId,
+            empresa: u.empresa, fantasia: u.empresa,
+            cnpj: '', setor: u.setor, porte: u.porte,
+            responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
+            email: u.email, tel: u.tel,
+            plano: u.plano, billing: 'trial', valor: 0,
+            status: 'trial',
+            trialStart: u.trialStart, trialEnd: u.trialEnd,
+            empresas: 1, usuarios: 1, plantas: 0,
+            criadoEm: u.createdAt,
+            ultimoAcesso: u.lastLogin || u.createdAt,
+            modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
+          })
+        }
+      }
+    } catch {}
+  } else {
+    // Fallback: usar memória (dev local sem D1)
+    const registeredEmails = new Set(masterClients.map(mc => mc.email))
+    for (const u of Object.values(registeredUsers)) {
+      if (!u.isDemo && !registeredEmails.has(u.email)) {
+        registeredEmails.add(u.email)
+        masterClients.push({
+          id: u.userId,
+          empresa: u.empresa, fantasia: u.empresa,
+          cnpj: '', setor: u.setor, porte: u.porte,
+          responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
+          email: u.email, tel: u.tel,
+          plano: u.plano, billing: 'trial', valor: 0,
+          status: 'trial',
+          trialStart: u.trialStart, trialEnd: u.trialEnd,
+          empresas: 1, usuarios: 1, plantas: 0,
+          criadoEm: u.createdAt,
+          ultimoAcesso: u.lastLogin || u.createdAt,
+          modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
+        })
+      }
     }
   }
 
