@@ -50,6 +50,7 @@ export interface TenantData {
   bomItems: any[]
   productSuppliers: any[]
   workOrders: any[]
+  routes: any[]
 }
 
 export interface RegisteredUser {
@@ -113,6 +114,7 @@ tenants[demoUserId] = {
   bomItems:          JSON.parse(JSON.stringify(_md.bomItems          || [])),
   productSuppliers:  JSON.parse(JSON.stringify(_md.productSuppliers  || [])),
   workOrders:        JSON.parse(JSON.stringify(_md.workOrders        || [])),
+  routes:            JSON.parse(JSON.stringify(_md.routes            || [])),
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

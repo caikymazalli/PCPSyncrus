@@ -127,44 +127,71 @@ app.get('/', (c) => {
 
     <!-- Roteiros Tab -->
     <div class="tab-content" id="tabRoteiros">
+      <!-- Header da aba -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1B4F72;">Roteiros de Fabricação</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:2px;">Sequência de operações para fabricação de cada produto</div>
+        </div>
+        <button class="btn btn-primary" onclick="openNovoRoteiro()">
+          <i class="fas fa-plus"></i> Novo Roteiro
+        </button>
+      </div>
+
+      ${routes.length === 0 ? `
+      <!-- Estado vazio -->
+      <div class="card" style="padding:56px 20px;text-align:center;color:#9ca3af;">
+        <i class="fas fa-route" style="font-size:40px;margin-bottom:16px;display:block;opacity:0.2;"></i>
+        <div style="font-size:16px;font-weight:600;color:#6c757d;margin-bottom:6px;">Nenhum roteiro cadastrado</div>
+        <div style="font-size:13px;margin-bottom:20px;">Crie roteiros para definir a sequência de operações de fabricação de cada produto.</div>
+        <button class="btn btn-primary" onclick="openNovoRoteiro()">
+          <i class="fas fa-plus"></i> Criar Primeiro Roteiro
+        </button>
+      </div>` : `
+      <!-- Lista de roteiros -->
       <div style="display:flex;flex-direction:column;gap:20px;">
-        ${routes.map(r => `
+        ${routes.map((r: any) => `
         <div class="card" style="overflow:hidden;">
           <div style="padding:16px 20px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(to right,#f8fafc,#fff);">
             <div>
               <div style="font-size:15px;font-weight:700;color:#1B4F72;">${r.name}</div>
-              <div style="font-size:12px;color:#9ca3af;margin-top:2px;"><i class="fas fa-box" style="margin-right:4px;"></i>${r.productName} (${r.productCode})</div>
+              <div style="font-size:12px;color:#9ca3af;margin-top:2px;"><i class="fas fa-box" style="margin-right:4px;"></i>${r.productName || '—'} ${r.productCode ? '(' + r.productCode + ')' : ''}</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
-              <span style="font-size:12px;color:#6c757d;">${r.steps.length} operações</span>
-              <span style="font-size:12px;color:#27AE60;font-weight:700;"><i class="fas fa-clock" style="margin-right:4px;"></i>${r.steps.reduce((acc, s) => acc + s.standardTime, 0)} min total</span>
-              <button class="btn btn-secondary btn-sm" onclick="openModal('novoRoteiroModal')"><i class="fas fa-edit"></i></button>
+              <span style="font-size:12px;color:#6c757d;">${(r.steps||[]).length} operação(ões)</span>
+              <span style="font-size:12px;color:#27AE60;font-weight:700;"><i class="fas fa-clock" style="margin-right:4px;"></i>${(r.steps||[]).reduce((acc: number, s: any) => acc + (s.standardTime||0), 0)} min total</span>
+              <button class="btn btn-danger btn-sm" onclick="deleteRoteiro('${r.id}')" title="Excluir roteiro"><i class="fas fa-trash"></i></button>
             </div>
           </div>
           <div style="padding:16px 20px;">
+            ${(r.steps||[]).length === 0 ? `
+            <div style="text-align:center;padding:16px;color:#9ca3af;font-size:13px;">
+              <i class="fas fa-list-ol" style="margin-right:6px;opacity:0.4;"></i>Nenhuma operação cadastrada neste roteiro.
+            </div>` : `
             <div style="display:flex;gap:0;align-items:center;overflow-x:auto;padding-bottom:8px;">
-              ${r.steps.map((s, idx) => `
+              ${(r.steps||[]).map((s: any, idx: number) => `
               <div style="display:flex;align-items:center;">
-                <div style="min-width:150px;background:#f8f9fa;border-radius:8px;padding:12px;border:1px solid #e9ecef;">
+                <div style="min-width:155px;background:#f8f9fa;border-radius:8px;padding:12px;border:1px solid #e9ecef;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <div style="width:22px;height:22px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${s.order}</div>
                     <div style="font-size:12px;font-weight:700;color:#1B4F72;">${s.operation}</div>
                   </div>
                   <div style="font-size:11px;color:#9ca3af;"><i class="fas fa-clock" style="margin-right:3px;"></i>${s.standardTime} min</div>
+                  ${s.machine ? `<div style="font-size:10px;color:#2980B9;margin-top:3px;"><i class="fas fa-cog" style="margin-right:3px;"></i>${s.machine}</div>` : ''}
                   <div style="font-size:10px;margin-top:4px;">
                     <span class="chip" style="background:#e8f4fd;color:#1B4F72;font-size:10px;">${s.resourceType === 'machine' ? '⚙️ Máquina' : s.resourceType === 'workbench' ? '🔧 Bancada' : '👤 Manual'}</span>
                   </div>
                 </div>
-                ${idx < r.steps.length - 1 ? '<div style="width:28px;height:2px;background:#d1d5db;flex-shrink:0;"></div><div style="color:#9ca3af;flex-shrink:0;">›</div><div style="width:4px;height:2px;background:#d1d5db;flex-shrink:0;"></div>' : ''}
+                ${idx < (r.steps||[]).length - 1 ? '<div style="width:24px;height:2px;background:#d1d5db;flex-shrink:0;"></div><div style="color:#9ca3af;flex-shrink:0;font-size:14px;">›</div><div style="width:4px;height:2px;background:#d1d5db;flex-shrink:0;"></div>' : ''}
               </div>`).join('')}
-            </div>
+            </div>`}
           </div>
         </div>`).join('')}
-      </div>
+      </div>`}
     </div>
   </div>
 
-  <!-- Novo Produto Modal -->
+  <!-- Modal: Novo Produto -->
   <div class="modal-overlay" id="novoProdutoModal">
     <div class="modal">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
@@ -213,9 +240,199 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Modal: Novo Roteiro -->
+  <div class="modal-overlay" id="novoRoteiroModal">
+    <div class="modal" style="max-width:700px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-route" style="margin-right:8px;color:#27AE60;"></i>Novo Roteiro de Fabricação</h3>
+        <button onclick="closeModal('novoRoteiroModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;max-height:70vh;overflow-y:auto;">
+
+        <!-- Dados gerais -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Nome do Roteiro *</label>
+            <input class="form-control" type="text" id="rot_nome" placeholder="Ex: Roteiro Usinagem – Eixo Principal">
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Produto *</label>
+            <select class="form-control" id="rot_produto">
+              <option value="">— Selecione o produto —</option>
+              ${products.map((p: any) => `<option value="${p.id || p.code}" data-code="${p.code}" data-name="${p.name}">${p.name} (${p.code})</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Versão</label>
+            <input class="form-control" type="text" id="rot_versao" placeholder="Ex: 1.0" value="1.0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-control" id="rot_status">
+              <option value="active">Ativo</option>
+              <option value="draft">Rascunho</option>
+              <option value="obsolete">Obsoleto</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Observações</label>
+            <textarea class="form-control" id="rot_obs" rows="2" placeholder="Informações adicionais sobre o roteiro..."></textarea>
+          </div>
+        </div>
+
+        <!-- Operações / Passos -->
+        <div style="border-top:1px solid #f1f3f5;padding-top:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-list-ol" style="margin-right:6px;color:#27AE60;"></i>Operações</div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addRoteiroStep()">
+              <i class="fas fa-plus"></i> Adicionar Operação
+            </button>
+          </div>
+          <div id="roteiroStepsContainer" style="display:flex;flex-direction:column;gap:8px;">
+            <!-- Passos serão adicionados dinamicamente -->
+          </div>
+          <div id="roteiroStepsEmpty" style="text-align:center;padding:20px;color:#9ca3af;font-size:13px;border:2px dashed #e9ecef;border-radius:8px;">
+            <i class="fas fa-plus-circle" style="font-size:22px;margin-bottom:8px;display:block;opacity:0.4;"></i>
+            Clique em "Adicionar Operação" para inserir as etapas do roteiro.
+          </div>
+        </div>
+
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <span id="rotStepCount" style="font-size:12px;color:#9ca3af;">0 operação(ões)</span>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeModal('novoRoteiroModal')" class="btn btn-secondary">Cancelar</button>
+          <button onclick="salvarRoteiro()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Roteiro</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
   const allBOM = ${JSON.stringify(bomItems)};
   const allProducts = ${JSON.stringify(products)};
+
+  // ── Roteiro: abrir modal ──────────────────────────────────────────────────────
+  function openNovoRoteiro() {
+    // Limpar campos
+    document.getElementById('rot_nome').value = '';
+    document.getElementById('rot_produto').value = '';
+    document.getElementById('rot_versao').value = '1.0';
+    document.getElementById('rot_status').value = 'active';
+    document.getElementById('rot_obs').value = '';
+    document.getElementById('roteiroStepsContainer').innerHTML = '';
+    document.getElementById('roteiroStepsEmpty').style.display = 'block';
+    document.getElementById('rotStepCount').textContent = '0 operação(ões)';
+    _roteiroStepCount = 0;
+    openModal('novoRoteiroModal');
+  }
+
+  let _roteiroStepCount = 0;
+
+  function addRoteiroStep() {
+    _roteiroStepCount++;
+    const idx = _roteiroStepCount;
+    document.getElementById('roteiroStepsEmpty').style.display = 'none';
+    document.getElementById('rotStepCount').textContent = idx + ' operação(ões)';
+    const container = document.getElementById('roteiroStepsContainer');
+    const div = document.createElement('div');
+    div.id = 'step_' + idx;
+    div.style.cssText = 'background:#f8f9fa;border-radius:8px;padding:12px 14px;border:1px solid #e9ecef;';
+    div.innerHTML = \`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">\${idx}</div>
+        <span style="font-size:13px;font-weight:700;color:#374151;flex:1;">Operação \${idx}</span>
+        <button type="button" onclick="removeStep(\${idx})" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:14px;" title="Remover operação"><i class="fas fa-times"></i></button>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;display:block;">Nome da Operação *</label>
+          <input class="form-control" id="step_op_\${idx}" type="text" placeholder="Ex: Torneamento, Fresamento..." style="font-size:12px;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;display:block;">Tempo (min) *</label>
+          <input class="form-control" id="step_time_\${idx}" type="number" placeholder="0" min="0" step="0.5" style="font-size:12px;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;display:block;">Tipo de Recurso</label>
+          <select class="form-control" id="step_res_\${idx}" style="font-size:12px;">
+            <option value="machine">⚙️ Máquina</option>
+            <option value="workbench">🔧 Bancada</option>
+            <option value="manual">👤 Manual</option>
+          </select>
+        </div>
+        <div style="grid-column:span 3;">
+          <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;display:block;">Máquina / Centro de Trabalho</label>
+          <input class="form-control" id="step_maq_\${idx}" type="text" placeholder="Ex: Torno CNC-01, Fresadora FA-02..." style="font-size:12px;">
+        </div>
+      </div>
+    \`;
+    container.appendChild(div);
+  }
+
+  function removeStep(idx) {
+    const el = document.getElementById('step_' + idx);
+    if (el) el.remove();
+    const remaining = document.querySelectorAll('[id^="step_"]').length;
+    document.getElementById('rotStepCount').textContent = remaining + ' operação(ões)';
+    if (remaining === 0) document.getElementById('roteiroStepsEmpty').style.display = 'block';
+  }
+
+  async function salvarRoteiro() {
+    const nome    = document.getElementById('rot_nome')?.value?.trim() || '';
+    const prodEl  = document.getElementById('rot_produto');
+    const prodId  = prodEl?.value || '';
+    const prodOpt = prodEl?.options[prodEl.selectedIndex];
+    const productCode = prodOpt?.dataset?.code || '';
+    const productName = prodOpt?.dataset?.name || '';
+    const versao  = document.getElementById('rot_versao')?.value?.trim() || '1.0';
+    const status  = document.getElementById('rot_status')?.value || 'active';
+    const obs     = document.getElementById('rot_obs')?.value?.trim() || '';
+
+    if (!nome)   { showToast('Informe o nome do roteiro!', 'error'); return; }
+    if (!prodId) { showToast('Selecione o produto!', 'error'); return; }
+
+    // Coletar passos
+    const stepEls = document.querySelectorAll('[id^="step_op_"]');
+    const steps = [];
+    let valid = true;
+    stepEls.forEach((el, i) => {
+      const idxStr = el.id.replace('step_op_', '');
+      const op    = el.value?.trim() || '';
+      const time  = parseFloat(document.getElementById('step_time_' + idxStr)?.value || '0') || 0;
+      const res   = document.getElementById('step_res_' + idxStr)?.value || 'manual';
+      const maq   = document.getElementById('step_maq_' + idxStr)?.value?.trim() || '';
+      if (!op) { showToast('Preencha o nome de todas as operações!', 'error'); valid = false; return; }
+      steps.push({ order: i + 1, operation: op, standardTime: time, resourceType: res, machine: maq });
+    });
+    if (!valid) return;
+
+    try {
+      const res = await fetch('/engenharia/api/route/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, productId: prodId, productCode, productName, version: versao, status, notes: obs, steps })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Roteiro criado com sucesso!');
+        closeModal('novoRoteiroModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao salvar roteiro', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function deleteRoteiro(id) {
+    if (!confirm('Excluir este roteiro? Esta ação não pode ser desfeita.')) return;
+    try {
+      const res = await fetch('/engenharia/api/route/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Roteiro excluído!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
 
   function selectBOMProduct(code) {
     // Update active button
@@ -354,5 +571,76 @@ app.delete('/api/bom/:id', async (c) => {
 })
 
 app.get('/api/boms', (c) => ok(c, { boms: getCtxTenant(c).bomItems }))
+
+// ── API: Roteiros ─────────────────────────────────────────────────────────────
+
+app.post('/api/route/create', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.productId)
+    return err(c, 'Nome e produto são obrigatórios')
+
+  const id = genId('rot')
+  const now = new Date().toISOString()
+  const route = {
+    id,
+    name:        body.name,
+    productId:   body.productId,
+    productCode: body.productCode || '',
+    productName: body.productName || '',
+    version:     body.version     || '1.0',
+    status:      body.status      || 'active',
+    notes:       body.notes       || '',
+    steps:       Array.isArray(body.steps) ? body.steps : [],
+    createdAt:   now,
+    updatedAt:   now,
+  }
+
+  // Persist in tenant memory
+  if (!tenant.routes) (tenant as any).routes = []
+  tenant.routes.push(route)
+
+  // Persist to D1 if available
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`
+        INSERT INTO work_instructions (id, user_id, title, code, version, status, product_id, operation, estimated_time, steps, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id, userId, route.name, route.productCode, route.version, route.status,
+        route.productId, 'roteiro', route.steps.reduce((acc: number, s: any) => acc + (s.standardTime || 0), 0),
+        JSON.stringify(route.steps), now, now
+      ).run()
+    } catch {
+      // D1 unavailable — kept in memory
+    }
+  }
+
+  return ok(c, { route })
+})
+
+app.delete('/api/route/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+
+  const idx = (tenant.routes || []).findIndex((r: any) => r.id === id)
+  if (idx === -1) return err(c, 'Roteiro não encontrado', 404)
+  tenant.routes.splice(idx, 1)
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?')
+        .bind(id, userId).run()
+    } catch {}
+  }
+
+  return ok(c)
+})
+
+app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
 
 export default app
