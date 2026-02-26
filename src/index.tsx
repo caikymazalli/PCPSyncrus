@@ -21,7 +21,7 @@ import suprimentosApp from './routes/suprimentos'
 import masterApp from './routes/master'
 import authApp from './routes/auth'
 import { newUserDashboard } from './newuser'
-import { loginUser, registerUser, getSession, getSessionAsync, sessions } from './userStore'
+import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getEffectiveTenantId } from './userStore'
 
 type Bindings = {
   DB: D1Database
@@ -35,11 +35,19 @@ const SESSION_MAX_AGE = 60 * 60 * 8
 // Static files
 app.use('/static/*', serveStatic({ root: './public' }))
 
-// ── Middleware: load session from D1 if not in memory ──────────────────────────
+// ── Middleware: load session from D1 if not in memory + hydrate tenant ─────────
 app.use('*', async (c, next) => {
   const token = getCookie(c, SESSION_COOKIE)
-  if (token && !getSession(token) && c.env?.DB) {
-    await getSessionAsync(token, c.env.DB)
+  if (token && c.env?.DB) {
+    let session = getSession(token)
+    if (!session) {
+      session = await getSessionAsync(token, c.env.DB)
+    }
+    // Hydrate tenant data from D1 (cached 30s per worker instance)
+    if (session && !session.isDemo) {
+      const tenantId = getEffectiveTenantId(session)
+      await loadTenantFromDB(tenantId, c.env.DB)
+    }
   }
   await next()
 })

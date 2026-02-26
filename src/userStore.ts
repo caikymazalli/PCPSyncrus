@@ -455,3 +455,50 @@ export async function cleanExpiredSessions(db: D1Database): Promise<void> {
     await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Date.now()).run()
   } catch {}
 }
+
+// ── Tenant hydration tracking ──────────────────────────────────────────────────
+// Track which tenants have been loaded from D1 to avoid repeated loads
+const tenantHydratedAt: Record<string, number> = {}
+const HYDRATION_TTL = 30 * 1000 // 30 seconds TTL
+
+/** Load a tenant's data from D1 into memory. Cached for 30s per worker instance. */
+export async function loadTenantFromDB(userId: string, db: D1Database): Promise<void> {
+  if (!userId || userId === 'demo-tenant') return
+  const now = Date.now()
+  if (tenantHydratedAt[userId] && now - tenantHydratedAt[userId] < HYDRATION_TTL) return
+  tenantHydratedAt[userId] = now
+
+  const tenant = getTenantData(userId)
+  try {
+    // Load products
+    const prods = await db.prepare('SELECT * FROM products WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (prods.results && prods.results.length > 0) {
+      tenant.products = (prods.results as any[]).map(r => ({
+        id: r.id, name: r.name, code: r.code, unit: r.unit || 'un',
+        type: r.type || 'external', stockMin: r.stock_min || 0,
+        stockMax: r.stock_max || 0, stockCurrent: r.stock_current || 0,
+        stockStatus: r.stock_status || 'normal', price: r.price || 0,
+        notes: r.notes || '', description: r.description || '',
+        serialControlled: r.serial_controlled === 1,
+        controlType: r.control_type || '', supplierId: r.supplier_id || '',
+        criticalPercentage: r.critical_percentage || 50,
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load suppliers
+    const sups = await db.prepare('SELECT * FROM suppliers WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (sups.results && sups.results.length > 0) {
+      tenant.suppliers = (sups.results as any[]).map(r => ({
+        id: r.id, name: r.name, fantasia: r.trade_name || '', tradeName: r.trade_name || '',
+        cnpj: r.cnpj || '', email: r.email || '', phone: r.phone || '', tel: r.phone || '',
+        contact: r.contact || '', city: r.city || '', state: r.state || '',
+        category: r.category || '', type: r.type || 'nacional',
+        paymentTerms: r.payment_terms || '', deliveryLeadDays: r.lead_days || 0,
+        notes: r.notes || '', active: r.active !== 0, rating: r.rating || 0,
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+  } catch (e) {
+    console.error('loadTenantFromDB error:', e)
+  }
+}

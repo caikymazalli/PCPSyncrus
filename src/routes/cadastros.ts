@@ -661,6 +661,11 @@ app.post('/api/supplier/create', async (c) => {
       id, user_id: userId, name: supplier.name, cnpj: supplier.cnpj,
       email: supplier.email, phone: supplier.phone, contact: supplier.contact,
       city: supplier.city, state: supplier.state, active: 1,
+      type: supplier.type, category: supplier.category,
+      trade_name: supplier.tradeName,
+      payment_terms: supplier.paymentTerms,
+      lead_days: supplier.deliveryLeadDays,
+      notes: supplier.notes,
     })
   }
   return ok(c, { supplier })
@@ -694,9 +699,10 @@ app.put('/api/supplier/:id', async (c) => {
     await dbUpdate(db, 'suppliers', id, userId, {
       name: s.name, cnpj: s.cnpj, email: s.email, phone: s.phone,
       contact: s.contact, city: s.city, state: s.state,
-      category: s.category, paymentTerms: s.paymentTerms,
-      deliveryLeadDays: s.deliveryLeadDays, notes: s.notes,
+      category: s.category, payment_terms: s.paymentTerms,
+      lead_days: s.deliveryLeadDays, notes: s.notes,
       type: s.type, active: s.active ? 1 : 0,
+      trade_name: s.tradeName || s.fantasia || '',
     })
   }
   return ok(c, { supplier: s })

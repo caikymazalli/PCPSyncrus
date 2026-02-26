@@ -136,9 +136,6 @@ app.get('/', (c) => {
       <button class="btn btn-secondary" onclick="openModal('configLimitesModal')" title="Configurar limites de estoque por status">
         <i class="fas fa-sliders-h"></i> Config. Limites
       </button>
-      <button class="btn btn-secondary" onclick="openModal('importPlanilhaModal')" title="Importar produtos via planilha">
-        <i class="fas fa-file-upload"></i> Importar
-      </button>
       <button class="btn btn-primary" onclick="openModal('novoProdModal')" title="Cadastrar novo produto">
         <i class="fas fa-plus"></i> Novo Produto
       </button>
@@ -218,10 +215,10 @@ app.get('/', (c) => {
       </div>
       <div style="padding:20px 24px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome *</label><input class="form-control" type="text" placeholder="Nome do produto"></div>
-          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" type="text" placeholder="ENG-001"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome *</label><input class="form-control" id="newProdName" type="text" placeholder="Nome do produto"></div>
+          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="newProdCode" type="text" placeholder="ENG-001"></div>
           <div class="form-group"><label class="form-label">Unidade *</label>
-            <select class="form-control"><option value="un">un</option><option value="kg">kg</option><option value="m">m</option><option value="l">l</option></select>
+            <select class="form-control" id="newProdUnit"><option value="un">un</option><option value="kg">kg</option><option value="m">m</option><option value="l">l</option><option value="pc">pc</option><option value="m2">m²</option><option value="lt">lt</option></select>
           </div>
           <!-- Controle de Série / Lote -->
           <div class="form-group" style="grid-column:span 2;">
@@ -453,161 +450,6 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════
-       Modal: Importar Produtos (Colar Planilha)
-  ══════════════════════════════════════════════════════════════════════════ -->
-  <div class="modal-overlay" id="importPlanilhaModal">
-    <div class="modal" style="max-width:700px;width:97%;max-height:94vh;display:flex;flex-direction:column;border-radius:14px;overflow:hidden;">
-
-      <!-- Header -->
-      <div style="padding:18px 24px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff;">
-        <div>
-          <h3 style="margin:0 0 2px;font-size:17px;font-weight:700;color:#1B4F72;">
-            <i class="fas fa-table" style="margin-right:8px;color:#2980B9;"></i>
-            Importar Produtos
-          </h3>
-          <div style="font-size:12px;color:#9ca3af;">Cole dados do Excel / Google Sheets ou escreva no formato CSV</div>
-        </div>
-        <button id="imp_btn_x" type="button"
-                style="background:none;border:none;font-size:24px;cursor:pointer;color:#9ca3af;line-height:1;padding:4px 8px;border-radius:6px;"
-                onclick="impFechar()">×</button>
-      </div>
-
-      <!-- STEP 1: Colar dados -->
-      <div id="imp_step1" style="padding:20px 24px;overflow-y:auto;flex:1;">
-
-        <!-- Instruções -->
-        <div style="background:#e8f4fd;border-radius:10px;padding:13px 16px;margin-bottom:16px;font-size:12.5px;color:#1B4F72;line-height:1.7;">
-          <div style="font-weight:700;margin-bottom:6px;font-size:13px;"><i class="fas fa-lightbulb" style="color:#f59e0b;margin-right:6px;"></i>Como importar:</div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:200px;">
-              <strong>Opção 1 — Cole do Excel / Sheets:</strong><br>
-              Selecione as células na sua planilha, copie (<kbd style="background:#fff;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-size:11px;">Ctrl+C</kbd>) e cole abaixo (<kbd style="background:#fff;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-size:11px;">Ctrl+V</kbd>).
-            </div>
-            <div style="flex:1;min-width:200px;">
-              <strong>Opção 2 — Digite CSV:</strong><br>
-              Separe colunas com vírgula ou ponto-e-vírgula. Primeira linha deve ser o cabeçalho.
-            </div>
-          </div>
-        </div>
-
-        <!-- Colunas aceitas -->
-        <div style="background:#f8f9fa;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#374151;">
-          <span style="font-weight:700;color:#1B4F72;">Colunas reconhecidas: </span>
-          <span style="color:#059669;font-weight:700;">Nome*</span> &nbsp;·&nbsp;
-          <span style="color:#059669;font-weight:700;">Codigo*</span> &nbsp;·&nbsp;
-          Unidade &nbsp;·&nbsp; Tipo &nbsp;·&nbsp; EstoqueMinimo &nbsp;·&nbsp;
-          EstoqueAtual &nbsp;·&nbsp; Descricao &nbsp;·&nbsp; Fornecedor &nbsp;·&nbsp;
-          Preco &nbsp;·&nbsp; ControleSerieOuLote
-          <span style="color:#9ca3af;margin-left:6px;">(*obrigatórias)</span>
-        </div>
-
-        <!-- Exemplo colapsável -->
-        <details style="margin-bottom:14px;">
-          <summary style="font-size:12px;color:#6c757d;cursor:pointer;padding:6px 10px;background:#f8f9fa;border-radius:6px;user-select:none;">
-            <i class="fas fa-eye" style="margin-right:5px;"></i> Ver exemplo de dados
-          </summary>
-          <div style="margin-top:8px;font-family:monospace;font-size:11.5px;background:#1e293b;color:#e2e8f0;padding:12px;border-radius:8px;overflow-x:auto;white-space:pre;line-height:1.6;">Nome,Codigo,Unidade,EstoqueMinimo,EstoqueAtual
-Parafuso M8x30,PAR-001,un,100,45
-Tampa de Motor,TAM-002,pc,10,12
-Correia Dentada K28,COR-003,un,5,2
-Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
-        </details>
-
-        <!-- Área de colar -->
-        <div style="position:relative;">
-          <textarea id="imp_textarea"
-            placeholder="Cole aqui os dados do Excel/Sheets ou digite em formato CSV...&#10;&#10;Exemplo:&#10;Nome,Codigo,Unidade,EstoqueMinimo,EstoqueAtual&#10;Parafuso M8,PAR-001,un,100,50"
-            oninput="impAoDigitar()"
-            onpaste="setTimeout(impAoDigitar,50)"
-            style="width:100%;min-height:180px;padding:12px 14px;border:2px solid #d1d5db;border-radius:10px;font-family:monospace;font-size:12.5px;line-height:1.6;resize:vertical;box-sizing:border-box;outline:none;transition:border-color 0.2s;color:#1e293b;background:#fafafa;"
-            onfocus="this.style.borderColor='#2980B9';this.style.background='#fff'"
-            onblur="this.style.borderColor=window.impArq?'#27AE60':'#d1d5db';this.style.background='#fafafa'"></textarea>
-          <div id="imp_line_count" style="position:absolute;bottom:10px;right:12px;font-size:11px;color:#9ca3af;pointer-events:none;"></div>
-        </div>
-
-        <!-- Botão baixar modelo -->
-        <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <a href="/produtos/api/modelo-csv" download="modelo_produtos.csv"
-             style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;color:#15803d;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;">
-            <i class="fas fa-download"></i> Baixar modelo .csv
-          </a>
-          <button type="button" onclick="impColarExemplo()"
-                  style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;color:#0369a1;font-size:12px;font-weight:600;cursor:pointer;">
-            <i class="fas fa-paste"></i> Inserir exemplo
-          </button>
-          <button type="button" onclick="impLimpar()"
-                  style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;color:#dc2626;font-size:12px;font-weight:600;cursor:pointer;">
-            <i class="fas fa-trash"></i> Limpar
-          </button>
-        </div>
-
-        <div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12px;color:#92400e;">
-          <i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i>
-          Produtos com mesmo <strong>Código</strong> serão <strong>atualizados</strong>. Novos códigos serão criados.
-        </div>
-      </div>
-
-      <!-- STEP 2: Preview -->
-      <div id="imp_step2" style="display:none;padding:20px 24px;overflow-y:auto;flex:1;">
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <span id="imp_badge_ok" style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;"></span>
-          <span id="imp_badge_err" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;"></span>
-          <span id="imp_badge_sn" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;"></span>
-        </div>
-        <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;max-height:320px;overflow-y:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px;">
-            <thead><tr style="background:#f8f9fa;">
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">#</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Nome</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Código</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Un.</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">E.Min</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">E.Atual</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Status</th>
-              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">S/N</th>
-            </tr></thead>
-            <tbody id="imp_tbody"></tbody>
-          </table>
-        </div>
-        <div id="imp_errs" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:12px;color:#dc2626;line-height:1.7;"></div>
-      </div>
-
-      <!-- STEP 3: Progresso -->
-      <div id="imp_step3" style="display:none;padding:36px 24px;text-align:center;flex:1;">
-        <div id="imp_prog_label" style="font-size:16px;font-weight:700;color:#1B4F72;margin-bottom:20px;">Importando produtos...</div>
-        <div style="background:#f1f5f9;border-radius:999px;height:18px;overflow:hidden;margin-bottom:12px;">
-          <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.3s ease;"></div>
-        </div>
-        <div style="font-size:13px;color:#6c757d;margin-bottom:4px;">
-          <span id="imp_prog_count">0</span> / <span id="imp_prog_total">0</span> produtos
-          &nbsp;·&nbsp;<span id="imp_prog_pct" style="font-weight:700;color:#2980B9;">0%</span>
-        </div>
-        <div id="imp_prog_sub" style="font-size:11px;color:#9ca3af;margin-top:6px;">Aguarde...</div>
-      </div>
-
-      <!-- Footer -->
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-shrink:0;background:#fafafa;">
-        <button id="imp_btn_back" type="button" onclick="impVoltar();"
-                class="btn btn-secondary" style="display:none;margin-right:auto;">
-          <i class="fas fa-arrow-left"></i> Voltar
-        </button>
-        <button id="imp_btn_cancel" type="button" onclick="impFechar();" class="btn btn-secondary">
-          Cancelar
-        </button>
-        <button id="imp_btn_preview" type="button" onclick="impVisualizar();"
-                class="btn btn-primary"
-                style="opacity:0.45;cursor:not-allowed;pointer-events:none;">
-          <i class="fas fa-eye"></i> Pré-visualizar
-        </button>
-        <button id="imp_btn_confirm" type="button" onclick="impConfirmar();"
-                class="btn btn-primary"
-                style="display:none;background:#27AE60;border-color:#27AE60;">
-          <i class="fas fa-check"></i> Confirmar Importação
-        </button>
-      </div>
-    </div>
-  </div>
 
   <script>
   // ── Edição Inline de Produtos (duplo clique) ─────────────────────────────
@@ -859,9 +701,9 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
   async function salvarNovoProduto() {
     const typeEl = document.querySelector('input[name="newProdType"]:checked');
     const type = typeEl ? typeEl.value : 'external';
-    const nome = document.querySelector('#novoProdModal input[placeholder="Nome do produto"]')?.value || '';
-    const code = document.querySelector('#novoProdModal input[placeholder="Código"]')?.value || '';
-    const unit = document.querySelector('#novoProdModal select')?.value || 'un';
+    const nome = (document.getElementById('newProdName') as HTMLInputElement)?.value?.trim() || '';
+    const code = (document.getElementById('newProdCode') as HTMLInputElement)?.value?.trim() || '';
+    const unit = (document.getElementById('newProdUnit') as HTMLSelectElement)?.value || 'un';
     if (!nome) { showToast('⚠ Informe o nome do produto!', 'error'); return; }
     const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
     const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
@@ -876,8 +718,15 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
       const data = await res.json();
       if (data.ok) {
         showToast('✅ Produto criado com sucesso!');
+        // Limpar campos do modal
+        ['newProdName','newProdCode','newProdStockMin','newProdStockCurrent'].forEach(id => {
+          const el = document.getElementById(id) as HTMLInputElement;
+          if (el) el.value = '';
+        });
+        const unitEl = document.getElementById('newProdUnit') as HTMLSelectElement;
+        if (unitEl) unitEl.value = 'un';
         closeModal('novoProdModal');
-        setTimeout(() => location.reload(), 800);
+        setTimeout(() => location.reload(), 600);
         if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
           setTimeout(() => showAutoOPPopup(nome, stockCurrent, stockMin), 900);
         }
@@ -941,304 +790,7 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
 
-  // ── Importação de Produtos ────────────────────────────────────────────────
-  // ═══════════════════════════════════════════════════════════
-  //  IMPORTAÇÃO DE PRODUTOS — parse de texto colado/digitado
-  //  Sem FileReader, sem XLSX, sem upload — funciona em 100% dos browsers
-  // ═══════════════════════════════════════════════════════════
-  window.impLinhas = [];
-
-  var IMP_EXEMPLO = "Nome,Codigo,Unidade,Tipo,EstoqueMinimo,EstoqueAtual,Descricao,Fornecedor,Preco\nParafuso M8x30,PAR-001,un,external,100,45,Parafuso sextavado inox,Fornecedor ABC,0.85\nTampa de Motor,TAM-002,pc,internal,10,12,,\nCorreia Dentada K28,COR-003,un,external,5,2,,Distribuidora XYZ,32.50\nFluido Hidráulico 20L,FLU-004,lt,external,20,8,,Fornecedor ABC,89.90";
-
-  // Fecha modal e reseta
-  function impFechar() {
-    document.getElementById('importPlanilhaModal').classList.remove('open');
-    setTimeout(function() {
-      var ta = document.getElementById('imp_textarea');
-      if (ta) ta.value = '';
-      window.impLinhas = [];
-      document.getElementById('imp_line_count').textContent = '';
-      impHabilitarPreview(false);
-      impTela(1);
-    }, 260);
-  }
-
-  function impVoltar() {
-    impTela(1);
-    impAoDigitar();
-  }
-
-  function impLimpar() {
-    var ta = document.getElementById('imp_textarea');
-    if (ta) { ta.value = ''; ta.focus(); }
-    window.impLinhas = [];
-    document.getElementById('imp_line_count').textContent = '';
-    impHabilitarPreview(false);
-  }
-
-  function impColarExemplo() {
-    var ta = document.getElementById('imp_textarea');
-    if (ta) { ta.value = IMP_EXEMPLO; impAoDigitar(); ta.focus(); }
-  }
-
-  // Chamada em tempo real enquanto o usuário digita/cola
-  function impAoDigitar() {
-    var ta = document.getElementById('imp_textarea');
-    if (!ta) return;
-    var txt = ta.value.trim();
-    var linhas = txt ? txt.split('\n').filter(function(l){ return l.trim(); }) : [];
-    var lc = document.getElementById('imp_line_count');
-    if (lc) {
-      if (linhas.length > 1) {
-        lc.textContent = (linhas.length - 1) + ' linha(s) de dados';
-        lc.style.color = '#059669';
-      } else if (linhas.length === 1) {
-        lc.textContent = 'Somente cabeçalho detectado';
-        lc.style.color = '#d97706';
-      } else {
-        lc.textContent = '';
-      }
-    }
-    impHabilitarPreview(linhas.length > 1);
-  }
-
-  // Ativa/desativa botão pré-visualizar (SEM atributo disabled nativo)
-  function impHabilitarPreview(on) {
-    var b = document.getElementById('imp_btn_preview');
-    if (!b) return;
-    b.style.opacity       = on ? '1'            : '0.45';
-    b.style.cursor        = on ? 'pointer'       : 'not-allowed';
-    b.style.pointerEvents = on ? ''              : 'none';
-  }
-
-  // Mostra step certo e botões certos
-  function impTela(step) {
-    document.getElementById('imp_step1').style.display = step === 1 ? '' : 'none';
-    document.getElementById('imp_step2').style.display = step === 2 ? '' : 'none';
-    document.getElementById('imp_step3').style.display = step === 3 ? '' : 'none';
-    var bBack    = document.getElementById('imp_btn_back');
-    var bCancel  = document.getElementById('imp_btn_cancel');
-    var bPreview = document.getElementById('imp_btn_preview');
-    var bConfirm = document.getElementById('imp_btn_confirm');
-    if (bBack)    bBack.style.display    = step === 2 ? '' : 'none';
-    if (bCancel)  bCancel.style.display  = step === 3 ? 'none' : '';
-    if (bPreview) bPreview.style.display = step === 1 ? '' : 'none';
-    if (bConfirm) bConfirm.style.display = step === 2 ? '' : 'none';
-  }
-
-  // ── Parser universal: aceita TSV (do Excel), CSV vírgula ou ponto-e-vírgula ──
-  function impNorm(s) {
-    return (s||'').toString().trim().toLowerCase()
-      .replace(/\s+/g,'')
-      .replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
-      .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
-      .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
-  }
-
-  function impDetectarSep(primeiraLinha) {
-    var tabs  = (primeiraLinha.match(/\t/g)   || []).length;
-    var commas= (primeiraLinha.match(/,/g)    || []).length;
-    var semis = (primeiraLinha.match(/;/g)    || []).length;
-    if (tabs  >= commas && tabs  >= semis) return '\t';
-    if (semis >= commas)                   return ';';
-    return ',';
-  }
-
-  function impSplitLinha(linha, sep) {
-    if (sep !== ',') return linha.split(sep).map(function(s){ return s.trim().replace(/^"|"$/g,''); });
-    // CSV com possíveis campos entre aspas
-    var partes = [], cur = '', inQ = false;
-    for (var i = 0; i < linha.length; i++) {
-      var ch = linha[i];
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === sep && !inQ) { partes.push(cur.trim().replace(/^"|"$/g,'')); cur = ''; }
-      else { cur += ch; }
-    }
-    partes.push(cur.trim().replace(/^"|"$/g,''));
-    return partes;
-  }
-
-  function impParsearTexto(texto) {
-    var limpo = texto.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-    var todasLinhas = limpo.split('\n');
-    var linhas = todasLinhas.filter(function(l){ return l.trim(); });
-    if (linhas.length < 2) return [];
-
-    var sep  = impDetectarSep(linhas[0]);
-    var hdrs = impSplitLinha(linhas[0], sep).map(impNorm);
-
-    function col(nomes) {
-      for (var n=0;n<nomes.length;n++)
-        for (var j=0;j<hdrs.length;j++)
-          if (hdrs[j]===nomes[n] || hdrs[j].indexOf(nomes[n])===0) return j;
-      return -1;
-    }
-    var ci = {
-      nome:   col(['nome']),
-      codigo: col(['codigo','cod']),
-      unid:   col(['unidade','unid']),
-      tipo:   col(['tipo']),
-      emin:   col(['estoqueminimo','estoquemin','min']),
-      eatual: col(['estoqueatual','atual']),
-      desc:   col(['descricao','desc']),
-      forn:   col(['fornecedor','forn']),
-      preco:  col(['preco','valor','price']),
-      ctrl:   col(['controleserieoulate','controleserieoulote','controleserielote','controle','sn']),
-    };
-
-    var rows = [];
-    for (var i=1; i<linhas.length; i++) {
-      var partes = impSplitLinha(linhas[i], sep);
-      var g = function(idx){ return idx<0||idx>=partes.length?'':partes[idx]; };
-      var ctrlRaw = impNorm(g(ci.ctrl));
-      var ct = ctrlRaw.indexOf('serie')>=0?'serie':ctrlRaw.indexOf('lote')>=0?'lote':'';
-      var precoBruto = (g(ci.preco)||'0').replace(/[^\d,\.]/g,'').replace(',','.');
-      rows.push({
-        _linha: i+1,
-        nome:         g(ci.nome),
-        codigo:       g(ci.codigo),
-        unidade:      g(ci.unid)||'un',
-        tipo:         g(ci.tipo)==='internal'?'internal':'external',
-        stockMin:     parseInt(g(ci.emin))||0,
-        stockCurrent: parseInt(g(ci.eatual))||0,
-        descricao:    g(ci.desc),
-        fornecedor:   g(ci.forn),
-        preco:        parseFloat(precoBruto)||0,
-        controlType:  ct,
-        serialControlled: ct!=='',
-      });
-    }
-    return rows;
-  }
-
-  // ── Status de estoque ──
-  function impStatus(cur, min) {
-    if (min<=0) return {l:'Normal',   c:'#16a34a',b:'#f0fdf4'};
-    var p=(cur/min)*100;
-    if (p<50)  return {l:'Crítico',   c:'#dc2626',b:'#fef2f2'};
-    if (p<80)  return {l:'Nec.Compra',c:'#d97706',b:'#fffbeb'};
-    if (p<100) return {l:'Nec.Manuf.',c:'#7c3aed',b:'#f5f3ff'};
-    return {l:'Normal',c:'#16a34a',b:'#f0fdf4'};
-  }
-
-  // ── Renderiza tabela de preview ──
-  function impRenderizarPreview(rows) {
-    var erros=[],snQt=0,html='';
-    for (var i=0;i<rows.length;i++) {
-      var r=rows[i], ruim=!r.nome||!r.codigo;
-      if (!r.nome)   erros.push('Linha '+r._linha+': Nome vazio');
-      if (!r.codigo) erros.push('Linha '+r._linha+': Código vazio');
-      if (r.controlType) snQt++;
-      var st=impStatus(r.stockCurrent,r.stockMin);
-      var bg=ruim?'#fef2f2':(i%2===0?'#fff':'#f9fafb');
-      var snB=r.controlType==='serie'
-        ?'<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
-        :r.controlType==='lote'
-        ?'<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
-        :'<span style="color:#d1d5db;">—</span>';
-      html+='<tr style="background:'+bg+';">'
-        +'<td style="padding:6px 8px;color:#9ca3af;">'+(i+1)+'</td>'
-        +'<td style="padding:6px 8px;font-weight:600;color:'+(ruim?'#dc2626':'#374151')+'">'+(r.nome||'<em style="color:#dc2626">⚠ vazio</em>')+'</td>'
-        +'<td style="padding:6px 8px;"><code style="background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">'+(r.codigo||'<em style="color:#dc2626">⚠</em>')+'</code></td>'
-        +'<td style="padding:6px 8px;color:#6c757d;">'+r.unidade+'</td>'
-        +'<td style="padding:6px 8px;">'+r.stockMin+'</td>'
-        +'<td style="padding:6px 8px;">'+r.stockCurrent+'</td>'
-        +'<td style="padding:6px 8px;"><span style="background:'+st.b+';color:'+st.c+';padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;">'+st.l+'</span></td>'
-        +'<td style="padding:6px 8px;">'+snB+'</td>'
-        +'</tr>';
-    }
-    var tb=document.getElementById('imp_tbody'); if(tb) tb.innerHTML=html;
-    var bOk=document.getElementById('imp_badge_ok'); if(bOk) bOk.textContent=rows.length+' linha(s)';
-    var bErr=document.getElementById('imp_badge_err'),erEl=document.getElementById('imp_errs'),bConf=document.getElementById('imp_btn_confirm');
-    if (erros.length>0) {
-      if(bErr){bErr.textContent=erros.length+' erro(s)';bErr.style.display='';}
-      if(erEl){erEl.style.display='';erEl.innerHTML='<strong>⚠ Erros encontrados:</strong><br>'+erros.map(function(x){return '• '+x;}).join('<br>');}
-      if(bConf){bConf.style.opacity='0.45';bConf.style.cursor='not-allowed';bConf.style.pointerEvents='none';}
-    } else {
-      if(bErr) bErr.style.display='none';
-      if(erEl) erEl.style.display='none';
-      if(bConf){bConf.style.opacity='1';bConf.style.cursor='pointer';bConf.style.pointerEvents='';}
-    }
-    var bSn=document.getElementById('imp_badge_sn');
-    if(bSn){bSn.textContent=snQt+' c/ Série/Lote';bSn.style.display=snQt>0?'':'none';}
-    impTela(2);
-  }
-
-  // ── "Pré-visualizar" ──
-  function impVisualizar() {
-    var ta=document.getElementById('imp_textarea');
-    if (!ta||!ta.value.trim()) { showToast('Cole ou digite os dados primeiro','error'); return; }
-    var rows=impParsearTexto(ta.value);
-    if (rows.length===0) { showToast('Nenhuma linha encontrada — verifique o formato','error'); return; }
-    window.impLinhas=rows;
-    impRenderizarPreview(rows);
-  }
-
-  // ── "Confirmar Importação" ──
-  function impConfirmar() {
-    var validas=window.impLinhas.filter(function(r){return r.nome&&r.codigo;});
-    if (validas.length===0) { showToast('Nenhum dado válido para importar','error'); return; }
-    impTela(3);
-    var total=validas.length;
-    var pLabel=document.getElementById('imp_prog_label'),
-        pBar=document.getElementById('imp_prog_bar'),
-        pPct=document.getElementById('imp_prog_pct'),
-        pCount=document.getElementById('imp_prog_count'),
-        pTotal=document.getElementById('imp_prog_total'),
-        pSub=document.getElementById('imp_prog_sub');
-    if(pLabel) pLabel.textContent='Importando '+total+' produto(s)...';
-    if(pTotal) pTotal.textContent=total;
-    var sim=0, timer=setInterval(function(){
-      sim=Math.min(sim+(88-sim)*0.12,87);
-      if(pBar)   pBar.style.width=sim.toFixed(1)+'%';
-      if(pPct)   pPct.textContent=Math.round(sim)+'%';
-      var done=Math.round((sim/100)*total);
-      if(pCount) pCount.textContent=done;
-      if(pSub)   pSub.textContent=done<total?'Processando '+(done+1)+' de '+total+'...':'Finalizando...';
-    },140);
-    fetch('/produtos/api/import',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({rows:validas}),
-    })
-    .then(function(r){return r.json();})
-    .then(function(d){
-      clearInterval(timer);
-      if(pBar){pBar.style.width='100%';pBar.style.background=d.ok?'#27AE60':'#dc2626';}
-      if(pPct) pPct.textContent='100%';
-      if(pCount) pCount.textContent=total;
-      if(pSub) pSub.textContent='';
-      if(d.ok){
-        if(pLabel) pLabel.innerHTML='<i class="fas fa-check-circle" style="color:#27AE60;margin-right:8px;font-size:22px;"></i>Importação concluída!';
-        var msg='\u2705 '+( d.created||0)+' criado(s), '+(d.updated||0)+' atualizado(s).';
-        if(d.pendingSerial>0) msg+=' \u2022 '+d.pendingSerial+' aguardando Liberação S/N.';
-        setTimeout(function(){
-          impFechar();
-          showToast(msg, d.pendingSerial>0?'info':'success');
-          setTimeout(function(){location.reload();},1200);
-        },1200);
-      } else {
-        if(pLabel) pLabel.innerHTML='<i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;font-size:22px;"></i>'+(d.error||'Erro na importação');
-        var bCan=document.getElementById('imp_btn_cancel');
-        if(bCan) bCan.style.display='';
-        showToast(d.error||'Erro ao importar','error');
-      }
-    })
-    .catch(function(e){
-      clearInterval(timer);
-      if(pBar) pBar.style.background='#dc2626';
-      if(pLabel) pLabel.innerHTML='<i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;font-size:22px;"></i>Erro de conexão';
-      var bCan2=document.getElementById('imp_btn_cancel');
-      if(bCan2) bCan2.style.display='';
-      showToast('Erro de conexão: '+e.message,'error');
-    });
-  }
-
-  // Fechar ao clicar no overlay (fora do modal)
-  document.getElementById('importPlanilhaModal').addEventListener('click', function(e) {
-    if (e.target === this) impFechar();
-  });
-  // ── /Importação de planilha ───────────────────────────────────────────────  </script>
+  </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
 })
@@ -1271,8 +823,9 @@ app.post('/api/create', async (c) => {
       id, user_id: userId, name: product.name, code: product.code,
       unit: product.unit, type: product.type,
       stock_min: product.stockMin, stock_max: product.stockMax,
-      stock_current: product.stockCurrent, price: product.price,
-      notes: product.notes,
+      stock_current: product.stockCurrent, stock_status: product.stockStatus,
+      price: product.price, notes: product.notes,
+      critical_percentage: product.criticalPercentage,
     })
   }
 
@@ -1293,10 +846,15 @@ app.put('/api/:id', async (c) => {
   Object.assign(tenant.products[idx], body)
 
   if (db && userId !== 'demo-tenant') {
+    const p = tenant.products[idx] as any
     await dbUpdate(db, 'products', id, userId, {
-      name: body.name, code: body.code, unit: body.unit,
-      stock_min: body.stockMin, stock_max: body.stockMax,
-      stock_current: body.stockCurrent, price: body.price, notes: body.notes,
+      name: p.name, code: p.code, unit: p.unit, type: p.type,
+      stock_min: p.stockMin, stock_max: p.stockMax,
+      stock_current: p.stockCurrent, stock_status: p.stockStatus,
+      price: p.price, notes: p.notes,
+      description: p.description || '',
+      serial_controlled: p.serialControlled ? 1 : 0,
+      control_type: p.controlType || '',
     })
   }
 
