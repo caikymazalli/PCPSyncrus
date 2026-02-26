@@ -229,7 +229,7 @@ app.get('/', (c) => {
                   <i class="fas fa-eye"></i>
                 </button>
                 ${nc.status !== 'closed'
-                  ? `<button class="btn btn-success btn-sm" onclick="alert('NC ${nc.code} encerrada!')" title="Encerrar NC">
+                  ? `<button class="btn btn-success btn-sm" onclick="encerrarNC('${nc.id}')" title="Encerrar NC">
                       <i class="fas fa-check"></i>
                      </button>`
                   : ''
@@ -287,7 +287,7 @@ app.get('/', (c) => {
             <i class="fas fa-microscope"></i> Analisar
           </button>
           ${nc.status !== 'closed'
-            ? `<button class="btn btn-success btn-sm" onclick="alert('NC encerrada!')" title="Encerrar NC"><i class="fas fa-check"></i></button>`
+            ? `<button class="btn btn-success btn-sm" onclick="encerrarNC('${nc.id}')" title="Encerrar NC"><i class="fas fa-check"></i></button>`
             : `<span class="badge badge-success" style="flex:0;"><i class="fas fa-check-circle"></i> Encerrada</span>`
           }
         </div>
@@ -351,8 +351,8 @@ app.get('/', (c) => {
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal('ncDetailModal')">Fechar</button>
-        <button class="btn btn-warning" onclick="alert('NC atualizada!')"><i class="fas fa-save"></i> Salvar Alterações</button>
-        <button class="btn btn-success" onclick="alert('NC encerrada com sucesso!');closeModal('ncDetailModal')"><i class="fas fa-check"></i> Encerrar NC</button>
+        <button class="btn btn-warning" onclick="salvarNcDetalhe('${nc.id}')"><i class="fas fa-save"></i> Salvar Alterações</button>
+        <button class="btn btn-success" onclick="encerrarNC('${nc.id}');closeModal('ncDetailModal')"><i class="fas fa-check"></i> Encerrar NC</button>
       </div>
     \`;
     openModal('ncDetailModal');
@@ -415,6 +415,43 @@ app.get('/', (c) => {
       } else {
         showToast(data.error || 'Erro ao registrar NC', 'error');
       }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function encerrarNC(id) {
+    if (!confirm('Encerrar esta NC?')) return;
+    try {
+      const res = await fetch('/qualidade/api/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' })
+      });
+      const data = await res.json();
+      if (data.ok) { showToast('✅ NC encerrada!'); setTimeout(() => location.reload(), 600); }
+      else showToast(data.error || 'Erro ao encerrar NC', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function salvarNcDetalhe(id) {
+    // Lê campos do modal de detalhe (gerados dinamicamente)
+    const inputs = document.querySelectorAll('#ncDetailBody input, #ncDetailBody select, #ncDetailBody textarea');
+    let severity = '', rootCause = '', correctiveAction = '', responsible = '';
+    inputs.forEach(el => {
+      const lbl = el.previousElementSibling?.textContent || el.closest('.form-group')?.querySelector('label')?.textContent || '';
+      if (lbl.includes('Severidade') && el.tagName === 'SELECT') severity = el.value;
+      if (lbl.includes('Causa Raiz')) rootCause = el.value;
+      if (lbl.includes('Ação Corretiva') || lbl.includes('Corretiva')) correctiveAction = el.value;
+      if (lbl.includes('Responsável')) responsible = el.value;
+    });
+    try {
+      const res = await fetch('/qualidade/api/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ severity, rootCause, correctiveAction, responsible })
+      });
+      const data = await res.json();
+      if (data.ok) { showToast('✅ NC atualizada!'); setTimeout(() => location.reload(), 600); }
+      else showToast(data.error || 'Erro ao atualizar NC', 'error');
     } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
