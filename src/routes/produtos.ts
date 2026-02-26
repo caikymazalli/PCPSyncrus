@@ -430,57 +430,92 @@ app.get('/', (c) => {
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════════════
-       Modal: Importar Planilha de Produtos
+       Modal: Importar Produtos (Colar Planilha)
   ══════════════════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="importPlanilhaModal">
-    <div class="modal" style="max-width:660px;width:96%;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal" style="max-width:700px;width:97%;max-height:94vh;display:flex;flex-direction:column;border-radius:14px;overflow:hidden;">
 
       <!-- Header -->
-      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
-          <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>
-          Importar Planilha de Produtos
-        </h3>
-        <button id="imp_btn_x" type="button" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;padding:4px 8px;">×</button>
+      <div style="padding:18px 24px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fff;">
+        <div>
+          <h3 style="margin:0 0 2px;font-size:17px;font-weight:700;color:#1B4F72;">
+            <i class="fas fa-table" style="margin-right:8px;color:#2980B9;"></i>
+            Importar Produtos
+          </h3>
+          <div style="font-size:12px;color:#9ca3af;">Cole dados do Excel / Google Sheets ou escreva no formato CSV</div>
+        </div>
+        <button id="imp_btn_x" type="button"
+                style="background:none;border:none;font-size:24px;cursor:pointer;color:#9ca3af;line-height:1;padding:4px 8px;border-radius:6px;"
+                onclick="impFechar()">×</button>
       </div>
 
-      <!-- STEP 1: Upload -->
-      <div id="imp_step1" style="padding:20px 24px;overflow-y:auto;">
-        <div style="background:#e8f4fd;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#1B4F72;line-height:1.6;">
-          <i class="fas fa-info-circle" style="margin-right:5px;"></i>
-          Obrigatórias: <strong>Nome</strong> e <strong>Codigo</strong>. &nbsp;
-          Opcionais: Unidade · Tipo · EstoqueMinimo · EstoqueAtual · Descricao · Fornecedor · Preco · <strong>ControleSerieOuLote</strong> (serie / lote)
+      <!-- STEP 1: Colar dados -->
+      <div id="imp_step1" style="padding:20px 24px;overflow-y:auto;flex:1;">
+
+        <!-- Instruções -->
+        <div style="background:#e8f4fd;border-radius:10px;padding:13px 16px;margin-bottom:16px;font-size:12.5px;color:#1B4F72;line-height:1.7;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:13px;"><i class="fas fa-lightbulb" style="color:#f59e0b;margin-right:6px;"></i>Como importar:</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+              <strong>Opção 1 — Cole do Excel / Sheets:</strong><br>
+              Selecione as células na sua planilha, copie (<kbd style="background:#fff;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-size:11px;">Ctrl+C</kbd>) e cole abaixo (<kbd style="background:#fff;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-size:11px;">Ctrl+V</kbd>).
+            </div>
+            <div style="flex:1;min-width:200px;">
+              <strong>Opção 2 — Digite CSV:</strong><br>
+              Separe colunas com vírgula ou ponto-e-vírgula. Primeira linha deve ser o cabeçalho.
+            </div>
+          </div>
         </div>
 
-        <!-- Baixar modelo -->
-        <a href="/produtos/api/modelo-csv" download="modelo_produtos.csv"
-           style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;margin-bottom:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;color:#15803d;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;box-sizing:border-box;">
-          <i class="fas fa-download"></i> Baixar Planilha Modelo (.csv)
-        </a>
+        <!-- Colunas aceitas -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#374151;">
+          <span style="font-weight:700;color:#1B4F72;">Colunas reconhecidas: </span>
+          <span style="color:#059669;font-weight:700;">Nome*</span> &nbsp;·&nbsp;
+          <span style="color:#059669;font-weight:700;">Codigo*</span> &nbsp;·&nbsp;
+          Unidade &nbsp;·&nbsp; Tipo &nbsp;·&nbsp; EstoqueMinimo &nbsp;·&nbsp;
+          EstoqueAtual &nbsp;·&nbsp; Descricao &nbsp;·&nbsp; Fornecedor &nbsp;·&nbsp;
+          Preco &nbsp;·&nbsp; ControleSerieOuLote
+          <span style="color:#9ca3af;margin-left:6px;">(*obrigatórias)</span>
+        </div>
 
-        <!-- Label wrapping file input — garante click em qualquer browser -->
-        <label id="imp_zona"
-          style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:34px 20px;text-align:center;cursor:pointer;transition:all 0.2s;user-select:none;display:block;"
-          ondragover="event.preventDefault();event.stopPropagation();document.getElementById('imp_zona').style.borderColor='#2980B9';document.getElementById('imp_zona').style.background='#e8f4fd';"
-          ondragleave="event.stopPropagation();var z=document.getElementById('imp_zona');z.style.borderColor=window.impArq?'#27AE60':'#d1d5db';z.style.background=window.impArq?'#f0fdf4':'#f8f9fa';"
-          ondrop="event.preventDefault();event.stopPropagation();var z=document.getElementById('imp_zona');z.style.borderColor='#d1d5db';z.style.background='#f8f9fa';impDefinirArquivo(event.dataTransfer.files[0]);">
-          <i class="fas fa-cloud-upload-alt" id="imp_icone" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;pointer-events:none;"></i>
-          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;pointer-events:none;">Arraste o arquivo aqui ou clique para buscar</div>
-          <div style="font-size:12px;color:#9ca3af;pointer-events:none;">Formatos: .csv · .xlsx · .xls &nbsp;|&nbsp; Máx. 5 MB</div>
-          <!-- Input dentro do label — associação nativa do browser -->
-          <input type="file" id="imp_input" accept=".csv,.xlsx,.xls"
-                 style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;"
-                 onchange="impDefinirArquivo(this.files[0]);">
-        </label>
+        <!-- Exemplo colapsável -->
+        <details style="margin-bottom:14px;">
+          <summary style="font-size:12px;color:#6c757d;cursor:pointer;padding:6px 10px;background:#f8f9fa;border-radius:6px;user-select:none;">
+            <i class="fas fa-eye" style="margin-right:5px;"></i> Ver exemplo de dados
+          </summary>
+          <div style="margin-top:8px;font-family:monospace;font-size:11.5px;background:#1e293b;color:#e2e8f0;padding:12px;border-radius:8px;overflow-x:auto;white-space:pre;line-height:1.6;">Nome,Codigo,Unidade,EstoqueMinimo,EstoqueAtual
+Parafuso M8x30,PAR-001,un,100,45
+Tampa de Motor,TAM-002,pc,10,12
+Correia Dentada K28,COR-003,un,5,2
+Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
+        </details>
 
-        <!-- Info do arquivo selecionado -->
-        <div id="imp_arqinfo" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;align-items:center;gap:10px;">
-          <i class="fas fa-file-alt" style="color:#16a34a;font-size:20px;flex-shrink:0;"></i>
-          <div style="flex:1;min-width:0;">
-            <div id="imp_fname" style="font-size:13px;font-weight:700;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
-            <div id="imp_fsize" style="font-size:11px;color:#6c757d;"></div>
-          </div>
-          <button type="button" onclick="impLimpar();event.stopPropagation();" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;padding:2px 6px;">×</button>
+        <!-- Área de colar -->
+        <div style="position:relative;">
+          <textarea id="imp_textarea"
+            placeholder="Cole aqui os dados do Excel/Sheets ou digite em formato CSV...&#10;&#10;Exemplo:&#10;Nome,Codigo,Unidade,EstoqueMinimo,EstoqueAtual&#10;Parafuso M8,PAR-001,un,100,50"
+            oninput="impAoDigitar()"
+            onpaste="setTimeout(impAoDigitar,50)"
+            style="width:100%;min-height:180px;padding:12px 14px;border:2px solid #d1d5db;border-radius:10px;font-family:monospace;font-size:12.5px;line-height:1.6;resize:vertical;box-sizing:border-box;outline:none;transition:border-color 0.2s;color:#1e293b;background:#fafafa;"
+            onfocus="this.style.borderColor='#2980B9';this.style.background='#fff'"
+            onblur="this.style.borderColor=window.impArq?'#27AE60':'#d1d5db';this.style.background='#fafafa'"></textarea>
+          <div id="imp_line_count" style="position:absolute;bottom:10px;right:12px;font-size:11px;color:#9ca3af;pointer-events:none;"></div>
+        </div>
+
+        <!-- Botão baixar modelo -->
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <a href="/produtos/api/modelo-csv" download="modelo_produtos.csv"
+             style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;color:#15803d;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;">
+            <i class="fas fa-download"></i> Baixar modelo .csv
+          </a>
+          <button type="button" onclick="impColarExemplo()"
+                  style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;color:#0369a1;font-size:12px;font-weight:600;cursor:pointer;">
+            <i class="fas fa-paste"></i> Inserir exemplo
+          </button>
+          <button type="button" onclick="impLimpar()"
+                  style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;color:#dc2626;font-size:12px;font-weight:600;cursor:pointer;">
+            <i class="fas fa-trash"></i> Limpar
+          </button>
         </div>
 
         <div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12px;color:#92400e;">
@@ -490,23 +525,23 @@ app.get('/', (c) => {
       </div>
 
       <!-- STEP 2: Preview -->
-      <div id="imp_step2" style="display:none;padding:20px 24px;overflow-y:auto;">
+      <div id="imp_step2" style="display:none;padding:20px 24px;overflow-y:auto;flex:1;">
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <span id="imp_badge_ok" style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></span>
-          <span id="imp_badge_err" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;"></span>
-          <span id="imp_badge_sn" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f5f3ff;color:#7c3aed;"></span>
+          <span id="imp_badge_ok" style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;"></span>
+          <span id="imp_badge_err" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;"></span>
+          <span id="imp_badge_sn" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;"></span>
         </div>
-        <div style="max-height:300px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;max-height:320px;overflow-y:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px;">
             <thead><tr style="background:#f8f9fa;">
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">#</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Nome</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Código</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Un.</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Min</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Atual</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Status</th>
-              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">S/N</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">#</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Nome</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Código</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Un.</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">E.Min</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">E.Atual</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">Status</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;color:#6c757d;font-weight:600;">S/N</th>
             </tr></thead>
             <tbody id="imp_tbody"></tbody>
           </table>
@@ -515,31 +550,35 @@ app.get('/', (c) => {
       </div>
 
       <!-- STEP 3: Progresso -->
-      <div id="imp_step3" style="display:none;padding:28px 24px;text-align:center;overflow-y:auto;">
-        <div id="imp_prog_label" style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:18px;">Importando produtos...</div>
-        <div style="background:#f1f5f9;border-radius:999px;height:16px;overflow:hidden;margin-bottom:10px;">
-          <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.25s ease;"></div>
+      <div id="imp_step3" style="display:none;padding:36px 24px;text-align:center;flex:1;">
+        <div id="imp_prog_label" style="font-size:16px;font-weight:700;color:#1B4F72;margin-bottom:20px;">Importando produtos...</div>
+        <div style="background:#f1f5f9;border-radius:999px;height:18px;overflow:hidden;margin-bottom:12px;">
+          <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.3s ease;"></div>
         </div>
         <div style="font-size:13px;color:#6c757d;margin-bottom:4px;">
           <span id="imp_prog_count">0</span> / <span id="imp_prog_total">0</span> produtos
           &nbsp;·&nbsp;<span id="imp_prog_pct" style="font-weight:700;color:#2980B9;">0%</span>
         </div>
-        <div id="imp_prog_sub" style="font-size:11px;color:#9ca3af;margin-top:4px;">Aguarde...</div>
+        <div id="imp_prog_sub" style="font-size:11px;color:#9ca3af;margin-top:6px;">Aguarde...</div>
       </div>
 
       <!-- Footer -->
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-shrink:0;">
-        <button id="imp_btn_back" type="button" onclick="impVoltar();" class="btn btn-secondary" style="display:none;margin-right:auto;">
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-shrink:0;background:#fafafa;">
+        <button id="imp_btn_back" type="button" onclick="impVoltar();"
+                class="btn btn-secondary" style="display:none;margin-right:auto;">
           <i class="fas fa-arrow-left"></i> Voltar
         </button>
-        <button id="imp_btn_cancel" type="button" onclick="impFechar();" class="btn btn-secondary">Cancelar</button>
+        <button id="imp_btn_cancel" type="button" onclick="impFechar();" class="btn btn-secondary">
+          Cancelar
+        </button>
         <button id="imp_btn_preview" type="button" onclick="impVisualizar();"
-                class="btn btn-primary" style="opacity:0.5;cursor:not-allowed;pointer-events:none;"
-                data-imp-disabled="true">
-          <i class="fas fa-eye"></i> Visualizar Dados
+                class="btn btn-primary"
+                style="opacity:0.45;cursor:not-allowed;pointer-events:none;">
+          <i class="fas fa-eye"></i> Pré-visualizar
         </button>
         <button id="imp_btn_confirm" type="button" onclick="impConfirmar();"
-                class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
+                class="btn btn-primary"
+                style="display:none;background:#27AE60;border-color:#27AE60;">
           <i class="fas fa-check"></i> Confirmar Importação
         </button>
       </div>
@@ -547,73 +586,76 @@ app.get('/', (c) => {
   </div>
 
   <script>
-  // ── Importação de planilha ─────────────────────────────────────────────────
-  // Variáveis globais do módulo (acessíveis por todos os handlers inline)
-  window.impArq    = null;  // File object
-  window.impLinhas = [];    // Rows parsed
+  // ═══════════════════════════════════════════════════════════
+  //  IMPORTAÇÃO DE PRODUTOS — parse de texto colado/digitado
+  //  Sem FileReader, sem XLSX, sem upload — funciona em 100% dos browsers
+  // ═══════════════════════════════════════════════════════════
+  window.impLinhas = [];
 
-  // Fecha o modal e reseta tudo
+  var IMP_EXEMPLO = "Nome,Codigo,Unidade,Tipo,EstoqueMinimo,EstoqueAtual,Descricao,Fornecedor,Preco\nParafuso M8x30,PAR-001,un,external,100,45,Parafuso sextavado inox,Fornecedor ABC,0.85\nTampa de Motor,TAM-002,pc,internal,10,12,,\nCorreia Dentada K28,COR-003,un,external,5,2,,Distribuidora XYZ,32.50\nFluido Hidráulico 20L,FLU-004,lt,external,20,8,,Fornecedor ABC,89.90";
+
+  // Fecha modal e reseta
   function impFechar() {
-    var m = document.getElementById('importPlanilhaModal');
-    if (m) m.classList.remove('open');
-    // Reseta estado após animação
+    document.getElementById('importPlanilhaModal').classList.remove('open');
     setTimeout(function() {
-      window.impArq = null;
+      var ta = document.getElementById('imp_textarea');
+      if (ta) ta.value = '';
       window.impLinhas = [];
-      var inp = document.getElementById('imp_input');
-      if (inp) inp.value = '';
-      impMostrarInfo(false);
-      var z = document.getElementById('imp_zona');
-      if (z) { z.style.borderColor = '#d1d5db'; z.style.background = '#f8f9fa'; }
-      var ic = document.getElementById('imp_icone');
-      if (ic) ic.style.color = '#9ca3af';
+      document.getElementById('imp_line_count').textContent = '';
       impHabilitarPreview(false);
       impTela(1);
-    }, 280);
+    }, 260);
   }
 
-  // Volta para step 1
-  function impVoltar() { impTela(1); }
+  function impVoltar() {
+    impTela(1);
+    impAoDigitar();
+  }
 
-  // Limpa arquivo selecionado (botão X no fileinfo)
   function impLimpar() {
-    window.impArq = null;
+    var ta = document.getElementById('imp_textarea');
+    if (ta) { ta.value = ''; ta.focus(); }
     window.impLinhas = [];
-    var inp = document.getElementById('imp_input');
-    if (inp) inp.value = '';
-    impMostrarInfo(false);
-    var z = document.getElementById('imp_zona');
-    if (z) { z.style.borderColor = '#d1d5db'; z.style.background = '#f8f9fa'; }
-    var ic = document.getElementById('imp_icone');
-    if (ic) ic.style.color = '#9ca3af';
+    document.getElementById('imp_line_count').textContent = '';
     impHabilitarPreview(false);
   }
 
-  // Exibe ou oculta o painel de info do arquivo
-  function impMostrarInfo(show) {
-    var el = document.getElementById('imp_arqinfo');
-    if (el) el.style.display = show ? 'flex' : 'none';
+  function impColarExemplo() {
+    var ta = document.getElementById('imp_textarea');
+    if (ta) { ta.value = IMP_EXEMPLO; impAoDigitar(); ta.focus(); }
   }
 
-  // Habilita / desabilita botão Visualizar
-  // Usa data-attribute + pointer-events para não depender do atributo disabled nativo
+  // Chamada em tempo real enquanto o usuário digita/cola
+  function impAoDigitar() {
+    var ta = document.getElementById('imp_textarea');
+    if (!ta) return;
+    var txt = ta.value.trim();
+    var linhas = txt ? txt.split('\n').filter(function(l){ return l.trim(); }) : [];
+    var lc = document.getElementById('imp_line_count');
+    if (lc) {
+      if (linhas.length > 1) {
+        lc.textContent = (linhas.length - 1) + ' linha(s) de dados';
+        lc.style.color = '#059669';
+      } else if (linhas.length === 1) {
+        lc.textContent = 'Somente cabeçalho detectado';
+        lc.style.color = '#d97706';
+      } else {
+        lc.textContent = '';
+      }
+    }
+    impHabilitarPreview(linhas.length > 1);
+  }
+
+  // Ativa/desativa botão pré-visualizar (SEM atributo disabled nativo)
   function impHabilitarPreview(on) {
     var b = document.getElementById('imp_btn_preview');
     if (!b) return;
-    if (on) {
-      b.removeAttribute('data-imp-disabled');
-      b.style.opacity = '1';
-      b.style.cursor  = 'pointer';
-      b.style.pointerEvents = '';
-    } else {
-      b.setAttribute('data-imp-disabled', 'true');
-      b.style.opacity = '0.5';
-      b.style.cursor  = 'not-allowed';
-      b.style.pointerEvents = 'none';
-    }
+    b.style.opacity       = on ? '1'            : '0.45';
+    b.style.cursor        = on ? 'pointer'       : 'not-allowed';
+    b.style.pointerEvents = on ? ''              : 'none';
   }
 
-  // Controla qual step está visível + botões do footer
+  // Mostra step certo e botões certos
   function impTela(step) {
     document.getElementById('imp_step1').style.display = step === 1 ? '' : 'none';
     document.getElementById('imp_step2').style.display = step === 2 ? '' : 'none';
@@ -628,313 +670,218 @@ app.get('/', (c) => {
     if (bConfirm) bConfirm.style.display = step === 2 ? '' : 'none';
   }
 
-  // Recebe um File object e valida
-  function impDefinirArquivo(file) {
-    if (!file) return;
-    var ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (['csv','xlsx','xls'].indexOf(ext) === -1) {
-      showToast('Formato inválido. Use .csv, .xlsx ou .xls', 'error');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Arquivo muito grande. Máx. 5 MB', 'error');
-      return;
-    }
-    window.impArq = file;
-    var fn = document.getElementById('imp_fname');
-    var fs = document.getElementById('imp_fsize');
-    if (fn) fn.textContent = file.name;
-    if (fs) fs.textContent = (file.size / 1024).toFixed(1) + ' KB';
-    impMostrarInfo(true);
-    var z = document.getElementById('imp_zona');
-    if (z) { z.style.borderColor = '#27AE60'; z.style.background = '#f0fdf4'; }
-    var ic = document.getElementById('imp_icone');
-    if (ic) ic.style.color = '#27AE60';
-    impHabilitarPreview(true);
-  }
-
-  // Normaliza string para comparação de headers
+  // ── Parser universal: aceita TSV (do Excel), CSV vírgula ou ponto-e-vírgula ──
   function impNorm(s) {
-    return (s || '').toString().trim().toLowerCase()
-      .replace(/\s+/g,'').replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
+    return (s||'').toString().trim().toLowerCase()
+      .replace(/\s+/g,'')
+      .replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
       .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
       .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
   }
 
-  // Encontra índice de coluna por lista de nomes normalizados
-  function impAcharCol(hdrs, nomes) {
-    for (var n = 0; n < nomes.length; n++) {
-      for (var j = 0; j < hdrs.length; j++) {
-        if (hdrs[j] === nomes[n] || hdrs[j].indexOf(nomes[n]) === 0) return j;
-      }
-    }
-    return -1;
+  function impDetectarSep(primeiraLinha) {
+    var tabs  = (primeiraLinha.match(/\t/g)   || []).length;
+    var commas= (primeiraLinha.match(/,/g)    || []).length;
+    var semis = (primeiraLinha.match(/;/g)    || []).length;
+    if (tabs  >= commas && tabs  >= semis) return '\t';
+    if (semis >= commas)                   return ';';
+    return ',';
   }
 
-  // Parse CSV
-  function impParsearCSV(texto) {
+  function impSplitLinha(linha, sep) {
+    if (sep !== ',') return linha.split(sep).map(function(s){ return s.trim().replace(/^"|"$/g,''); });
+    // CSV com possíveis campos entre aspas
+    var partes = [], cur = '', inQ = false;
+    for (var i = 0; i < linha.length; i++) {
+      var ch = linha[i];
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === sep && !inQ) { partes.push(cur.trim().replace(/^"|"$/g,'')); cur = ''; }
+      else { cur += ch; }
+    }
+    partes.push(cur.trim().replace(/^"|"$/g,''));
+    return partes;
+  }
+
+  function impParsearTexto(texto) {
     var limpo = texto.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-    var linhas = limpo.split('\n');
+    var todasLinhas = limpo.split('\n');
+    var linhas = todasLinhas.filter(function(l){ return l.trim(); });
     if (linhas.length < 2) return [];
-    var hdrs = linhas[0].split(',').map(impNorm);
+
+    var sep  = impDetectarSep(linhas[0]);
+    var hdrs = impSplitLinha(linhas[0], sep).map(impNorm);
+
+    function col(nomes) {
+      for (var n=0;n<nomes.length;n++)
+        for (var j=0;j<hdrs.length;j++)
+          if (hdrs[j]===nomes[n] || hdrs[j].indexOf(nomes[n])===0) return j;
+      return -1;
+    }
     var ci = {
-      nome:   impAcharCol(hdrs,['nome']),
-      codigo: impAcharCol(hdrs,['codigo','cod']),
-      unid:   impAcharCol(hdrs,['unidade','unid']),
-      tipo:   impAcharCol(hdrs,['tipo']),
-      emin:   impAcharCol(hdrs,['estoqueminimo','estoquemin','min']),
-      eatual: impAcharCol(hdrs,['estoqueatual','atual']),
-      desc:   impAcharCol(hdrs,['descricao','desc']),
-      forn:   impAcharCol(hdrs,['fornecedor','forn']),
-      preco:  impAcharCol(hdrs,['preco','valor','price']),
-      ctrl:   impAcharCol(hdrs,['controleserieoulate','controleserieoulote','controleserielote','controle','sn']),
+      nome:   col(['nome']),
+      codigo: col(['codigo','cod']),
+      unid:   col(['unidade','unid']),
+      tipo:   col(['tipo']),
+      emin:   col(['estoqueminimo','estoquemin','min']),
+      eatual: col(['estoqueatual','atual']),
+      desc:   col(['descricao','desc']),
+      forn:   col(['fornecedor','forn']),
+      preco:  col(['preco','valor','price']),
+      ctrl:   col(['controleserieoulate','controleserieoulote','controleserielote','controle','sn']),
     };
+
     var rows = [];
-    for (var i = 1; i < linhas.length; i++) {
-      var ln = linhas[i]; if (!ln.trim()) continue;
-      var partes = []; var cur = ''; var inQ = false;
-      for (var k = 0; k < ln.length; k++) {
-        var ch = ln[k];
-        if (ch === '"') { inQ = !inQ; }
-        else if (ch === ',' && !inQ) { partes.push(cur.trim()); cur = ''; }
-        else { cur += ch; }
-      }
-      partes.push(cur.trim());
-      var gv = function(idx) {
-        if (idx < 0 || idx >= partes.length) return '';
-        return partes[idx].replace(/^"|"$/g,'').trim();
-      };
-      var ctrlRaw = impNorm(gv(ci.ctrl));
-      var ct = ctrlRaw.indexOf('serie') >= 0 ? 'serie' : ctrlRaw.indexOf('lote') >= 0 ? 'lote' : '';
+    for (var i=1; i<linhas.length; i++) {
+      var partes = impSplitLinha(linhas[i], sep);
+      var g = function(idx){ return idx<0||idx>=partes.length?'':partes[idx]; };
+      var ctrlRaw = impNorm(g(ci.ctrl));
+      var ct = ctrlRaw.indexOf('serie')>=0?'serie':ctrlRaw.indexOf('lote')>=0?'lote':'';
+      var precoBruto = (g(ci.preco)||'0').replace(/[^\d,\.]/g,'').replace(',','.');
       rows.push({
         _linha: i+1,
-        nome:         gv(ci.nome),
-        codigo:       gv(ci.codigo),
-        unidade:      gv(ci.unid) || 'un',
-        tipo:         gv(ci.tipo) === 'internal' ? 'internal' : 'external',
-        stockMin:     parseInt(gv(ci.emin))   || 0,
-        stockCurrent: parseInt(gv(ci.eatual)) || 0,
-        descricao:    gv(ci.desc),
-        fornecedor:   gv(ci.forn),
-        preco:        parseFloat((gv(ci.preco)||'0').replace(',','.')) || 0,
+        nome:         g(ci.nome),
+        codigo:       g(ci.codigo),
+        unidade:      g(ci.unid)||'un',
+        tipo:         g(ci.tipo)==='internal'?'internal':'external',
+        stockMin:     parseInt(g(ci.emin))||0,
+        stockCurrent: parseInt(g(ci.eatual))||0,
+        descricao:    g(ci.desc),
+        fornecedor:   g(ci.forn),
+        preco:        parseFloat(precoBruto)||0,
         controlType:  ct,
-        serialControlled: ct !== '',
+        serialControlled: ct!=='',
       });
     }
     return rows;
   }
 
-  // Parse XLSX via SheetJS (já carregado no <head>)
-  function impParsearXLSX(wb) {
-    if (typeof XLSX === 'undefined') { showToast('SheetJS não disponível — recarregue a página', 'error'); return []; }
-    var ws = wb.Sheets[wb.SheetNames[0]];
-    var json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-    return json.map(function(r, i) {
-      var ks = Object.keys(r).map(function(k){ return { k:k, n:impNorm(k) }; });
-      var gv = function(nomes) {
-        for (var ni = 0; ni < nomes.length; ni++) {
-          for (var ji = 0; ji < ks.length; ji++) {
-            if (ks[ji].n === nomes[ni] || ks[ji].n.indexOf(nomes[ni]) === 0)
-              return String(r[ks[ji].k] || '').trim();
-          }
-        }
-        return '';
-      };
-      var ctrlRaw = impNorm(gv(['controleserieoulate','controleserieoulote','controleserielote','controle','sn']));
-      var ct = ctrlRaw.indexOf('serie') >= 0 ? 'serie' : ctrlRaw.indexOf('lote') >= 0 ? 'lote' : '';
-      return {
-        _linha: i+2,
-        nome:         gv(['nome']),
-        codigo:       gv(['codigo','cod']),
-        unidade:      gv(['unidade','unid']) || 'un',
-        tipo:         gv(['tipo']) === 'internal' ? 'internal' : 'external',
-        stockMin:     parseInt(gv(['estoqueminimo','estoquemin','min'])) || 0,
-        stockCurrent: parseInt(gv(['estoqueatual','atual'])) || 0,
-        descricao:    gv(['descricao','desc']),
-        fornecedor:   gv(['fornecedor','forn']),
-        preco:        parseFloat((gv(['preco','valor','price'])||'0').replace(',','.')) || 0,
-        controlType:  ct,
-        serialControlled: ct !== '',
-      };
-    });
-  }
-
-  // Calcula status local para preview
+  // ── Status de estoque ──
   function impStatus(cur, min) {
-    if (min <= 0) return { l:'Normal',    c:'#16a34a', b:'#f0fdf4' };
-    var p = (cur/min)*100;
-    if (p < 50)  return { l:'Crítico',    c:'#dc2626', b:'#fef2f2' };
-    if (p < 80)  return { l:'Nec.Compra', c:'#d97706', b:'#fffbeb' };
-    if (p < 100) return { l:'Nec.Manuf.', c:'#7c3aed', b:'#f5f3ff' };
-    return { l:'Normal', c:'#16a34a', b:'#f0fdf4' };
+    if (min<=0) return {l:'Normal',   c:'#16a34a',b:'#f0fdf4'};
+    var p=(cur/min)*100;
+    if (p<50)  return {l:'Crítico',   c:'#dc2626',b:'#fef2f2'};
+    if (p<80)  return {l:'Nec.Compra',c:'#d97706',b:'#fffbeb'};
+    if (p<100) return {l:'Nec.Manuf.',c:'#7c3aed',b:'#f5f3ff'};
+    return {l:'Normal',c:'#16a34a',b:'#f0fdf4'};
   }
 
-  // Renderiza preview
+  // ── Renderiza tabela de preview ──
   function impRenderizarPreview(rows) {
-    var erros = []; var snQt = 0; var html = '';
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      var ruim = !r.nome || !r.codigo;
-      if (!r.nome)   erros.push('Linha ' + r._linha + ': Nome vazio');
-      if (!r.codigo) erros.push('Linha ' + r._linha + ': Código vazio');
+    var erros=[],snQt=0,html='';
+    for (var i=0;i<rows.length;i++) {
+      var r=rows[i], ruim=!r.nome||!r.codigo;
+      if (!r.nome)   erros.push('Linha '+r._linha+': Nome vazio');
+      if (!r.codigo) erros.push('Linha '+r._linha+': Código vazio');
       if (r.controlType) snQt++;
-      var st = impStatus(r.stockCurrent, r.stockMin);
-      var bg = ruim ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb');
-      var snB = r.controlType === 'serie'
-        ? '<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
-        : r.controlType === 'lote'
-        ? '<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
-        : '<span style="color:#d1d5db;">—</span>';
-      html += '<tr style="background:' + bg + ';">'
-        + '<td style="padding:6px 8px;color:#9ca3af;">' + (i+1) + '</td>'
-        + '<td style="padding:6px 8px;font-weight:600;color:' + (ruim?'#dc2626':'#374151') + ';">' + (r.nome || '<em style="color:#dc2626">⚠ vazio</em>') + '</td>'
-        + '<td style="padding:6px 8px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 5px;border-radius:4px;font-size:11px;">' + (r.codigo || '<em style="color:#dc2626">⚠</em>') + '</span></td>'
-        + '<td style="padding:6px 8px;color:#6c757d;">' + r.unidade + '</td>'
-        + '<td style="padding:6px 8px;">' + r.stockMin + '</td>'
-        + '<td style="padding:6px 8px;">' + r.stockCurrent + '</td>'
-        + '<td style="padding:6px 8px;"><span style="background:' + st.b + ';color:' + st.c + ';padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;">' + st.l + '</span></td>'
-        + '<td style="padding:6px 8px;">' + snB + '</td>'
-        + '</tr>';
+      var st=impStatus(r.stockCurrent,r.stockMin);
+      var bg=ruim?'#fef2f2':(i%2===0?'#fff':'#f9fafb');
+      var snB=r.controlType==='serie'
+        ?'<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
+        :r.controlType==='lote'
+        ?'<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
+        :'<span style="color:#d1d5db;">—</span>';
+      html+='<tr style="background:'+bg+';">'
+        +'<td style="padding:6px 8px;color:#9ca3af;">'+(i+1)+'</td>'
+        +'<td style="padding:6px 8px;font-weight:600;color:'+(ruim?'#dc2626':'#374151')+'">'+(r.nome||'<em style="color:#dc2626">⚠ vazio</em>')+'</td>'
+        +'<td style="padding:6px 8px;"><code style="background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">'+(r.codigo||'<em style="color:#dc2626">⚠</em>')+'</code></td>'
+        +'<td style="padding:6px 8px;color:#6c757d;">'+r.unidade+'</td>'
+        +'<td style="padding:6px 8px;">'+r.stockMin+'</td>'
+        +'<td style="padding:6px 8px;">'+r.stockCurrent+'</td>'
+        +'<td style="padding:6px 8px;"><span style="background:'+st.b+';color:'+st.c+';padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;">'+st.l+'</span></td>'
+        +'<td style="padding:6px 8px;">'+snB+'</td>'
+        +'</tr>';
     }
-    var tb = document.getElementById('imp_tbody'); if (tb) tb.innerHTML = html;
-    var bOk = document.getElementById('imp_badge_ok'); if (bOk) bOk.textContent = rows.length + ' linha(s)';
-    var bErr = document.getElementById('imp_badge_err');
-    var erEl = document.getElementById('imp_errs');
-    var bConf = document.getElementById('imp_btn_confirm');
-    if (erros.length > 0) {
-      if (bErr) { bErr.textContent = erros.length + ' erro(s)'; bErr.style.display = ''; }
-      if (erEl) { erEl.style.display = ''; erEl.innerHTML = '<strong>⚠ Erros encontrados:</strong><br>' + erros.map(function(x){ return '• '+x; }).join('<br>'); }
-      if (bConf) { bConf.style.opacity='0.5'; bConf.style.cursor='not-allowed'; bConf.style.pointerEvents='none'; }
+    var tb=document.getElementById('imp_tbody'); if(tb) tb.innerHTML=html;
+    var bOk=document.getElementById('imp_badge_ok'); if(bOk) bOk.textContent=rows.length+' linha(s)';
+    var bErr=document.getElementById('imp_badge_err'),erEl=document.getElementById('imp_errs'),bConf=document.getElementById('imp_btn_confirm');
+    if (erros.length>0) {
+      if(bErr){bErr.textContent=erros.length+' erro(s)';bErr.style.display='';}
+      if(erEl){erEl.style.display='';erEl.innerHTML='<strong>⚠ Erros encontrados:</strong><br>'+erros.map(function(x){return '• '+x;}).join('<br>');}
+      if(bConf){bConf.style.opacity='0.45';bConf.style.cursor='not-allowed';bConf.style.pointerEvents='none';}
     } else {
-      if (bErr) bErr.style.display = 'none';
-      if (erEl) erEl.style.display = 'none';
-      if (bConf) { bConf.style.opacity='1'; bConf.style.cursor='pointer'; bConf.style.pointerEvents=''; }
+      if(bErr) bErr.style.display='none';
+      if(erEl) erEl.style.display='none';
+      if(bConf){bConf.style.opacity='1';bConf.style.cursor='pointer';bConf.style.pointerEvents='';}
     }
-    var bSn = document.getElementById('imp_badge_sn');
-    if (bSn) { bSn.textContent = snQt + ' c/ Série/Lote'; bSn.style.display = snQt > 0 ? '' : 'none'; }
+    var bSn=document.getElementById('imp_badge_sn');
+    if(bSn){bSn.textContent=snQt+' c/ Série/Lote';bSn.style.display=snQt>0?'':'none';}
     impTela(2);
   }
 
-  // Clique em "Visualizar Dados"
+  // ── "Pré-visualizar" ──
   function impVisualizar() {
-    if (!window.impArq) { showToast('Selecione um arquivo primeiro', 'error'); return; }
-    var btn = document.getElementById('imp_btn_preview');
-    if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
-    var ext = (window.impArq.name.split('.').pop() || '').toLowerCase();
-    if (ext === 'csv') {
-      var reader = new FileReader();
-      reader.onerror = function() {
-        showToast('Erro ao ler arquivo CSV', 'error');
-        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-      };
-      reader.onload = function(ev) {
-        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-        var rows = impParsearCSV(ev.target.result);
-        if (rows.length === 0) { showToast('Nenhuma linha encontrada no arquivo', 'error'); return; }
-        window.impLinhas = rows;
-        impRenderizarPreview(rows);
-      };
-      reader.readAsText(window.impArq, 'UTF-8');
-    } else {
-      if (typeof XLSX === 'undefined') {
-        showToast('SheetJS não carregado — recarregue a página', 'error');
-        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-        return;
-      }
-      var rdr = new FileReader();
-      rdr.onerror = function() {
-        showToast('Erro ao ler arquivo Excel', 'error');
-        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-      };
-      rdr.onload = function(ev) {
-        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-        try {
-          var data = new Uint8Array(ev.target.result);
-          var wb = XLSX.read(data, { type: 'array' });
-          var rows = impParsearXLSX(wb);
-          if (rows.length === 0) { showToast('Nenhuma linha encontrada', 'error'); return; }
-          window.impLinhas = rows;
-          impRenderizarPreview(rows);
-        } catch(err) {
-          showToast('Erro ao processar Excel: ' + err.message, 'error');
-        }
-      };
-      rdr.readAsArrayBuffer(window.impArq);
-    }
+    var ta=document.getElementById('imp_textarea');
+    if (!ta||!ta.value.trim()) { showToast('Cole ou digite os dados primeiro','error'); return; }
+    var rows=impParsearTexto(ta.value);
+    if (rows.length===0) { showToast('Nenhuma linha encontrada — verifique o formato','error'); return; }
+    window.impLinhas=rows;
+    impRenderizarPreview(rows);
   }
 
-  // Clique em "Confirmar Importação"
+  // ── "Confirmar Importação" ──
   function impConfirmar() {
-    var validas = window.impLinhas.filter(function(r){ return r.nome && r.codigo; });
-    if (validas.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
+    var validas=window.impLinhas.filter(function(r){return r.nome&&r.codigo;});
+    if (validas.length===0) { showToast('Nenhum dado válido para importar','error'); return; }
     impTela(3);
-    var total  = validas.length;
-    var pLabel = document.getElementById('imp_prog_label');
-    var pBar   = document.getElementById('imp_prog_bar');
-    var pPct   = document.getElementById('imp_prog_pct');
-    var pCount = document.getElementById('imp_prog_count');
-    var pTotal = document.getElementById('imp_prog_total');
-    var pSub   = document.getElementById('imp_prog_sub');
-    if (pLabel) pLabel.textContent = 'Importando ' + total + ' produto(s)...';
-    if (pTotal) pTotal.textContent = total;
-    var sim = 0;
-    var timer = setInterval(function() {
-      sim = Math.min(sim + (88 - sim) * 0.1, 87);
-      if (pBar)   pBar.style.width = sim.toFixed(1) + '%';
-      if (pPct)   pPct.textContent = Math.round(sim) + '%';
-      var done = Math.round((sim / 100) * total);
-      if (pCount) pCount.textContent = done;
-      if (pSub)   pSub.textContent = done < total ? 'Processando ' + (done+1) + ' de ' + total + '...' : 'Finalizando...';
-    }, 150);
-    fetch('/produtos/api/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: validas }),
+    var total=validas.length;
+    var pLabel=document.getElementById('imp_prog_label'),
+        pBar=document.getElementById('imp_prog_bar'),
+        pPct=document.getElementById('imp_prog_pct'),
+        pCount=document.getElementById('imp_prog_count'),
+        pTotal=document.getElementById('imp_prog_total'),
+        pSub=document.getElementById('imp_prog_sub');
+    if(pLabel) pLabel.textContent='Importando '+total+' produto(s)...';
+    if(pTotal) pTotal.textContent=total;
+    var sim=0, timer=setInterval(function(){
+      sim=Math.min(sim+(88-sim)*0.12,87);
+      if(pBar)   pBar.style.width=sim.toFixed(1)+'%';
+      if(pPct)   pPct.textContent=Math.round(sim)+'%';
+      var done=Math.round((sim/100)*total);
+      if(pCount) pCount.textContent=done;
+      if(pSub)   pSub.textContent=done<total?'Processando '+(done+1)+' de '+total+'...':'Finalizando...';
+    },140);
+    fetch('/produtos/api/import',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({rows:validas}),
     })
-    .then(function(res) { return res.json(); })
-    .then(function(d) {
+    .then(function(r){return r.json();})
+    .then(function(d){
       clearInterval(timer);
-      if (pBar)   { pBar.style.width = '100%'; pBar.style.background = d.ok ? '#27AE60' : '#dc2626'; }
-      if (pPct)   pPct.textContent = '100%';
-      if (pCount) pCount.textContent = total;
-      if (pSub)   pSub.textContent = '';
-      if (d.ok) {
-        if (pLabel) pLabel.innerHTML = '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>Importação concluída!';
-        var msg = '\u2705 ' + (d.created||0) + ' criado(s), ' + (d.updated||0) + ' atualizado(s).';
-        if (d.pendingSerial > 0) msg += ' \u2022 ' + d.pendingSerial + ' aguardando Liberação S/N.';
-        setTimeout(function() {
+      if(pBar){pBar.style.width='100%';pBar.style.background=d.ok?'#27AE60':'#dc2626';}
+      if(pPct) pPct.textContent='100%';
+      if(pCount) pCount.textContent=total;
+      if(pSub) pSub.textContent='';
+      if(d.ok){
+        if(pLabel) pLabel.innerHTML='<i class="fas fa-check-circle" style="color:#27AE60;margin-right:8px;font-size:22px;"></i>Importação concluída!';
+        var msg='\u2705 '+( d.created||0)+' criado(s), '+(d.updated||0)+' atualizado(s).';
+        if(d.pendingSerial>0) msg+=' \u2022 '+d.pendingSerial+' aguardando Liberação S/N.';
+        setTimeout(function(){
           impFechar();
-          showToast(msg, d.pendingSerial > 0 ? 'info' : 'success');
-          setTimeout(function(){ location.reload(); }, 1200);
-        }, 1000);
+          showToast(msg, d.pendingSerial>0?'info':'success');
+          setTimeout(function(){location.reload();},1200);
+        },1200);
       } else {
-        if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>' + (d.error || 'Erro na importação');
-        var bCan = document.getElementById('imp_btn_cancel');
-        if (bCan) bCan.style.display = '';
-        showToast(d.error || 'Erro ao importar', 'error');
+        if(pLabel) pLabel.innerHTML='<i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;font-size:22px;"></i>'+(d.error||'Erro na importação');
+        var bCan=document.getElementById('imp_btn_cancel');
+        if(bCan) bCan.style.display='';
+        showToast(d.error||'Erro ao importar','error');
       }
     })
-    .catch(function(e) {
+    .catch(function(e){
       clearInterval(timer);
-      if (pBar)   pBar.style.background = '#dc2626';
-      if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>Erro de conexão';
-      var bCan2 = document.getElementById('imp_btn_cancel');
-      if (bCan2) bCan2.style.display = '';
-      showToast('Erro de conexão: ' + e.message, 'error');
+      if(pBar) pBar.style.background='#dc2626';
+      if(pLabel) pLabel.innerHTML='<i class="fas fa-times-circle" style="color:#dc2626;margin-right:8px;font-size:22px;"></i>Erro de conexão';
+      var bCan2=document.getElementById('imp_btn_cancel');
+      if(bCan2) bCan2.style.display='';
+      showToast('Erro de conexão: '+e.message,'error');
     });
   }
 
-  // Fechar modal ao clicar no overlay (fora do modal)
-  (function() {
-    var overlay = document.getElementById('importPlanilhaModal');
-    if (!overlay) return;
-    overlay.addEventListener('click', function(e) {
-      if (e.target === overlay) impFechar();
-    });
-    // Botão X
-    var btnX = document.getElementById('imp_btn_x');
-    if (btnX) btnX.addEventListener('click', impFechar);
-  })();
+  // Fechar ao clicar no overlay (fora do modal)
+  document.getElementById('importPlanilhaModal').addEventListener('click', function(e) {
+    if (e.target === this) impFechar();
+  });
   // ── /Importação de planilha ───────────────────────────────────────────────  </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
