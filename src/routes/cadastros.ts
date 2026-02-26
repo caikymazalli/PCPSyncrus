@@ -180,12 +180,12 @@ app.get('/', (c) => {
                   <button class="btn btn-secondary btn-sm" onclick="openEditSupplier('${s.id}')"><i class="fas fa-edit"></i></button>
                 </div>
                 <div class="tooltip-wrap" data-tooltip="Solicitar cotação">
-                  <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="alert('Abrindo solicitação de cotação para ${s.name}...')">
+                  <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="solicitarCotacao('${s.id}')">
                     <i class="fas fa-file-invoice-dollar"></i>
                   </button>
                 </div>
-                <div class="tooltip-wrap" data-tooltip="Inativar fornecedor">
-                  <button class="btn btn-danger btn-sm" onclick="if(confirm('Inativar ${s.name}?')) alert('Fornecedor inativado.')"><i class="fas fa-ban"></i></button>
+                <div class="tooltip-wrap" data-tooltip="${s.active ? 'Inativar fornecedor' : 'Ativar fornecedor'}">
+                  <button class="btn btn-sm" style="background:${s.active ? '#fef2f2' : '#f0fdf4'};color:${s.active ? '#dc2626' : '#16a34a'};border:1px solid ${s.active ? '#fecaca' : '#bbf7d0'};" onclick="toggleAtivoFornecedor('${s.id}', ${!s.active})"><i class="fas fa-${s.active ? 'ban' : 'check-circle'}"></i></button>
                 </div>
               </div>
             </div>
@@ -307,7 +307,7 @@ app.get('/', (c) => {
           <input type="hidden" id="sup_id" value="">
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Razão Social *</label><input class="form-control" id="sup_nome" type="text" placeholder="Nome completo da empresa"></div>
           <div class="form-group"><label class="form-label">Nome Fantasia</label><input class="form-control" id="sup_fantasia" type="text" placeholder="Nome comercial"></div>
-          <div class="form-group" id="fCnpjGroup"><label class="form-label">CNPJ *</label><input class="form-control" id="sup_cnpj" type="text" placeholder="00.000.000/0001-00"></div>
+          <div class="form-group" id="fCnpjGroup"><label class="form-label" id="fCnpjLabel">CNPJ <span id="fCnpjRequired" style="color:#dc2626;">*</span></label><input class="form-control" id="sup_cnpj" type="text" placeholder="00.000.000/0001-00"></div>
           <div class="form-group"><label class="form-label">E-mail *</label><input class="form-control" id="sup_email" type="email" placeholder="vendas@fornecedor.com"></div>
           <div class="form-group"><label class="form-label">Telefone</label><input class="form-control" id="sup_tel" type="text" placeholder="(11) 9999-9999"></div>
           <div class="form-group"><label class="form-label">Contato Principal</label><input class="form-control" id="sup_contato" type="text" placeholder="Nome do responsável"></div>
@@ -413,227 +413,300 @@ app.get('/', (c) => {
   </div>
 
   <script>
-  const suppliersData = ${JSON.stringify(suppliers)};
-  const productSuppliersData = ${JSON.stringify(productSuppliers)};
-  const allItemsData = ${JSON.stringify(allItems)};
-  const supplierProductMapData = ${JSON.stringify(supplierProductMap)};
+  var suppliersData = ${JSON.stringify(suppliers)};
+  var productSuppliersData = ${JSON.stringify(productSuppliers)};
+  var allItemsData = ${JSON.stringify(allItems)};
+  var supplierProductMapData = ${JSON.stringify(supplierProductMap)};
 
+  // ── Filtro de fornecedores ──────────────────────────────────────────────
   function filterSuppliers() {
-    const search = document.getElementById('supSearch').value.toLowerCase();
-    const type = document.getElementById('supTypeFilter').value;
-    const cat = document.getElementById('supCatFilter').value;
-    document.querySelectorAll('.sup-card').forEach(card => {
-      const matchSearch = !search || (card.dataset.search || '').includes(search);
-      const matchType = !type || card.dataset.type === type;
-      const matchCat = !cat || card.dataset.cat === cat;
+    var search = document.getElementById('supSearch').value.toLowerCase();
+    var type = document.getElementById('supTypeFilter').value;
+    var cat = document.getElementById('supCatFilter').value;
+    document.querySelectorAll('.sup-card').forEach(function(card) {
+      var matchSearch = !search || (card.dataset.search || '').includes(search);
+      var matchType = !type || card.dataset.type === type;
+      var matchCat = !cat || card.dataset.cat === cat;
       card.parentElement.style.display = (matchSearch && matchType && matchCat) ? '' : 'none';
     });
   }
 
+  // ── Tipo de fornecedor (nacional/importado) ─────────────────────────────
   function toggleFornType(val) {
-    const nac = document.getElementById('fType_nac');
-    const imp = document.getElementById('fType_imp');
-    if (nac) nac.style.borderColor = val==='nacional'?'#16a34a':'#d1d5db';
-    if (imp) imp.style.borderColor = val==='importado'?'#2980B9':'#d1d5db';
-    const cnpjLabel = document.getElementById('fCnpjGroup')?.querySelector('label');
-    if (cnpjLabel) cnpjLabel.textContent = val==='importado'?'Tax ID / Registration':'CNPJ';
-    const ncmGroup = document.getElementById('fNcmGroup');
-    if (ncmGroup) ncmGroup.style.display = val==='importado'?'block':'none';
-    const descGroup = document.getElementById('fDescImpGroup');
-    if (descGroup) descGroup.style.display = val==='importado'?'grid':'none';
+    var nac = document.getElementById('fType_nac');
+    var imp = document.getElementById('fType_imp');
+    if (nac) nac.style.borderColor = val === 'nacional' ? '#16a34a' : '#d1d5db';
+    if (imp) imp.style.borderColor = val === 'importado' ? '#2980B9' : '#d1d5db';
+    // Label e obrigatoriedade do CNPJ
+    var cnpjLabel = document.getElementById('fCnpjLabel');
+    var cnpjReq   = document.getElementById('fCnpjRequired');
+    var cnpjInput = document.getElementById('sup_cnpj');
+    if (val === 'importado') {
+      if (cnpjLabel) cnpjLabel.firstChild.nodeValue = 'Tax ID / Registration ';
+      if (cnpjReq)   cnpjReq.style.display = 'none';
+      if (cnpjInput) cnpjInput.placeholder = 'Tax ID ou EIN (opcional)';
+    } else {
+      if (cnpjLabel) cnpjLabel.firstChild.nodeValue = 'CNPJ ';
+      if (cnpjReq)   cnpjReq.style.display = 'inline';
+      if (cnpjInput) cnpjInput.placeholder = '00.000.000/0001-00';
+    }
+    var ncmGroup = document.getElementById('fNcmGroup');
+    if (ncmGroup) ncmGroup.style.display = val === 'importado' ? 'block' : 'none';
   }
 
+  // ── Tipo de vinculação ──────────────────────────────────────────────────
   function toggleVincType(val) {
-    document.getElementById('vincType_ext').style.borderColor = val==='external'?'#2980B9':'#d1d5db';
-    document.getElementById('vincType_int').style.borderColor = val==='internal'?'#7c3aed':'#d1d5db';
-    document.getElementById('vincSuppliersSection').style.display = val==='external'?'block':'none';
-    document.getElementById('vincInternalInfo').style.display = val==='internal'?'block':'none';
+    var ext = document.getElementById('vincType_ext');
+    var int_ = document.getElementById('vincType_int');
+    var secSup = document.getElementById('vincSuppliersSection');
+    var secInt = document.getElementById('vincInternalInfo');
+    if (ext) ext.style.borderColor = val === 'external' ? '#2980B9' : '#d1d5db';
+    if (int_) int_.style.borderColor = val === 'internal' ? '#7c3aed' : '#d1d5db';
+    if (secSup) secSup.style.display = val === 'external' ? 'block' : 'none';
+    if (secInt) secInt.style.display = val === 'internal' ? 'block' : 'none';
   }
 
+  // ── Adicionar fornecedor à vinculação ───────────────────────────────────
   function addVincSupplier() {
-    const list = document.getElementById('vincSupplierList');
-    const count = list.children.length + 1;
-    const div = document.createElement('div');
+    var list = document.getElementById('vincSupplierList');
+    var count = list.children.length + 1;
+    var div = document.createElement('div');
     div.className = 'vinc-supplier-row';
     div.style.cssText = 'display:grid;grid-template-columns:32px 2fr 80px auto;gap:8px;align-items:center;margin-bottom:8px;background:#f8f9fa;padding:8px;border-radius:8px;';
-    const bgColors = ['#1B4F72','#9ca3af','#d1d5db'];
-    div.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;background:' + (bgColors[count-1]||'#d1d5db') + ';color:white;border-radius:50%;font-size:11px;font-weight:700;">' + count + '</div>' +
-      '<select class="form-control" style="font-size:12px;"><option value="">Selecionar fornecedor...</option>' +
-      suppliersData.map(s => '<option value="'+s.id+'">'+s.name+'</option>').join('') +
-      '</select>' +
-      '<select class="form-control" style="font-size:12px;"><option value="1">Principal</option><option value="2">Backup</option><option value="3">Terciário</option></select>' +
-      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.vinc-supplier-row\\').remove()"><i class="fas fa-trash"></i></button>';
+    var bgColors = ['#1B4F72','#9ca3af','#d1d5db'];
+    var opts = suppliersData.map(function(s) { return '<option value="' + s.id + '">' + s.name + '</option>'; }).join('');
+    var numBg = bgColors[count - 1] || '#d1d5db';
+    div.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;background:' + numBg + ';color:white;border-radius:50%;font-size:11px;font-weight:700;">' + count + '</div>' +
+      '<select class="form-control" style="font-size:12px;"><option value="">Selecionar fornecedor...</option>' + opts + '</select>' +
+      '<select class="form-control" style="font-size:12px;"><option value="1">Principal</option><option value="2">Backup</option><option value="3">Terci\u00e1rio</option></select>' +
+      '<button class="btn btn-danger btn-sm" type="button" onclick="this.closest(\'.vinc-supplier-row\').remove()"><i class="fas fa-trash"></i></button>';
     list.appendChild(div);
   }
 
+  // ── Detalhes do fornecedor ──────────────────────────────────────────────
+  function row2(label, value) {
+    return '<div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;">' +
+      '<div style="font-size:10px;color:#9ca3af;font-weight:600;">' + label.toUpperCase() + '</div>' +
+      '<div style="font-size:13px;color:#374151;margin-top:3px;">' + value + '</div>' +
+      '</div>';
+  }
+
   function openSupplierDetail(id) {
-    const s = suppliersData.find(x => x.id === id);
+    var s = suppliersData.find(function(x) { return x.id === id; });
     if (!s) return;
-    const prods = supplierProductMapData[id] || [];
-    const ti = s.type === 'importado' ? { label:'Importado', color:'#2980B9', bg:'#e8f4fd' } : { label:'Nacional', color:'#16a34a', bg:'#f0fdf4' };
-    const stars = Array.from({length:5}, (_,i) => '<i class="fas fa-star" style="font-size:14px;color:'+(i<Math.round(s.rating)?'#F39C12':'#e9ecef')+'"></i>').join('');
-    document.getElementById('supDetailTitle').innerHTML = '<i class="fas fa-truck" style="margin-right:8px;"></i>' + s.name;
-    document.getElementById('supDetailBody').innerHTML =
+    var prods = supplierProductMapData[id] || [];
+    var tiLabel = s.type === 'importado' ? 'Importado' : 'Nacional';
+    var tiColor = s.type === 'importado' ? '#2980B9' : '#16a34a';
+    var tiBg    = s.type === 'importado' ? '#e8f4fd' : '#f0fdf4';
+    var stars = '';
+    for (var i = 0; i < 5; i++) {
+      stars += '<i class="fas fa-star" style="font-size:14px;color:' + (i < Math.round(s.rating || 0) ? '#F39C12' : '#e9ecef') + '"></i>';
+    }
+    var titleEl = document.getElementById('supDetailTitle');
+    if (titleEl) titleEl.innerHTML = '<i class="fas fa-truck" style="margin-right:8px;"></i>' + s.name;
+    var bodyEl = document.getElementById('supDetailBody');
+    if (bodyEl) bodyEl.innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-      row2('Razão Social', s.name) +
-      row2('Nome Fantasia', s.tradeName) +
+      row2('Raz\u00e3o Social', s.name) +
+      row2('Nome Fantasia', s.tradeName || s.fantasia || '—') +
       row2('CNPJ / Tax ID', s.cnpj || '—') +
-      row2('Tipo', '<span class="badge" style="background:'+ti.bg+';color:'+ti.color+';">'+ti.label+'</span>') +
-      row2('Contato', s.contact) +
-      row2('E-mail', '<a href="mailto:'+s.email+'" style="color:#2980B9;">'+s.email+'</a>') +
-      row2('Telefone', s.phone) +
-      row2('Cidade / Estado', s.city + ' — ' + s.state) +
-      row2('País', s.country) +
-      row2('Categoria', s.category) +
-      row2('Prazo Entrega', '<strong>'+s.deliveryLeadDays+' dias</strong>') +
-      row2('Pgto', s.paymentTerms) +
-      row2('Avaliação', stars + ' <span style="font-size:13px;font-weight:600;color:#374151;">'+s.rating+'/5</span>') +
-      row2('Status', s.active?'<span class="badge badge-success">Ativo</span>':'<span class="badge badge-secondary">Inativo</span>') +
-      (prods.length > 0 ? '<div style="grid-column:span 2;background:#e8f4fd;border-radius:8px;padding:10px;"><div style="font-size:11px;font-weight:700;color:#2980B9;margin-bottom:6px;">PRODUTOS FORNECIDOS</div><div style="font-size:13px;color:#374151;">'+prods.join(', ')+'</div></div>' : '') +
-      (s.notes ? '<div style="grid-column:span 2;background:#f8f9fa;border-radius:8px;padding:10px;"><div style="font-size:11px;font-weight:700;color:#9ca3af;margin-bottom:4px;">OBSERVAÇÕES</div><div style="font-size:13px;color:#374151;">'+s.notes+'</div></div>' : '') +
+      row2('Tipo', '<span class="badge" style="background:' + tiBg + ';color:' + tiColor + ';">' + tiLabel + '</span>') +
+      row2('Contato', s.contact || '—') +
+      row2('E-mail', s.email ? '<a href="mailto:' + s.email + '" style="color:#2980B9;">' + s.email + '</a>' : '—') +
+      row2('Telefone', s.phone || s.tel || '—') +
+      row2('Cidade / Estado', (s.city || '—') + ' \u2014 ' + (s.state || '')) +
+      row2('Pa\u00eds', s.country || 'Brasil') +
+      row2('Categoria', s.category || '—') +
+      row2('Prazo Entrega', '<strong>' + (s.deliveryLeadDays || 0) + ' dias</strong>') +
+      row2('Pgto', s.paymentTerms || '—') +
+      row2('Avalia\u00e7\u00e3o', stars + ' <span style="font-size:13px;font-weight:600;color:#374151;">' + (s.rating || 0) + '/5</span>') +
+      row2('Status', s.active ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-secondary">Inativo</span>') +
+      (prods.length > 0 ? '<div style="grid-column:span 2;background:#e8f4fd;border-radius:8px;padding:10px;"><div style="font-size:11px;font-weight:700;color:#2980B9;margin-bottom:6px;">PRODUTOS FORNECIDOS</div><div style="font-size:13px;color:#374151;">' + prods.join(', ') + '</div></div>' : '') +
+      (s.notes ? '<div style="grid-column:span 2;background:#f8f9fa;border-radius:8px;padding:10px;"><div style="font-size:11px;font-weight:700;color:#9ca3af;margin-bottom:4px;">OBSERVA\u00c7\u00d5ES</div><div style="font-size:13px;color:#374151;">' + s.notes + '</div></div>' : '') +
       '</div>';
     openModal('supplierDetailModal');
   }
 
-  function row2(label, value) {
-    return '<div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;">' +
-      '<div style="font-size:10px;color:#9ca3af;font-weight:600;">'+label.toUpperCase()+'</div>' +
-      '<div style="font-size:13px;color:#374151;margin-top:3px;">'+value+'</div>' +
-    '</div>';
+  // ── Editar fornecedor ───────────────────────────────────────────────────
+  function setField(fid, val) {
+    var el = document.getElementById(fid);
+    if (el) el.value = (val !== null && val !== undefined) ? String(val) : '';
   }
 
   function openEditSupplier(id) {
-    const s = suppliersData.find(x => x.id === id);
-    if (!s) { showToast('Fornecedor não encontrado', 'error'); return; }
-    // Resetar campos antes de preencher (evita valores residuais)
-    const fields = ['sup_id','sup_nome','sup_fantasia','sup_cnpj','sup_email','sup_tel','sup_contato','sup_cidade','sup_estado','sup_pagamento','sup_obs'];
-    fields.forEach(fid => { const el = document.getElementById(fid); if(el) (el as HTMLInputElement).value = ''; });
-    // Preencher todos os campos com dados do fornecedor
-    const set = (fid: string, val: any) => { const el = document.getElementById(fid); if(el) (el as HTMLInputElement).value = val || ''; };
-    set('sup_id', s.id);
-    set('sup_nome', s.name);
-    set('sup_fantasia', s.fantasia || s.tradeName);
-    set('sup_cnpj', s.cnpj);
-    set('sup_email', s.email);
-    set('sup_tel', s.phone || s.tel);
-    set('sup_contato', s.contact);
-    set('sup_cidade', s.city);
-    set('sup_estado', s.state);
-    set('sup_pagamento', s.paymentTerms);
-    set('sup_prazo', s.deliveryLeadDays);
-    set('sup_obs', s.notes || s.obs);
+    var s = suppliersData.find(function(x) { return x.id === id; });
+    if (!s) { showToast('Fornecedor n\u00e3o encontrado', 'error'); return; }
+    // Limpar campos
+    ['sup_id','sup_nome','sup_fantasia','sup_cnpj','sup_email','sup_tel','sup_contato','sup_cidade','sup_estado','sup_pagamento','sup_obs','sup_prazo'].forEach(function(fid) {
+      var el = document.getElementById(fid); if (el) el.value = '';
+    });
+    // Preencher com dados do fornecedor
+    setField('sup_id',       s.id);
+    setField('sup_nome',     s.name);
+    setField('sup_fantasia', s.fantasia || s.tradeName);
+    setField('sup_cnpj',     s.cnpj);
+    setField('sup_email',    s.email);
+    setField('sup_tel',      s.phone || s.tel);
+    setField('sup_contato',  s.contact);
+    setField('sup_cidade',   s.city);
+    setField('sup_estado',   s.state);
+    setField('sup_pagamento',s.paymentTerms);
+    setField('sup_prazo',    s.deliveryLeadDays);
+    setField('sup_obs',      s.notes || s.obs);
     // Categoria
-    const catEl = document.getElementById('sup_categoria') as HTMLSelectElement;
+    var catEl = document.getElementById('sup_categoria');
     if (catEl) catEl.value = s.category || 'materia_prima';
-    // Tipo nacional/importado
-    const tipo = s.type || 'nacional';
-    document.querySelectorAll('input[name="fType"]').forEach((r: any) => { r.checked = (r.value === tipo); });
+    // Tipo
+    var tipo = s.type || 'nacional';
+    document.querySelectorAll('input[name="fType"]').forEach(function(r) { r.checked = (r.value === tipo); });
     toggleFornType(tipo);
-    // Título do modal
-    document.getElementById('fornModalTitle').innerHTML = '<i class="fas fa-edit" style="margin-right:8px;"></i>Editar Fornecedor: ' + (s.name || '');
+    // Título
+    var tit = document.getElementById('fornModalTitle');
+    if (tit) tit.innerHTML = '<i class="fas fa-edit" style="margin-right:8px;"></i>Editar Fornecedor: ' + (s.name || '');
     openModal('novoFornecedorModal');
   }
 
+  // ── Salvar fornecedor ───────────────────────────────────────────────────
+  function gv(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+  async function salvarFornecedor() {
+    var editId      = gv('sup_id');
+    var name        = gv('sup_nome');
+    var cnpj        = gv('sup_cnpj');
+    var email       = gv('sup_email');
+    var phone       = gv('sup_tel');
+    var contact     = gv('sup_contato');
+    var city        = gv('sup_cidade');
+    var state       = gv('sup_estado');
+    var category    = gv('sup_categoria');
+    var paymentTerms= gv('sup_pagamento');
+    var deliveryLeadDays = gv('sup_prazo') || 0;
+    var notes       = gv('sup_obs');
+    var fantasia    = gv('sup_fantasia');
+    var typeEl      = document.querySelector('input[name="fType"]:checked');
+    var type        = typeEl ? typeEl.value : 'nacional';
+
+    if (!name) { showToast('Informe o nome!', 'error'); return; }
+
+    var payload = {
+      name: name, fantasia: fantasia, cnpj: cnpj, email: email, phone: phone,
+      contact: contact, city: city, state: state, category: category,
+      paymentTerms: paymentTerms, deliveryLeadDays: deliveryLeadDays,
+      notes: notes, type: type
+    };
+
+    try {
+      var url    = editId ? '/cadastros/api/supplier/' + editId : '/cadastros/api/supplier/create';
+      var method = editId ? 'PUT' : 'POST';
+      var res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+      if (data.ok) {
+        showToast(editId ? '\u2705 Fornecedor atualizado!' : '\u2705 Fornecedor cadastrado!');
+        var elId = document.getElementById('sup_id'); if (elId) elId.value = '';
+        var elTit = document.getElementById('fornModalTitle');
+        if (elTit) elTit.innerHTML = '<i class="fas fa-truck" style="margin-right:8px;"></i>Cadastrar Fornecedor';
+        closeModal('novoFornecedorModal');
+        setTimeout(function() { location.reload(); }, 800);
+      } else {
+        showToast(data.error || 'Erro ao salvar', 'error');
+      }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
+  }
+
+  // ── Salvar vinculação ───────────────────────────────────────────────────
   async function salvarVinculacao() {
-    const prod = document.getElementById('vincProduto')?.value || '';
+    var prodEl = document.getElementById('vincProduto');
+    var prod = prodEl ? prodEl.value : '';
     if (!prod) { showToast('Selecione um produto!', 'error'); return; }
-    const vincType = document.querySelector('input[name="vincType"]:checked')?.value || 'external';
-    const rows = document.querySelectorAll('.vinc-supplier-row');
-    const suppliers_vinc = [];
-    rows.forEach((row, idx) => {
-      const sel = row.querySelector('select');
-      const priSel = row.querySelectorAll('select')[1];
-      if (sel?.value) suppliers_vinc.push({ supplierId: sel.value, priority: parseInt(priSel?.value || '1') });
+    var vincTypeEl = document.querySelector('input[name="vincType"]:checked');
+    var vincType = vincTypeEl ? vincTypeEl.value : 'external';
+    var rows = document.querySelectorAll('.vinc-supplier-row');
+    var suppliers_vinc = [];
+    rows.forEach(function(row) {
+      var sels = row.querySelectorAll('select');
+      var sel    = sels[0];
+      var priSel = sels[1];
+      if (sel && sel.value) {
+        suppliers_vinc.push({ supplierId: sel.value, priority: parseInt(priSel ? priSel.value : '1') });
+      }
     });
     if (vincType === 'external' && suppliers_vinc.length === 0) { showToast('Adicione ao menos um fornecedor!', 'error'); return; }
     try {
-      const res = await fetch('/cadastros/api/supplier/vinc', {
+      var res = await fetch('/cadastros/api/supplier/vinc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productCode: prod, type: vincType, suppliers: suppliers_vinc })
       });
-      const data = await res.json();
+      var data = await res.json();
       if (data.ok) {
-        showToast('✅ Vinculação salva!');
+        showToast('\u2705 Vincula\u00e7\u00e3o salva!');
         closeModal('vinculacaoModal');
-        setTimeout(() => location.reload(), 800);
+        setTimeout(function() { location.reload(); }, 800);
       } else {
-        showToast(data.error || 'Erro ao salvar vinculação', 'error');
+        showToast(data.error || 'Erro ao salvar vincula\u00e7\u00e3o', 'error');
       }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
-  // Auto close alert after 8s
-  setTimeout(() => { const el = document.getElementById('noSupplierAlert'); if(el) el.style.display='none'; }, 8000);
-  
+  // ── Solicitar cotação ───────────────────────────────────────────────────
+  function solicitarCotacao(id) {
+    var s = suppliersData.find(function(x) { return x.id === id; });
+    if (!s) return;
+    showToast('\u2709\ufe0f Abrindo cota\u00e7\u00e3o para ' + s.name + '...', 'info');
+    setTimeout(function() { window.location.href = '/suprimentos?cotacao=' + id; }, 1500);
+  }
 
-  async function salvarFornecedor() {
-    const editId = document.getElementById('sup_id')?.value || '';
-    const name = document.getElementById('sup_nome')?.value || '';
-    const cnpj = document.getElementById('sup_cnpj')?.value || '';
-    const email = document.getElementById('sup_email')?.value || '';
-    const phone = document.getElementById('sup_tel')?.value || '';
-    const contact = document.getElementById('sup_contato')?.value || '';
-    const city = document.getElementById('sup_cidade')?.value || '';
-    const state = document.getElementById('sup_estado')?.value || '';
-    const category = document.getElementById('sup_categoria')?.value || '';
-    const paymentTerms = document.getElementById('sup_pagamento')?.value || '';
-    const deliveryLeadDays = document.getElementById('sup_prazo')?.value || 0;
-    const notes = document.getElementById('sup_obs')?.value || '';
-    const type = document.querySelector('input[name="fType"]:checked')?.value || 'nacional';
-    const fantasia = document.getElementById('sup_fantasia')?.value || '';
-    
-    if (!name) { showToast('Informe o nome!', 'error'); return; }
-    
-    const payload = { name, fantasia, cnpj, email, phone, contact, city, state, category, paymentTerms, deliveryLeadDays, notes, type };
-    
+  // ── Ativar / Inativar fornecedor ────────────────────────────────────────
+  async function toggleAtivoFornecedor(id, ativo) {
+    var msg = (ativo === true || ativo === 'true') ? 'Ativar este fornecedor?' : 'Inativar este fornecedor?';
+    if (!confirm(msg)) return;
     try {
-      let res;
-      if (editId) {
-        res = await fetch('/cadastros/api/supplier/' + editId, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        res = await fetch('/cadastros/api/supplier/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      }
-      const data = await res.json();
+      var res = await fetch('/cadastros/api/supplier/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: (ativo === true || ativo === 'true') })
+      });
+      var data = await res.json();
       if (data.ok) {
-        showToast(editId ? '✅ Fornecedor atualizado!' : '✅ Fornecedor cadastrado!');
-        document.getElementById('sup_id').value = '';
-        document.getElementById('fornModalTitle').innerHTML = '<i class="fas fa-truck" style="margin-right:8px;"></i>Cadastrar Fornecedor';
-        closeModal('novoFornecedorModal');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(data.error || 'Erro ao salvar', 'error');
-      }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+        showToast((ativo === true || ativo === 'true') ? '\u2705 Fornecedor ativado!' : 'Fornecedor inativado!');
+        setTimeout(function() { location.reload(); }, 600);
+      } else { showToast(data.error || 'Erro', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
+  // ── Excluir fornecedor ──────────────────────────────────────────────────
   async function deleteFornecedor(id) {
     if (!confirm('Excluir este fornecedor?')) return;
     try {
-      const res = await fetch('/cadastros/api/supplier/' + id, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) { showToast('Fornecedor excluído!'); setTimeout(() => location.reload(), 500); }
+      var res = await fetch('/cadastros/api/supplier/' + id, { method: 'DELETE' });
+      var data = await res.json();
+      if (data.ok) { showToast('Fornecedor exclu\u00eddo!'); setTimeout(function() { location.reload(); }, 500); }
       else showToast(data.error || 'Erro ao excluir', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
-  // ── Toast notification ────────────────────────────────────────────────────
-  function showToast(msg, type = 'success') {
-    const t = document.createElement('div');
+  // ── Toast ───────────────────────────────────────────────────────────────
+  function showToast(msg, type) {
+    if (!type) type = 'success';
+    var t = document.createElement('div');
     t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
     t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
-    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    var icon = type === 'success' ? '<i class="fas fa-check-circle"></i>' : type === 'error' ? '<i class="fas fa-exclamation-circle"></i>' : '<i class="fas fa-info-circle"></i>';
+    t.innerHTML = icon + ' ' + msg;
     document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+    setTimeout(function() {
+      t.style.opacity = '0';
+      setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
+    }, 3500);
   }
+
+  // Fechar alerta crítico após 8s
+  setTimeout(function() { var el = document.getElementById('noSupplierAlert'); if (el) el.style.display = 'none'; }, 8000);
 </script>
   `
 
@@ -695,6 +768,7 @@ app.put('/api/supplier/:id', async (c) => {
   s.notes = body.notes ?? s.notes
   s.obs = body.notes ?? s.obs
   s.type = body.type ?? s.type
+  if (body.active !== undefined) s.active = body.active === true || body.active === 1
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'suppliers', id, userId, {
       name: s.name, cnpj: s.cnpj, email: s.email, phone: s.phone,
