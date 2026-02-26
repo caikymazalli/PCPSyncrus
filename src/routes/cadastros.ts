@@ -67,9 +67,9 @@ app.get('/', (c) => {
     <div>
       <div style="font-size:14px;color:#6c757d;">${suppliers.length} fornecedores cadastrados • Nacionais e importados</div>
       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
-        <span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-flag" style="font-size:9px;"></i> ${suppliers.filter((s: any) => s.type === 'nacional').length} Nacionais</span>
+        <span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-flag" style="font-size:9px;"></i> ${suppliers.filter((s: any) => !s.type || s.type === 'nacional').length} Nacionais</span>
         <span class="badge" style="background:#e8f4fd;color:#2980B9;"><i class="fas fa-globe" style="font-size:9px;"></i> ${suppliers.filter((s: any) => s.type === 'importado').length} Importados</span>
-        <span class="badge" style="background:#f0fdf4;color:#16a34a;">${suppliers.filter((s: any) => s.active).length} Ativos</span>
+        <span class="badge" style="background:#f0fdf4;color:#16a34a;">${suppliers.filter((s: any) => s.active !== false).length} Ativos</span>
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -431,11 +431,16 @@ app.get('/', (c) => {
   }
 
   function toggleFornType(val) {
-    document.getElementById('fType_nac').style.borderColor = val==='nacional'?'#16a34a':'#d1d5db';
-    document.getElementById('fType_imp').style.borderColor = val==='importado'?'#2980B9':'#d1d5db';
-    document.getElementById('fCnpjGroup').querySelector('label').textContent = val==='importado'?'Tax ID / Registration':'CNPJ *';
-    document.getElementById('fNcmGroup').style.display = val==='importado'?'block':'none';
-    document.getElementById('fDescImpGroup').style.display = val==='importado'?'grid':'none';
+    const nac = document.getElementById('fType_nac');
+    const imp = document.getElementById('fType_imp');
+    if (nac) nac.style.borderColor = val==='nacional'?'#16a34a':'#d1d5db';
+    if (imp) imp.style.borderColor = val==='importado'?'#2980B9':'#d1d5db';
+    const cnpjLabel = document.getElementById('fCnpjGroup')?.querySelector('label');
+    if (cnpjLabel) cnpjLabel.textContent = val==='importado'?'Tax ID / Registration':'CNPJ';
+    const ncmGroup = document.getElementById('fNcmGroup');
+    if (ncmGroup) ncmGroup.style.display = val==='importado'?'block':'none';
+    const descGroup = document.getElementById('fDescImpGroup');
+    if (descGroup) descGroup.style.display = val==='importado'?'grid':'none';
   }
 
   function toggleVincType(val) {
@@ -499,27 +504,32 @@ app.get('/', (c) => {
 
   function openEditSupplier(id) {
     const s = suppliersData.find(x => x.id === id);
-    if (!s) return;
-    // Preencher todos os campos do modal com os dados do fornecedor
-    document.getElementById('sup_id').value = s.id || '';
-    document.getElementById('sup_nome').value = s.name || '';
-    document.getElementById('sup_fantasia').value = s.fantasia || s.tradeName || '';
-    document.getElementById('sup_cnpj').value = s.cnpj || '';
-    document.getElementById('sup_email').value = s.email || '';
-    document.getElementById('sup_tel').value = s.phone || s.tel || '';
-    document.getElementById('sup_contato').value = s.contact || '';
-    document.getElementById('sup_cidade').value = s.city || '';
-    document.getElementById('sup_estado').value = s.state || '';
-    document.getElementById('sup_categoria').value = s.category || 'materia_prima';
-    document.getElementById('sup_pagamento').value = s.paymentTerms || '';
-    document.getElementById('sup_prazo').value = s.deliveryLeadDays || '';
-    document.getElementById('sup_obs').value = s.notes || s.obs || '';
+    if (!s) { showToast('Fornecedor não encontrado', 'error'); return; }
+    // Resetar campos antes de preencher (evita valores residuais)
+    const fields = ['sup_id','sup_nome','sup_fantasia','sup_cnpj','sup_email','sup_tel','sup_contato','sup_cidade','sup_estado','sup_pagamento','sup_obs'];
+    fields.forEach(fid => { const el = document.getElementById(fid); if(el) (el as HTMLInputElement).value = ''; });
+    // Preencher todos os campos com dados do fornecedor
+    const set = (fid: string, val: any) => { const el = document.getElementById(fid); if(el) (el as HTMLInputElement).value = val || ''; };
+    set('sup_id', s.id);
+    set('sup_nome', s.name);
+    set('sup_fantasia', s.fantasia || s.tradeName);
+    set('sup_cnpj', s.cnpj);
+    set('sup_email', s.email);
+    set('sup_tel', s.phone || s.tel);
+    set('sup_contato', s.contact);
+    set('sup_cidade', s.city);
+    set('sup_estado', s.state);
+    set('sup_pagamento', s.paymentTerms);
+    set('sup_prazo', s.deliveryLeadDays);
+    set('sup_obs', s.notes || s.obs);
+    // Categoria
+    const catEl = document.getElementById('sup_categoria') as HTMLSelectElement;
+    if (catEl) catEl.value = s.category || 'materia_prima';
     // Tipo nacional/importado
-    const tipo = s.type || (s.country && s.country !== 'Brasil' ? 'importado' : 'nacional');
-    const radios = document.querySelectorAll('input[name="fType"]');
-    radios.forEach(r => { r.checked = (r.value === tipo); });
+    const tipo = s.type || 'nacional';
+    document.querySelectorAll('input[name="fType"]').forEach((r: any) => { r.checked = (r.value === tipo); });
     toggleFornType(tipo);
-    // Atualizar título do modal para indicar edição
+    // Título do modal
     document.getElementById('fornModalTitle').innerHTML = '<i class="fas fa-edit" style="margin-right:8px;"></i>Editar Fornecedor: ' + (s.name || '');
     openModal('novoFornecedorModal');
   }
@@ -571,10 +581,11 @@ app.get('/', (c) => {
     const deliveryLeadDays = document.getElementById('sup_prazo')?.value || 0;
     const notes = document.getElementById('sup_obs')?.value || '';
     const type = document.querySelector('input[name="fType"]:checked')?.value || 'nacional';
+    const fantasia = document.getElementById('sup_fantasia')?.value || '';
     
     if (!name) { showToast('Informe o nome!', 'error'); return; }
     
-    const payload = { name, cnpj, email, phone, contact, city, state, category, paymentTerms, deliveryLeadDays, notes, type };
+    const payload = { name, fantasia, cnpj, email, phone, contact, city, state, category, paymentTerms, deliveryLeadDays, notes, type };
     
     try {
       let res;
@@ -639,6 +650,8 @@ app.post('/api/supplier/create', async (c) => {
     id, name: body.name, cnpj: body.cnpj || '', email: body.email || '',
     phone: body.phone || '', contact: body.contact || '', city: body.city || '',
     state: body.state || '', category: body.category || '', active: true,
+    type: body.type || 'nacional',
+    fantasia: body.fantasia || '', tradeName: body.fantasia || '',
     rating: 0, paymentTerms: body.paymentTerms || '', deliveryLeadDays: parseInt(body.deliveryLeadDays) || 0,
     notes: body.notes || '', createdAt: new Date().toISOString(),
   }
@@ -659,15 +672,34 @@ app.put('/api/supplier/:id', async (c) => {
   if (!body) return err(c, 'Dados inválidos')
   const idx = tenant.suppliers.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Fornecedor não encontrado', 404)
-  Object.assign(tenant.suppliers[idx], body)
+  // Persistir todos os campos editáveis
+  const s = tenant.suppliers[idx]
+  s.name = body.name ?? s.name
+  s.fantasia = body.fantasia ?? s.fantasia
+  s.tradeName = body.fantasia ?? s.tradeName
+  s.cnpj = body.cnpj ?? s.cnpj
+  s.email = body.email ?? s.email
+  s.phone = body.phone ?? s.phone
+  s.tel = body.phone ?? s.tel
+  s.contact = body.contact ?? s.contact
+  s.city = body.city ?? s.city
+  s.state = body.state ?? s.state
+  s.category = body.category ?? s.category
+  s.paymentTerms = body.paymentTerms ?? s.paymentTerms
+  s.deliveryLeadDays = body.deliveryLeadDays ?? s.deliveryLeadDays
+  s.notes = body.notes ?? s.notes
+  s.obs = body.notes ?? s.obs
+  s.type = body.type ?? s.type
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'suppliers', id, userId, {
-      name: body.name, cnpj: body.cnpj, email: body.email, phone: body.phone,
-      contact: body.contact, city: body.city, state: body.state,
-      active: body.active ? 1 : 0, notes: body.notes,
+      name: s.name, cnpj: s.cnpj, email: s.email, phone: s.phone,
+      contact: s.contact, city: s.city, state: s.state,
+      category: s.category, paymentTerms: s.paymentTerms,
+      deliveryLeadDays: s.deliveryLeadDays, notes: s.notes,
+      type: s.type, active: s.active ? 1 : 0,
     })
   }
-  return ok(c, { supplier: tenant.suppliers[idx] })
+  return ok(c, { supplier: s })
 })
 
 app.delete('/api/supplier/:id', async (c) => {

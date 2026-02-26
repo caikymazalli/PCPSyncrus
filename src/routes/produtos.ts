@@ -28,6 +28,65 @@ app.get('/', (c) => {
     manufacture_needed:{ label: 'Nec. Manufatura',      color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry' },
   }
 
+  function buildProdRow(p: any, stockStatusInfo: Record<string, any>): string {
+    const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
+    const stockPct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
+    const _ct = p.controlType === 'serie'
+    const serialBadge = p.serialControlled
+      ? '<span style="background:' + (_ct ? '#ede9fe' : '#fef3c7') + ';color:' + (_ct ? '#7c3aed' : '#d97706') + ';font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;">' + (_ct ? 'Série' : 'Lote') + '</span>'
+      : ''
+    const descView = p.description
+      ? '<span style="font-size:12px;color:#6c757d;">' + p.description + '</span>'
+      : '<span style="font-style:italic;color:#ccc;">—</span>'
+    const nameEsc = (p.name || '').replace(/"/g, '&quot;')
+    const descEsc = (p.description || '').replace(/"/g, '&quot;')
+    const codeEsc = (p.code || '').replace(/"/g, '&quot;')
+    const unitOptions = ['un','kg','m','l','pc','m2','lt'].map(u =>
+      '<option value="' + u + '"' + (p.unit === u ? ' selected' : '') + '>' + (u === 'm2' ? 'm²' : u) + '</option>'
+    ).join('')
+    return '<tr class="prod-row" data-id="' + p.id + '" data-status="' + p.stockStatus + '"' +
+      ' data-search="' + (p.name || '').toLowerCase() + ' ' + (p.code || '').toLowerCase() + '"' +
+      ' style="border-bottom:1px solid #f1f3f5;"' +
+      ' onmouseenter="this.style.background=\'#f0f9ff\'" onmouseleave="this.style.background=\'white\'">' +
+      '<td style="padding:8px 12px;" ondblclick="startProdEdit(this,\'code\',\'' + p.id + '\')">' +
+        '<div class="prod-cell-view" style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:3px 8px;border-radius:4px;color:#1B4F72;font-weight:700;display:inline-block;cursor:pointer;" title="Duplo clique para editar">' + codeEsc + '</div>' +
+        '<input class="form-control prod-cell-input" style="display:none;font-size:11px;font-family:monospace;width:90px;" data-field="code" data-id="' + p.id + '" value="' + codeEsc + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)">' +
+      '</td>' +
+      '<td style="padding:8px 12px;" ondblclick="startProdEdit(this,\'name\',\'' + p.id + '\')">' +
+        '<div class="prod-cell-view" style="font-weight:600;color:#1B4F72;cursor:pointer;" title="Duplo clique para editar">' + (p.name || '') + serialBadge + '</div>' +
+        '<input class="form-control prod-cell-input" style="display:none;font-size:13px;min-width:150px;" data-field="name" data-id="' + p.id + '" value="' + nameEsc + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)">' +
+      '</td>' +
+      '<td style="padding:8px 12px;text-align:center;" ondblclick="startProdEdit(this,\'unit\',\'' + p.id + '\')">' +
+        '<div class="prod-cell-view" style="background:#f1f5f9;padding:2px 8px;border-radius:12px;font-size:11px;display:inline-block;cursor:pointer;" title="Duplo clique para editar">' + (p.unit || 'un') + '</div>' +
+        '<select class="form-control prod-cell-input" style="display:none;font-size:12px;width:65px;" data-field="unit" data-id="' + p.id + '" onblur="saveProdCell(this)" onchange="saveProdCell(this)">' + unitOptions + '</select>' +
+      '</td>' +
+      '<td style="padding:8px 12px;text-align:center;" ondblclick="startProdEdit(this,\'stockMin\',\'' + p.id + '\')">' +
+        '<div class="prod-cell-view" style="color:#6c757d;font-size:13px;cursor:pointer;" title="Duplo clique para editar">' + (p.stockMin || 0) + '</div>' +
+        '<input class="form-control prod-cell-input" style="display:none;font-size:12px;width:65px;text-align:center;" type="number" min="0" data-field="stockMin" data-id="' + p.id + '" value="' + (p.stockMin || 0) + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)">' +
+      '</td>' +
+      '<td style="padding:8px 12px;text-align:center;" ondblclick="startProdEdit(this,\'stockCurrent\',\'' + p.id + '\')">' +
+        '<div class="prod-cell-view" style="cursor:pointer;" title="Duplo clique para editar">' +
+          '<span style="font-size:14px;font-weight:800;color:' + si.color + ';">' + (p.stockCurrent || 0) + '</span>' +
+          '<div style="width:40px;height:3px;background:#e9ecef;border-radius:2px;margin:3px auto 0;"><div style="width:' + stockPct + '%;height:100%;background:' + si.color + ';border-radius:2px;"></div></div>' +
+        '</div>' +
+        '<input class="form-control prod-cell-input" style="display:none;font-size:12px;width:65px;text-align:center;" type="number" min="0" data-field="stockCurrent" data-id="' + p.id + '" value="' + (p.stockCurrent || 0) + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)">' +
+      '</td>' +
+      '<td style="padding:8px 12px;white-space:nowrap;">' +
+        '<span class="prod-status-badge" data-id="' + p.id + '" style="background:' + si.bg + ';color:' + si.color + ';padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">' +
+          '<i class="fas ' + si.icon + '" style="font-size:9px;"></i>' + si.label +
+        '</span>' +
+      '</td>' +
+      '<td style="padding:8px 12px;max-width:180px;" ondblclick="startProdEdit(this,\'description\',\'' + p.id + '\')">' +
+        '<div class="prod-cell-view" style="font-size:12px;color:#6c757d;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="Duplo clique para editar">' + descView + '</div>' +
+        '<input class="form-control prod-cell-input" style="display:none;font-size:12px;min-width:120px;" data-field="description" data-id="' + p.id + '" value="' + descEsc + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)" placeholder="Descrição...">' +
+      '</td>' +
+      '<td style="padding:8px 12px;text-align:center;white-space:nowrap;">' +
+        '<a href="/engenharia" class="btn btn-secondary btn-sm" style="padding:4px 7px;" title="Ver BOM"><i class="fas fa-list-ul"></i></a>' +
+        '<button class="btn btn-danger btn-sm" style="padding:4px 7px;margin-left:2px;" onclick="deleteProduto(\'' + p.id + '\')" title="Excluir"><i class="fas fa-trash"></i></button>' +
+      '</td>' +
+    '</tr>'
+  }
+
   const content = `
   <!-- Critical Stock Popup Alert -->
   ${criticalCount > 0 ? `
@@ -126,64 +185,28 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <div id="prodGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
-    ${products.map(p => {
-      const bomCount = bomItems.filter(b => b.productCode === p.code).length
-      const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
-      const stockPct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
-      return `
-      <div class="card prod-card" data-status="${p.stockStatus}" data-search="${p.name.toLowerCase()} ${p.code.toLowerCase()}" style="padding:0;overflow:hidden;border-top:3px solid ${si.color};">
-        <div style="padding:16px 16px 12px;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
-            <div style="flex:1;min-width:0;padding-right:8px;">
-              <div style="font-size:15px;font-weight:700;color:#1B4F72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</div>
-              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
-                <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${p.code}</span>
-                <span class="chip" style="background:#f1f5f9;color:#374151;">${p.unit}</span>
-                ${(p as any).serialControlled ? `<span class="badge" style="background:${(p as any).controlType==='serie'?'#ede9fe':'#fef3c7'};color:${(p as any).controlType==='serie'?'#7c3aed':'#d97706'};font-size:10px;"><i class="fas ${(p as any).controlType==='serie'?'fa-barcode':'fa-layer-group'}" style="font-size:9px;"></i> ${(p as any).controlType==='serie'?'Série':'Lote'}</span>` : ''}
-              </div>
-            </div>
-            <span class="badge" style="background:${si.bg};color:${si.color};white-space:nowrap;flex-shrink:0;">
-              <i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}
-            </span>
-          </div>
-
-          ${p.description ? `<div style="font-size:12px;color:#6c757d;margin-bottom:12px;line-height:1.5;">${p.description}</div>` : ''}
-
-          <!-- Stock Progress -->
-          <div style="background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:12px;">
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-              <span style="font-size:11px;color:#6c757d;font-weight:600;">Estoque Atual</span>
-              <span style="font-size:11px;color:#6c757d;">Mín: <strong>${p.stockMin} ${p.unit}</strong></span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <div class="progress-bar" style="flex:1;height:6px;">
-                <div class="progress-fill" style="width:${stockPct}%;background:${si.color};"></div>
-              </div>
-              <span style="font-size:14px;font-weight:800;color:${si.color};">${p.stockCurrent}</span>
-              <span style="font-size:10px;color:#9ca3af;">${p.unit}</span>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-            <div style="background:#f8f9fa;border-radius:8px;padding:10px;text-align:center;">
-              <div style="font-size:18px;font-weight:800;color:${bomCount > 0 ? '#1B4F72' : '#9ca3af'};">${bomCount}</div>
-              <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Comp. BOM</div>
-            </div>
-            <div style="background:${si.bg};border-radius:8px;padding:10px;text-align:center;">
-              <div style="font-size:13px;font-weight:800;color:${si.color};"><i class="fas ${si.icon}"></i></div>
-              <div style="font-size:10px;color:${si.color};font-weight:600;margin-top:3px;">${si.label}</div>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:6px;">
-            <a href="/engenharia" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" title="Ver lista de materiais BOM"><i class="fas fa-list-ul"></i> Ver BOM</a>
-            <div class="tooltip-wrap" data-tooltip="Editar produto"><button class="btn btn-secondary btn-sm" onclick="openEditProd('${p.id}','${p.name}','${p.code}','${p.unit}',${p.stockMin},${p.stockCurrent},'${p.stockStatus}','${(p as any).serialControlled}','${(p as any).controlType||''}')"><i class="fas fa-edit"></i></button></div>
-            <div class="tooltip-wrap" data-tooltip="Excluir produto"><button class="btn btn-danger btn-sm" onclick="deleteProduto('${p.id}')"><i class="fas fa-trash"></i></button></div>
-          </div>
-        </div>
-      </div>`
-    }).join('')}
+  <!-- Tabela de Produtos — edição inline por duplo clique -->
+  <div class="card" style="overflow:hidden;border-top:3px solid #1B4F72;">
+    <div style="overflow-x:auto;">
+      <table id="prodTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#1B4F72;color:white;">
+            <th style="padding:10px 12px;text-align:left;width:100px;">Código</th>
+            <th style="padding:10px 12px;text-align:left;">Nome <span style="font-size:9px;opacity:0.7;font-weight:400;">(duplo clique p/ editar)</span></th>
+            <th style="padding:10px 12px;text-align:center;width:60px;">Un.</th>
+            <th style="padding:10px 12px;text-align:center;white-space:nowrap;">Est. Mín</th>
+            <th style="padding:10px 12px;text-align:center;white-space:nowrap;">Est. Atual</th>
+            <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Status</th>
+            <th style="padding:10px 12px;text-align:left;">Descrição <span style="font-size:9px;opacity:0.7;font-weight:400;">(duplo clique)</span></th>
+            <th style="padding:10px 12px;text-align:center;width:80px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="prodTableBody">
+          ${products.map((p) => buildProdRow(p, stockStatusInfo)).join('')}
+        </tbody>
+      </table>
+    </div>
+    ${products.length === 0 ? `<div style="padding:40px;text-align:center;color:#9ca3af;"><i class="fas fa-box-open" style="font-size:32px;display:block;margin-bottom:12px;"></i>Nenhum produto cadastrado.</div>` : ''}
   </div>
 
   <!-- Novo Produto Modal -->
@@ -587,21 +610,127 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
   </div>
 
   <script>
+  // ── Edição Inline de Produtos (duplo clique) ─────────────────────────────
+  // Mapa local de edições pendentes
+  const prodEdits: Record<string, Record<string, any>> = {};
+
+  function startProdEdit(td: HTMLElement, field: string, id: string) {
+    // Cancela qualquer edição ativa na mesma coluna/campo
+    document.querySelectorAll('.prod-cell-input').forEach((el: any) => {
+      if (el.dataset.field === field && el.style.display !== 'none') cancelProdEdit(el);
+    });
+    const view = td.querySelector('.prod-cell-view') as HTMLElement;
+    const input = td.querySelector('.prod-cell-input') as HTMLElement;
+    if (!view || !input) return;
+    view.style.display = 'none';
+    input.style.display = 'inline-block';
+    (input as HTMLInputElement).focus();
+    if ((input as HTMLInputElement).select) (input as HTMLInputElement).select();
+  }
+
+  function cancelProdEdit(input: HTMLInputElement) {
+    const td = input.closest('td');
+    if (!td) return;
+    const view = td.querySelector('.prod-cell-view') as HTMLElement;
+    if (view) view.style.display = '';
+    input.style.display = 'none';
+  }
+
+  async function saveProdCell(input: HTMLInputElement) {
+    const id = input.dataset.id || '';
+    const field = input.dataset.field || '';
+    const val = input.value.trim();
+    if (!id || !field) { cancelProdEdit(input); return; }
+
+    // Calcular novo status se campos de estoque mudaram
+    const row = input.closest('tr') as HTMLElement;
+    let payload: any = { [field]: field === 'stockMin' || field === 'stockCurrent' ? parseInt(val) || 0 : val };
+
+    // Se mudou stockMin ou stockCurrent, recalcular status
+    if (field === 'stockMin' || field === 'stockCurrent') {
+      let min = 0, curr = 0;
+      if (field === 'stockMin') {
+        min = parseInt(val) || 0;
+        curr = parseInt((row?.querySelector('[data-field="stockCurrent"]') as HTMLInputElement)?.value || '0') || 0;
+        // buscar valor atual do view
+        const currView = row?.querySelectorAll('td')[4]?.querySelector('.prod-cell-view');
+        if (currView) curr = parseInt(currView.textContent?.trim() || '0') || 0;
+      } else {
+        curr = parseInt(val) || 0;
+        const minView = row?.querySelectorAll('td')[3]?.querySelector('.prod-cell-view');
+        if (minView) min = parseInt(minView.textContent?.trim() || '0') || 0;
+      }
+      const newStatus = calcStatus(curr, min);
+      payload.stockStatus = newStatus;
+    }
+
+    try {
+      const res = await fetch('/produtos/api/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // Atualizar a célula view com o novo valor
+        const td = input.closest('td');
+        const view = td?.querySelector('.prod-cell-view') as HTMLElement;
+        if (view) {
+          if (field === 'name') view.textContent = val;
+          else if (field === 'code') view.textContent = val;
+          else if (field === 'unit') view.textContent = val;
+          else if (field === 'stockMin' || field === 'stockCurrent') {
+            view.innerHTML = '<span style="font-weight:700;">' + val + '</span>';
+          }
+          else if (field === 'description') {
+            view.textContent = val;
+          }
+          view.style.display = '';
+        }
+        input.style.display = 'none';
+        // Atualizar status badge se necessário
+        if (payload.stockStatus && row) {
+          const badge = row.querySelector('.prod-status-badge') as HTMLElement;
+          const statusInfo: Record<string, any> = {
+            critical: { label:'Crítico', color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
+            normal: { label:'Normal', color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
+            purchase_needed: { label:'Nec. Compra', color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
+            manufacture_needed: { label:'Nec. Manufatura', color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' },
+          };
+          const si = statusInfo[payload.stockStatus] || statusInfo.normal;
+          if (badge) {
+            badge.style.background = si.bg;
+            badge.style.color = si.color;
+            badge.innerHTML = '<i class="fas ' + si.icon + '" style="font-size:9px;"></i>' + si.label;
+            row.dataset.status = payload.stockStatus;
+          }
+        }
+        showToast('✅ ' + field + ' atualizado!', 'success');
+      } else {
+        showToast(data.error || 'Erro ao atualizar', 'error');
+        cancelProdEdit(input);
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+      cancelProdEdit(input);
+    }
+  }
+
   // ── Funções gerais da página de Produtos ─────────────────────────────────
   function filterProds() {
     const search = document.getElementById('prodSearch').value.toLowerCase();
     const status = document.getElementById('prodStatusFilter').value;
-    document.querySelectorAll('.prod-card').forEach(card => {
-      const matchSearch = !search || (card.dataset.search || '').includes(search);
-      const matchStatus = !status || card.dataset.status === status;
-      card.parentElement.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    document.querySelectorAll('.prod-row').forEach(row => {
+      const matchSearch = !search || (row.dataset.search || '').includes(search);
+      const matchStatus = !status || row.dataset.status === status;
+      (row as HTMLElement).style.display = (matchSearch && matchStatus) ? '' : 'none';
     });
   }
 
   function filterByStatus(status) {
     document.getElementById('prodStatusFilter').value = status;
     filterProds();
-    document.getElementById('prodGrid').scrollIntoView({ behavior:'smooth' });
+    document.getElementById('prodTable')?.scrollIntoView({ behavior:'smooth' });
   }
 
   function scrollToSection(id) {
