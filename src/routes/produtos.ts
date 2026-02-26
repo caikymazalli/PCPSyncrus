@@ -586,6 +586,199 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
   </div>
 
   <script>
+  // ── Funções gerais da página de Produtos ─────────────────────────────────
+  function filterProds() {
+    const search = document.getElementById('prodSearch').value.toLowerCase();
+    const status = document.getElementById('prodStatusFilter').value;
+    document.querySelectorAll('.prod-card').forEach(card => {
+      const matchSearch = !search || (card.dataset.search || '').includes(search);
+      const matchStatus = !status || card.dataset.status === status;
+      card.parentElement.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    });
+  }
+
+  function filterByStatus(status) {
+    document.getElementById('prodStatusFilter').value = status;
+    filterProds();
+    document.getElementById('prodGrid').scrollIntoView({ behavior:'smooth' });
+  }
+
+  function scrollToSection(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+  }
+
+  function calcStatus(current, min) {
+    if (min <= 0) return 'normal';
+    const pct = (current / min) * 100;
+    if (pct < 50) return 'critical';
+    if (pct < 80) return 'purchase_needed';
+    if (pct < 100) return 'manufacture_needed';
+    return 'normal';
+  }
+
+  function updateStatusPreview() {
+    const min = parseInt(document.getElementById('newProdStockMin').value) || 0;
+    const curr = parseInt(document.getElementById('newProdStockCurrent').value) || 0;
+    if (min > 0) {
+      const status = calcStatus(curr, min);
+      const radio = document.querySelector('input[name="stockStatus"][value="' + status + '"]');
+      if (radio) { radio.checked = true; highlightStatus(); }
+    }
+  }
+
+  function highlightStatus() {
+    const selected = document.querySelector('input[name="stockStatus"]:checked')?.value;
+    ['critical','normal','purchase_needed','manufacture_needed'].forEach(s => {
+      const el = document.getElementById('st_' + (s === 'purchase_needed' ? 'purchase' : s === 'manufacture_needed' ? 'manufacture' : s));
+      if (el) el.style.borderColor = (selected === s) ? '#2980B9' : '#d1d5db';
+    });
+  }
+
+  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType) {
+    document.getElementById('ep_name').value = name;
+    document.getElementById('ep_code').value = code;
+    document.getElementById('ep_unit').value = unit;
+    document.getElementById('ep_stockMin').value = stockMin;
+    document.getElementById('ep_stockCurrent').value = stockCurrent;
+    // Set serial control
+    const serialVal = serialControlled === 'true' ? (controlType || 'serie') : 'none';
+    const radio = document.querySelector('input[name="editProdSerial"][value="' + serialVal + '"]');
+    if (radio) radio.checked = true;
+    toggleEditSerialHint(serialVal);
+    calcEditStatus();
+    openModal('editProdModal');
+  }
+
+  function toggleEditSerialHint(val) {
+    ['epSlCtrl_no','epSlCtrl_serie','epSlCtrl_lote'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.borderColor = '#d1d5db';
+    });
+    if (val === 'serie') document.getElementById('epSlCtrl_serie').style.borderColor = '#7c3aed';
+    else if (val === 'lote') document.getElementById('epSlCtrl_lote').style.borderColor = '#d97706';
+    else document.getElementById('epSlCtrl_no').style.borderColor = '#16a34a';
+  }
+
+  function toggleSerialType(val) {
+    const hint = document.getElementById('serialTypeHint');
+    const hintText = document.getElementById('serialTypeHintText');
+    ['slCtrl_no','slCtrl_serie','slCtrl_lote'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.borderColor = '#d1d5db';
+    });
+    if (val === 'serie') {
+      hint.style.display = 'block';
+      hintText.textContent = 'Cada unidade terá um número de série único. O número deve ser informado nos apontamentos e ao importar via planilha.';
+      document.getElementById('slCtrl_serie').style.borderColor = '#7c3aed';
+    } else if (val === 'lote') {
+      hint.style.display = 'block';
+      hintText.textContent = 'Peças serão agrupadas por lote. O número do lote deve ser informado nos apontamentos e ao importar via planilha (quantidades somadas por lote).';
+      document.getElementById('slCtrl_lote').style.borderColor = '#d97706';
+    } else {
+      hint.style.display = 'none';
+      document.getElementById('slCtrl_no').style.borderColor = '#16a34a';
+    }
+  }
+
+  function calcEditStatus() {
+    const min = parseInt(document.getElementById('ep_stockMin').value) || 0;
+    const curr = parseInt(document.getElementById('ep_stockCurrent').value) || 0;
+    const status = calcStatus(curr, min);
+    const info = {
+      critical: { label:'Crítico', color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
+      normal: { label:'Normal', color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
+      purchase_needed: { label:'Necessidade de Compra', color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
+      manufacture_needed: { label:'Necessidade de Manufatura', color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' },
+    };
+    const s = info[status] || info.normal;
+    const el = document.getElementById('editStatusDisplay');
+    el.style.background = s.bg;
+    el.style.color = s.color;
+    el.innerHTML = '<i class="fas ' + s.icon + '"></i> ' + s.label;
+  }
+
+  // ── Tipo de Produto (interno/externo) ────────────────────────────────────
+  function onProdTypeChange(ctx, val) {
+    const isNew = ctx === 'new';
+    const supSect = document.getElementById(isNew ? 'newProdSupplierSection' : 'editProdSupplierSection');
+    const intSect = document.getElementById(isNew ? 'newProdInternalSection' : 'editProdInternalSection');
+    if (supSect) supSect.style.display = val === 'external' ? '' : 'none';
+    if (intSect) intSect.style.display = val === 'internal' ? '' : 'none';
+    // Highlight border
+    const extLabel = document.getElementById(isNew ? 'ptype_ext' : 'ep_ptype_ext');
+    const intLabel = document.getElementById(isNew ? 'ptype_int' : 'ep_ptype_int');
+    if (extLabel) extLabel.style.borderColor = val === 'external' ? '#2980B9' : '#d1d5db';
+    if (intLabel) intLabel.style.borderColor = val === 'internal' ? '#7c3aed' : '#d1d5db';
+  }
+
+
+  function showAutoOPPopup(prodName, stockCurrent, stockMin) {
+    document.getElementById('autoOPPopup').style.display = 'flex';
+    document.getElementById('autoOPProdName').textContent = prodName;
+    document.getElementById('autoOPQty').textContent = stockMin - stockCurrent;
+  }
+
+  // Auto-close popup after 8 seconds
+  setTimeout(() => {
+    const popup = document.getElementById('criticalStockPopup');
+    if (popup) popup.style.display = 'none';
+  }, 8000);
+
+
+  async function salvarNovoProduto() {
+    const typeEl = document.querySelector('input[name="newProdType"]:checked');
+    const type = typeEl ? typeEl.value : 'external';
+    const nome = document.querySelector('#novoProdModal input[placeholder="Nome do produto"]')?.value || '';
+    const code = document.querySelector('#novoProdModal input[placeholder="Código"]')?.value || '';
+    const unit = document.querySelector('#novoProdModal select')?.value || 'un';
+    if (!nome) { showToast('⚠ Informe o nome do produto!', 'error'); return; }
+    const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
+    const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
+    const critPct = parseInt(document.getElementById('newProdCritPct')?.value) || 50;
+    
+    try {
+      const res = await fetch('/produtos/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, code, unit, type, stockMin, stockCurrent, criticalPercentage: critPct })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Produto criado com sucesso!');
+        closeModal('novoProdModal');
+        setTimeout(() => location.reload(), 800);
+        if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
+          setTimeout(() => showAutoOPPopup(nome, stockCurrent, stockMin), 900);
+        }
+      } else {
+        showToast(data.error || 'Erro ao criar produto', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+    }
+  }
+
+  async function deleteProduto(id) {
+    if (!confirm('Excluir este produto?')) return;
+    try {
+      const res = await fetch('/produtos/api/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showToast('Produto excluído!'); setTimeout(() => location.reload(), 500); }
+      else showToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast notification ────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+
+  // ── Importação de Produtos ────────────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════
   //  IMPORTAÇÃO DE PRODUTOS — parse de texto colado/digitado
   //  Sem FileReader, sem XLSX, sem upload — funciona em 100% dos browsers
