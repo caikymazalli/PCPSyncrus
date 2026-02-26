@@ -433,97 +433,122 @@ app.get('/', (c) => {
        Modal: Importar Planilha de Produtos
   ══════════════════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="importPlanilhaModal">
-    <div class="modal" style="max-width:640px;">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+    <div class="modal" style="max-width:660px;width:96%;">
+
+      <!-- Header -->
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
-          <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>Importar Planilha de Produtos
+          <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>
+          <span id="imp_title">Importar Planilha de Produtos</span>
         </h3>
-        <button onclick="closeImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+        <button onclick="impClose()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
       </div>
 
-      <!-- STEP 1: Upload -->
-      <div id="importStep1" style="padding:20px 24px;">
-        <div style="background:#e8f4fd;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#1B4F72;">
-          <i class="fas fa-info-circle" style="margin-right:6px;"></i>
-          Colunas obrigatórias: <strong>Nome</strong> e <strong>Código</strong>.
-          Colunas opcionais: Unidade, Tipo, Estoque Mínimo, Estoque Atual, Descrição, Fornecedor, Preço.
+      <!-- ── STEP 1: Upload ── -->
+      <div id="imp_step1" style="padding:20px 24px;">
+
+        <!-- Info box -->
+        <div style="background:#e8f4fd;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#1B4F72;line-height:1.6;">
+          <i class="fas fa-info-circle" style="margin-right:5px;"></i>
+          Colunas obrigatórias: <strong>Nome</strong> e <strong>Codigo</strong>.
+          Opcionais: Unidade · Tipo · EstoqueMinimo · EstoqueAtual · Descricao · Fornecedor · Preco · <strong>ControleSerieOuLote</strong> (<code>serie</code> ou <code>lote</code>)
         </div>
 
         <!-- Download modelo -->
-        <button onclick="window.location.href='/produtos/api/modelo-csv'" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:16px;">
-          <i class="fas fa-download" style="color:#27AE60;"></i> Baixar Planilha Modelo (.csv)
-        </button>
+        <a href="/produtos/api/modelo-csv" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:14px;text-decoration:none;display:flex;">
+          <i class="fas fa-download" style="color:#27AE60;margin-right:6px;"></i> Baixar Planilha Modelo (.csv)
+        </a>
 
-        <!-- Upload area -->
-        <div id="importDropZone"
-          ondragover="event.preventDefault();this.style.borderColor='#2980B9';this.style.background='#e8f4fd';"
-          ondragleave="this.style.borderColor='#d1d5db';this.style.background='#f8f9fa';"
-          ondrop="handleImportDrop(event)"
-          onclick="document.getElementById('importFileInput').click()"
-          style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:36px 20px;text-align:center;cursor:pointer;transition:all 0.2s;">
-          <i class="fas fa-cloud-upload-alt" style="font-size:36px;color:#9ca3af;margin-bottom:12px;display:block;"></i>
+        <!-- Drop zone -->
+        <div id="imp_zone"
+          ondragover="impDragOver(event)"
+          ondragleave="impDragLeave(event)"
+          ondrop="impDrop(event)"
+          onclick="document.getElementById('imp_input').click()"
+          style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:34px 20px;text-align:center;cursor:pointer;transition:all 0.2s;user-select:none;">
+          <i class="fas fa-cloud-upload-alt" id="imp_zone_icon" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;"></i>
           <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Arraste o arquivo aqui ou clique para buscar</div>
-          <div style="font-size:12px;color:#9ca3af;">Formatos aceitos: .csv, .xlsx, .xls · Máx. 5MB</div>
+          <div style="font-size:12px;color:#9ca3af;">Formatos: .csv · .xlsx · .xls &nbsp;|&nbsp; Máx. 5 MB</div>
         </div>
-        <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleImportFileSelect(event)">
+        <input type="file" id="imp_input" accept=".csv,.xlsx,.xls" style="display:none;" onchange="impFileSelect(event)">
 
-        <!-- File info (hidden initially) -->
-        <div id="importFileInfo" style="display:none;margin-top:12px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;display:flex;align-items:center;gap:10px;">
-          <i class="fas fa-file-csv" style="color:#16a34a;font-size:20px;"></i>
-          <div style="flex:1;">
-            <div id="importFileName" style="font-size:13px;font-weight:700;color:#15803d;"></div>
-            <div id="importFileSize" style="font-size:11px;color:#6c757d;"></div>
+        <!-- File selected info — começa oculto com height:0 para evitar conflito de display -->
+        <div id="imp_fileinfo" style="overflow:hidden;max-height:0;transition:max-height 0.25s;margin-top:10px;">
+          <div style="padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-file-csv" style="color:#16a34a;font-size:22px;flex-shrink:0;"></i>
+            <div style="flex:1;min-width:0;">
+              <div id="imp_fname" style="font-size:13px;font-weight:700;color:#15803d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+              <div id="imp_fsize" style="font-size:11px;color:#6c757d;"></div>
+            </div>
+            <button onclick="impClear(event)" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">×</button>
           </div>
-          <button onclick="limparArquivoImport()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:16px;">×</button>
         </div>
 
-        <div style="margin-top:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;">
-          <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
-          Produtos com o mesmo <strong>Código</strong> já cadastrado serão <strong>atualizados</strong>. Novos códigos serão incluídos.
-        </div>
-        <div style="margin-top:8px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px 14px;font-size:12px;color:#6d28d9;">
-          <i class="fas fa-barcode" style="margin-right:6px;"></i>
-          Produtos com coluna <strong>ControleSerieOuLote</strong> preenchida (<code>serie</code> ou <code>lote</code>) gerarão itens na fila de <strong>Liberação de Série/Lote</strong> no Estoque, aguardando identificação individual.
+        <!-- Avisos -->
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px;">
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12px;color:#92400e;">
+            <i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i>
+            Produtos com mesmo <strong>Código</strong> serão <strong>atualizados</strong>. Novos códigos serão criados.
+          </div>
+          <div style="background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:9px 13px;font-size:12px;color:#6d28d9;">
+            <i class="fas fa-barcode" style="margin-right:5px;"></i>
+            Itens com <strong>ControleSerieOuLote</strong> preenchido geram fila de <strong>Liberação S/N</strong> no Estoque.
+          </div>
         </div>
       </div>
 
-      <!-- STEP 2: Preview/Validação -->
-      <div id="importStep2" style="display:none;padding:20px 24px;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-          <div id="importPreviewBadge" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></div>
-          <div id="importPreviewBadgeWarn" style="display:none;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#fffbeb;color:#d97706;"></div>
+      <!-- ── STEP 2: Preview ── -->
+      <div id="imp_step2" style="display:none;padding:20px 24px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <span id="imp_badge_ok" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></span>
+          <span id="imp_badge_err" style="display:none;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;"></span>
+          <span id="imp_badge_sn" style="display:none;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f5f3ff;color:#7c3aed;"></span>
         </div>
-        <div style="max-height:320px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
+        <div style="max-height:300px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
           <table style="width:100%;border-collapse:collapse;font-size:12px;">
             <thead>
-              <tr style="background:#f8f9fa;position:sticky;top:0;">
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">#</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Nome</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Código</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Unid.</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Est.Min</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Est.Atual</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Status</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">S/N</th>
+              <tr style="background:#f8f9fa;">
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">#</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Nome</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Código</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Un.</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Min</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Atual</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Status</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">S/N</th>
               </tr>
             </thead>
-            <tbody id="importPreviewBody"></tbody>
+            <tbody id="imp_tbody"></tbody>
           </table>
         </div>
-        <div id="importValidationErrors" style="display:none;margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;font-size:12px;color:#dc2626;"></div>
+        <div id="imp_errs" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 13px;font-size:12px;color:#dc2626;line-height:1.7;"></div>
       </div>
 
-      <!-- Footer buttons -->
-      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;gap:10px;">
-        <button id="importBtnBack" onclick="voltarStep1()" class="btn btn-secondary" style="display:none;">
+      <!-- ── STEP 3: Progresso de importação ── -->
+      <div id="imp_step3" style="display:none;padding:28px 24px;text-align:center;">
+        <div style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:20px;" id="imp_prog_label">Importando produtos...</div>
+        <!-- Barra de progresso -->
+        <div style="background:#f1f5f9;border-radius:999px;height:14px;overflow:hidden;margin-bottom:10px;position:relative;">
+          <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.3s;"></div>
+        </div>
+        <div style="font-size:13px;color:#6c757d;margin-bottom:6px;">
+          <span id="imp_prog_count">0</span> de <span id="imp_prog_total">0</span> produtos processados
+          &nbsp;·&nbsp; <span id="imp_prog_pct" style="font-weight:700;color:#2980B9;">0%</span>
+        </div>
+        <div style="font-size:11px;color:#9ca3af;" id="imp_prog_sub">Aguarde...</div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <button id="imp_btn_back" onclick="impGoStep1()" class="btn btn-secondary" style="display:none;">
           <i class="fas fa-arrow-left"></i> Voltar
         </button>
         <div style="flex:1;"></div>
-        <button onclick="closeImportModal()" class="btn btn-secondary">Cancelar</button>
-        <button id="importBtnPreview" onclick="previewPlanilha()" class="btn btn-primary" disabled>
+        <button onclick="impClose()" id="imp_btn_cancel" class="btn btn-secondary">Cancelar</button>
+        <button id="imp_btn_preview" onclick="impPreview()" class="btn btn-primary" disabled style="opacity:0.5;cursor:not-allowed;">
           <i class="fas fa-eye"></i> Visualizar Dados
         </button>
-        <button id="importBtnConfirm" onclick="confirmarImportacao()" class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
+        <button id="imp_btn_confirm" onclick="impConfirm()" class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
           <i class="fas fa-check"></i> Confirmar Importação
         </button>
       </div>
@@ -778,233 +803,353 @@ app.get('/', (c) => {
     document.body.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
-  // ── Importação de Planilha ────────────────────────────────────────────────
-  let _importParsedRows = [];
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IMPORTAÇÃO DE PLANILHA — reescrito totalmente (sem bugs de display/disabled)
+  // ═══════════════════════════════════════════════════════════════════════════
+  ;(function() {
+    // Estado interno
+    let _file = null;
+    let _rows  = [];
 
-  function closeImportModal() {
-    closeModal('importPlanilhaModal');
-    setTimeout(limparArquivoImport, 300);
-  }
+    // ── helpers de UI ────────────────────────────────────────────────────────
+    function $id(id) { return document.getElementById(id); }
 
-  function limparArquivoImport() {
-    document.getElementById('importFileInput').value = '';
-    document.getElementById('importFileInfo').style.display = 'none';
-    document.getElementById('importBtnPreview').disabled = true;
-    voltarStep1();
-    _importParsedRows = [];
-  }
-
-  function voltarStep1() {
-    document.getElementById('importStep1').style.display = '';
-    document.getElementById('importStep2').style.display = 'none';
-    document.getElementById('importBtnBack').style.display = 'none';
-    document.getElementById('importBtnPreview').style.display = '';
-    document.getElementById('importBtnConfirm').style.display = 'none';
-  }
-
-  function handleImportDrop(e) {
-    e.preventDefault();
-    const zone = document.getElementById('importDropZone');
-    zone.style.borderColor = '#d1d5db';
-    zone.style.background = '#f8f9fa';
-    const file = e.dataTransfer.files[0];
-    if (file) processImportFile(file);
-  }
-
-  function handleImportFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) processImportFile(file);
-  }
-
-  function processImportFile(file) {
-    const allowed = ['text/csv', 'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/plain'];
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!['csv','xlsx','xls'].includes(ext)) {
-      showToast('Formato não suportado. Use .csv, .xlsx ou .xls', 'error'); return;
+    function impEnablePreview(on) {
+      const btn = $id('imp_btn_preview');
+      if (!btn) return;
+      btn.disabled = !on;
+      btn.style.opacity = on ? '1' : '0.5';
+      btn.style.cursor  = on ? 'pointer' : 'not-allowed';
     }
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Arquivo muito grande. Máx. 5MB', 'error'); return;
+
+    function impShowFileInfo(show) {
+      const el = $id('imp_fileinfo');
+      if (!el) return;
+      el.style.maxHeight = show ? '80px' : '0';
     }
-    const info = document.getElementById('importFileInfo');
-    document.getElementById('importFileName').textContent = file.name;
-    document.getElementById('importFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
-    info.style.display = 'flex';
-    document.getElementById('importBtnPreview').disabled = false;
-    // Highlight drop zone
-    const zone = document.getElementById('importDropZone');
-    zone.style.borderColor = '#27AE60';
-    zone.style.background = '#f0fdf4';
-    // Store file for later
-    window._importFile = file;
-  }
 
-  function parseCSV(text) {
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length < 2) return [];
-    // Normalize header
-    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase()
-      .replace(/[áàã]/g,'a').replace(/[éê]/g,'e').replace(/[í]/g,'i')
-      .replace(/[óô]/g,'o').replace(/[ú]/g,'u').replace(/\s+/g,'_')
-      .replace(/\./g,'').replace(/-/g,'_'));
+    function impSetStep(step) {
+      $id('imp_step1').style.display = step === 1 ? '' : 'none';
+      $id('imp_step2').style.display = step === 2 ? '' : 'none';
+      $id('imp_step3').style.display = step === 3 ? '' : 'none';
+      // botões
+      $id('imp_btn_back').style.display    = step === 2 ? '' : 'none';
+      $id('imp_btn_cancel').style.display  = step === 3 ? 'none' : '';
+      $id('imp_btn_preview').style.display = step === 1 ? '' : 'none';
+      $id('imp_btn_confirm').style.display = step === 2 ? '' : 'none';
+    }
 
-    const colMap = {
-      nome:          rawHeader.findIndex(h => h.includes('nome')),
-      codigo:        rawHeader.findIndex(h => h.includes('cod')),
-      unidade:       rawHeader.findIndex(h => h.includes('unid') || h === 'un'),
-      tipo:          rawHeader.findIndex(h => h === 'tipo'),
-      estoque_min:   rawHeader.findIndex(h => h.includes('min')),
-      estoque_atual: rawHeader.findIndex(h => h.includes('atual')),
-      descricao:     rawHeader.findIndex(h => h.includes('desc')),
-      fornecedor:    rawHeader.findIndex(h => h.includes('forn')),
-      preco:         rawHeader.findIndex(h => h.includes('prec') || h.includes('valor')),
-      controle:      rawHeader.findIndex(h => h.includes('serie') || h.includes('lote') || h.includes('controle')),
+    // ── drag & drop ──────────────────────────────────────────────────────────
+    window.impDragOver = function(e) {
+      e.preventDefault();
+      const z = $id('imp_zone');
+      z.style.borderColor = '#2980B9';
+      z.style.background  = '#e8f4fd';
+    };
+    window.impDragLeave = function(e) {
+      const z = $id('imp_zone');
+      z.style.borderColor = _file ? '#27AE60' : '#d1d5db';
+      z.style.background  = _file ? '#f0fdf4' : '#f8f9fa';
+    };
+    window.impDrop = function(e) {
+      e.preventDefault();
+      impDragLeave(e);
+      const file = e.dataTransfer.files[0];
+      if (file) impSetFile(file);
+    };
+    window.impFileSelect = function(e) {
+      const file = e.target.files[0];
+      if (file) impSetFile(file);
     };
 
-    const rows = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      // Split respeitando campos entre aspas
-      const cols = [];
-      let cur = '', inQ = false;
-      for (const ch of line + ',') {
-        if (ch === '"') { inQ = !inQ; }
-        else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
-        else { cur += ch; }
+    function impSetFile(file) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (!['csv','xlsx','xls'].includes(ext)) {
+        showToast('Formato inválido. Use .csv, .xlsx ou .xls', 'error'); return;
       }
-      const get = (idx) => idx >= 0 ? (cols[idx] || '').replace(/^"|"$/g,'').trim() : '';
-      const controleRaw = get(colMap.controle).toLowerCase();
-      const controlType = controleRaw.includes('serie') || controleRaw === 'serie' ? 'serie'
-                        : controleRaw.includes('lote')  || controleRaw === 'lote'  ? 'lote'
-                        : '';
-      rows.push({
-        _row: i,
-        nome:         get(colMap.nome),
-        codigo:       get(colMap.codigo),
-        unidade:      get(colMap.unidade) || 'un',
-        tipo:         get(colMap.tipo) || 'external',
-        stockMin:     parseInt(get(colMap.estoque_min))   || 0,
-        stockCurrent: parseInt(get(colMap.estoque_atual)) || 0,
-        descricao:    get(colMap.descricao),
-        fornecedor:   get(colMap.fornecedor),
-        preco:        parseFloat(get(colMap.preco)) || 0,
-        controlType,  // 'serie' | 'lote' | ''
-        serialControlled: !!controlType,
-      });
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('Arquivo muito grande. Máx. 5 MB', 'error'); return;
+      }
+      _file = file;
+      // Atualizar info
+      $id('imp_fname').textContent = file.name;
+      $id('imp_fsize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+      impShowFileInfo(true);
+      // Zona verde
+      const z = $id('imp_zone');
+      z.style.borderColor = '#27AE60';
+      z.style.background  = '#f0fdf4';
+      $id('imp_zone_icon').style.color = '#27AE60';
+      // Habilitar botão — remover atributo disabled E property
+      impEnablePreview(true);
     }
-    return rows;
-  }
 
-  function previewPlanilha() {
-    const file = window._importFile;
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target.result;
-      const rows = parseCSV(text);
-      if (rows.length === 0) {
-        showToast('Nenhuma linha válida encontrada no arquivo.', 'error'); return;
-      }
-      _importParsedRows = rows;
-      renderPreview(rows);
-      // Switch to step 2
-      document.getElementById('importStep1').style.display = 'none';
-      document.getElementById('importStep2').style.display = '';
-      document.getElementById('importBtnBack').style.display = '';
-      document.getElementById('importBtnPreview').style.display = 'none';
-      document.getElementById('importBtnConfirm').style.display = '';
+    window.impClear = function(e) {
+      if (e) e.stopPropagation();
+      _file = null;
+      _rows = [];
+      $id('imp_input').value = '';
+      impShowFileInfo(false);
+      const z = $id('imp_zone');
+      z.style.borderColor = '#d1d5db';
+      z.style.background  = '#f8f9fa';
+      $id('imp_zone_icon').style.color = '#9ca3af';
+      impEnablePreview(false);
     };
-    reader.readAsText(file, 'UTF-8');
-  }
 
-  function calcStatusLocal(current, min) {
-    if (min <= 0) return { label: 'Normal', color: '#16a34a', bg: '#f0fdf4' };
-    const pct = (current / min) * 100;
-    if (pct < 50)  return { label: 'Crítico',    color: '#dc2626', bg: '#fef2f2' };
-    if (pct < 80)  return { label: 'Nec.Compra', color: '#d97706', bg: '#fffbeb' };
-    if (pct < 100) return { label: 'Nec.Manuf.',  color: '#7c3aed', bg: '#f5f3ff' };
-    return { label: 'Normal', color: '#16a34a', bg: '#f0fdf4' };
-  }
+    // ── fechar / voltar ──────────────────────────────────────────────────────
+    window.impClose = function() {
+      closeModal('importPlanilhaModal');
+      setTimeout(() => { impClear(); impSetStep(1); _rows = []; }, 350);
+    };
+    window.impGoStep1 = function() {
+      impSetStep(1);
+    };
 
-  function renderPreview(rows) {
-    const errors = [];
-    const tbody = document.getElementById('importPreviewBody');
-    tbody.innerHTML = rows.map((r, i) => {
-      const hasError = !r.nome || !r.codigo;
-      if (!r.nome) errors.push('Linha ' + (i+1) + ': Nome obrigatório');
-      if (!r.codigo) errors.push('Linha ' + (i+1) + ': Código obrigatório');
-      const st = calcStatusLocal(r.stockCurrent, r.stockMin);
-      const rowBg = hasError ? '#fef2f2' : (i % 2 === 0 ? 'white' : '#f9fafb');
-      return \`<tr style="background:\${rowBg};">
-        <td style="padding:7px 12px;color:#9ca3af;">\${i+1}</td>
-        <td style="padding:7px 12px;font-weight:600;color:\${hasError?'#dc2626':'#374151'};">\${r.nome || '<span style="color:#dc2626">⚠ vazio</span>'}</td>
-        <td style="padding:7px 12px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">\${r.codigo || '<span style="color:#dc2626">⚠</span>'}</span></td>
-        <td style="padding:7px 12px;color:#6c757d;">\${r.unidade}</td>
-        <td style="padding:7px 12px;color:#374151;">\${r.stockMin}</td>
-        <td style="padding:7px 12px;color:#374151;">\${r.stockCurrent}</td>
-        <td style="padding:7px 12px;"><span style="background:\${st.bg};color:\${st.color};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">\${st.label}</span></td>
-        <td style="padding:7px 12px;">
-          \${r.controlType === 'serie' ? '<span style="background:#ede9fe;color:#7c3aed;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;"><i class="fas fa-barcode" style="font-size:9px;"></i> Série</span>' : r.controlType === 'lote' ? '<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;"><i class="fas fa-layer-group" style="font-size:9px;"></i> Lote</span>' : '<span style="color:#9ca3af;font-size:11px;">—</span>'}
-        </td>
-      </tr>\`;
-    }).join('');
-
-    const badge = document.getElementById('importPreviewBadge');
-    badge.textContent = rows.length + ' linha(s) encontrada(s)';
-
-    const warnBadge = document.getElementById('importPreviewBadgeWarn');
-    if (errors.length > 0) {
-      warnBadge.style.display = '';
-      warnBadge.textContent = errors.length + ' erro(s) encontrado(s)';
-      document.getElementById('importValidationErrors').style.display = '';
-      document.getElementById('importValidationErrors').innerHTML =
-        '<strong><i class="fas fa-exclamation-triangle"></i> Erros de validação:</strong><br>' +
-        errors.map(e => '• ' + e).join('<br>');
-      document.getElementById('importBtnConfirm').disabled = true;
-    } else {
-      warnBadge.style.display = 'none';
-      document.getElementById('importValidationErrors').style.display = 'none';
-      document.getElementById('importBtnConfirm').disabled = false;
+    // ── CSV parser ───────────────────────────────────────────────────────────
+    function normalizeHeader(h) {
+      return h.trim().toLowerCase()
+        .replace(/\s+/g,'_')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')  // remove acentos
+        .replace(/[^a-z0-9_]/g,'');
     }
-  }
 
-  async function confirmarImportacao() {
-    const rows = _importParsedRows.filter(r => r.nome && r.codigo);
-    if (rows.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
+    function parseCsvText(text) {
+      // Remover BOM se houver
+      const clean = text.replace(/^\uFEFF/, '');
+      const lines = clean.split(/\r?\n/);
+      if (lines.length < 2) return [];
 
-    const btn = document.getElementById('importBtnConfirm');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando...';
+      const headers = lines[0].split(',').map(normalizeHeader);
 
-    try {
-      const res = await fetch('/produtos/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        closeImportModal();
-        let msg = '✅ ' + (data.created||0) + ' criado(s), ' + (data.updated||0) + ' atualizado(s)!';
-        if (data.pendingSerial > 0) {
-          msg += ' • ' + data.pendingSerial + ' produto(s) com Série/Lote aguardando liberação no Estoque.';
+      // Mapear colunas por nome normalizado
+      function findCol(...keys) {
+        for (const k of keys) {
+          const idx = headers.findIndex(h => h === k || h.includes(k));
+          if (idx >= 0) return idx;
         }
-        showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
-        setTimeout(() => location.reload(), 1800);
-      } else {
-        showToast(data.error || 'Erro ao importar', 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-check"></i> Confirmar Importação';
+        return -1;
       }
-    } catch(e) {
-      showToast('Erro de conexão', 'error');
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-check"></i> Confirmar Importação';
+      const cols = {
+        nome:     findCol('nome'),
+        codigo:   findCol('codigo', 'cod'),
+        unidade:  findCol('unidade', 'unid', 'un'),
+        tipo:     findCol('tipo'),
+        emin:     findCol('estoqueminimo', 'estoquemin', 'e_min', 'min'),
+        eatual:   findCol('estoqueatual', 'e_atual', 'atual'),
+        desc:     findCol('descricao', 'desc'),
+        forn:     findCol('fornecedor', 'forn'),
+        preco:    findCol('preco', 'valor', 'price'),
+        controle: findCol('controleserieoulate', 'controle', 'serie', 'lote', 'sn'),
+      };
+
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue;
+        // Split CSV respeitando aspas
+        const parts = [];
+        let cur = '', inQ = false;
+        for (let ci = 0; ci < line.length; ci++) {
+          const ch = line[ci];
+          if (ch === '"') { inQ = !inQ; }
+          else if (ch === ',' && !inQ) { parts.push(cur.trim()); cur = ''; }
+          else { cur += ch; }
+        }
+        parts.push(cur.trim());
+
+        const g = (idx) => idx >= 0 && idx < parts.length
+          ? parts[idx].replace(/^["']|["']$/g,'').trim() : '';
+
+        const controleRaw = g(cols.controle).toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        const controlType = controleRaw.startsWith('serie') || controleRaw === 's'
+          ? 'serie'
+          : (controleRaw.startsWith('lote') || controleRaw === 'l' ? 'lote' : '');
+
+        rows.push({
+          _line:        i + 1,
+          nome:         g(cols.nome),
+          codigo:       g(cols.codigo),
+          unidade:      g(cols.unidade) || 'un',
+          tipo:         g(cols.tipo) || 'external',
+          stockMin:     parseInt(g(cols.emin))   || 0,
+          stockCurrent: parseInt(g(cols.eatual)) || 0,
+          descricao:    g(cols.desc),
+          fornecedor:   g(cols.forn),
+          preco:        parseFloat(g(cols.preco).replace(',','.')) || 0,
+          controlType,
+          serialControlled: !!controlType,
+        });
+      }
+      return rows;
     }
-  }
-  // ── /Importação de Planilha ───────────────────────────────────────────────
+
+    // ── calcular status local ────────────────────────────────────────────────
+    function localStatus(cur, min) {
+      if (min <= 0) return { label:'Normal',      color:'#16a34a', bg:'#f0fdf4' };
+      const p = (cur / min) * 100;
+      if (p < 50)  return { label:'Crítico',     color:'#dc2626', bg:'#fef2f2' };
+      if (p < 80)  return { label:'Nec.Compra',  color:'#d97706', bg:'#fffbeb' };
+      if (p < 100) return { label:'Nec.Manuf.',  color:'#7c3aed', bg:'#f5f3ff' };
+      return { label:'Normal', color:'#16a34a', bg:'#f0fdf4' };
+    }
+
+    // ── STEP 1 → 2: visualizar preview ──────────────────────────────────────
+    window.impPreview = function() {
+      if (!_file) return;
+
+      // Feedback visual enquanto lê
+      const btn = $id('imp_btn_preview');
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
+      impEnablePreview(false);
+
+      const reader = new FileReader();
+      reader.onerror = () => {
+        showToast('Erro ao ler arquivo', 'error');
+        btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+        impEnablePreview(true);
+      };
+      reader.onload = (ev) => {
+        btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+
+        const text = ev.target.result;
+        _rows = parseCsvText(text);
+
+        if (_rows.length === 0) {
+          showToast('Nenhuma linha de dados encontrada no arquivo.', 'error');
+          impEnablePreview(true);
+          return;
+        }
+
+        // Renderizar tabela
+        const errors = [];
+        const snCount = _rows.filter(r => r.controlType).length;
+        const tbody = $id('imp_tbody');
+        tbody.innerHTML = _rows.map((r, i) => {
+          const bad = !r.nome || !r.codigo;
+          if (!r.nome)   errors.push('Linha ' + r._line + ': Nome vazio');
+          if (!r.codigo) errors.push('Linha ' + r._line + ': Código vazio');
+          const st  = localStatus(r.stockCurrent, r.stockMin);
+          const bg  = bad ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb');
+          const snBadge = r.controlType === 'serie'
+            ? '<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
+            : r.controlType === 'lote'
+            ? '<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
+            : '<span style="color:#d1d5db;">—</span>';
+          return '<tr style="background:' + bg + ';">'
+            + '<td style="padding:6px 10px;color:#9ca3af;">' + (i+1) + '</td>'
+            + '<td style="padding:6px 10px;font-weight:600;color:' + (bad?'#dc2626':'#374151') + ';">' + (r.nome || '<em style="color:#dc2626">⚠ vazio</em>') + '</td>'
+            + '<td style="padding:6px 10px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">' + (r.codigo || '<em style="color:#dc2626">⚠</em>') + '</span></td>'
+            + '<td style="padding:6px 10px;color:#6c757d;">' + r.unidade + '</td>'
+            + '<td style="padding:6px 10px;">' + r.stockMin + '</td>'
+            + '<td style="padding:6px 10px;">' + r.stockCurrent + '</td>'
+            + '<td style="padding:6px 10px;"><span style="background:' + st.bg + ';color:' + st.color + ';padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;">' + st.label + '</span></td>'
+            + '<td style="padding:6px 10px;">' + snBadge + '</td>'
+            + '</tr>';
+        }).join('');
+
+        // Badges
+        $id('imp_badge_ok').textContent  = _rows.length + ' linha(s)';
+        if (errors.length > 0) {
+          $id('imp_badge_err').textContent = errors.length + ' erro(s)';
+          $id('imp_badge_err').style.display = '';
+          $id('imp_errs').style.display = '';
+          $id('imp_errs').innerHTML = '<strong>⚠ Erros encontrados:</strong><br>' + errors.map(e => '• ' + e).join('<br>');
+          $id('imp_btn_confirm').disabled = true;
+          $id('imp_btn_confirm').style.opacity = '0.5';
+        } else {
+          $id('imp_badge_err').style.display = 'none';
+          $id('imp_errs').style.display = 'none';
+          $id('imp_btn_confirm').disabled = false;
+          $id('imp_btn_confirm').style.opacity = '1';
+        }
+        if (snCount > 0) {
+          $id('imp_badge_sn').textContent = snCount + ' c/ Série/Lote';
+          $id('imp_badge_sn').style.display = '';
+        } else {
+          $id('imp_badge_sn').style.display = 'none';
+        }
+
+        impSetStep(2);
+      };
+      reader.readAsText(_file, 'UTF-8');
+    };
+
+    // ── STEP 2 → 3: confirmar e enviar com barra de progresso ───────────────
+    window.impConfirm = async function() {
+      const validRows = _rows.filter(r => r.nome && r.codigo);
+      if (validRows.length === 0) {
+        showToast('Nenhum dado válido para importar', 'error'); return;
+      }
+
+      impSetStep(3);
+      $id('imp_prog_total').textContent = validRows.length;
+      $id('imp_prog_label').textContent = 'Importando ' + validRows.length + ' produto(s)...';
+
+      // Animar barra enquanto aguarda (não temos streaming, simular progresso até 90%)
+      let simPct = 0;
+      const simTimer = setInterval(() => {
+        simPct = Math.min(simPct + (90 - simPct) * 0.12, 88);
+        $id('imp_prog_bar').style.width = simPct.toFixed(1) + '%';
+        $id('imp_prog_pct').textContent  = Math.round(simPct) + '%';
+        const done = Math.round((simPct / 100) * validRows.length);
+        $id('imp_prog_count').textContent = done;
+        $id('imp_prog_sub').textContent = done < validRows.length
+          ? 'Processando produto ' + (done + 1) + ' de ' + validRows.length + '...'
+          : 'Finalizando...';
+      }, 120);
+
+      try {
+        const res = await fetch('/produtos/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: validRows }),
+        });
+        clearInterval(simTimer);
+
+        // Completar barra até 100%
+        $id('imp_prog_bar').style.width  = '100%';
+        $id('imp_prog_bar').style.background = '#27AE60';
+        $id('imp_prog_pct').textContent   = '100%';
+        $id('imp_prog_count').textContent = validRows.length;
+        $id('imp_prog_sub').textContent   = '';
+
+        const data = await res.json();
+        if (data.ok) {
+          $id('imp_prog_label').innerHTML =
+            '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>'
+            + 'Importação concluída!';
+
+          let msg = '✅ ' + (data.created||0) + ' criado(s), ' + (data.updated||0) + ' atualizado(s).';
+          if (data.pendingSerial > 0)
+            msg += '  •  ' + data.pendingSerial + ' produto(s) aguardando Liberação S/N no Estoque.';
+
+          setTimeout(() => {
+            impClose();
+            showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
+            setTimeout(() => location.reload(), 1400);
+          }, 800);
+        } else {
+          $id('imp_prog_bar').style.background = '#dc2626';
+          $id('imp_prog_label').innerHTML =
+            '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>'
+            + (data.error || 'Erro na importação');
+          $id('imp_btn_cancel').style.display = '';
+          showToast(data.error || 'Erro ao importar', 'error');
+        }
+      } catch(err) {
+        clearInterval(simTimer);
+        $id('imp_prog_bar').style.background = '#dc2626';
+        $id('imp_prog_label').innerHTML =
+          '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>Erro de conexão';
+        $id('imp_btn_cancel').style.display = '';
+        showToast('Erro de conexão com o servidor', 'error');
+      }
+    };
+
+  })(); // IIFE — evita poluir o escopo global
+  // ═══════════════════════════════════════════════════════════════════════════
 
   </script>
   `
