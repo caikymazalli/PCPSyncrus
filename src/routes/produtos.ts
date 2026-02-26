@@ -441,7 +441,7 @@ app.get('/', (c) => {
           <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>
           <span id="imp_title">Importar Planilha de Produtos</span>
         </h3>
-        <button onclick="impClose()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button id="imp_btn_x" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
       </div>
 
       <!-- ── STEP 1: Upload ── -->
@@ -461,16 +461,12 @@ app.get('/', (c) => {
 
         <!-- Drop zone -->
         <div id="imp_zone"
-          ondragover="impDragOver(event)"
-          ondragleave="impDragLeave(event)"
-          ondrop="impDrop(event)"
-          onclick="document.getElementById('imp_input').click()"
           style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:34px 20px;text-align:center;cursor:pointer;transition:all 0.2s;user-select:none;">
           <i class="fas fa-cloud-upload-alt" id="imp_zone_icon" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;"></i>
           <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Arraste o arquivo aqui ou clique para buscar</div>
           <div style="font-size:12px;color:#9ca3af;">Formatos: .csv · .xlsx · .xls &nbsp;|&nbsp; Máx. 5 MB</div>
         </div>
-        <input type="file" id="imp_input" accept=".csv,.xlsx,.xls" style="display:none;" onchange="impFileSelect(event)">
+        <input type="file" id="imp_input" accept=".csv,.xlsx,.xls" style="display:none;">
 
         <!-- File selected info — começa oculto com height:0 para evitar conflito de display -->
         <div id="imp_fileinfo" style="overflow:hidden;max-height:0;transition:max-height 0.25s;margin-top:10px;">
@@ -480,7 +476,7 @@ app.get('/', (c) => {
               <div id="imp_fname" style="font-size:13px;font-weight:700;color:#15803d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
               <div id="imp_fsize" style="font-size:11px;color:#6c757d;"></div>
             </div>
-            <button onclick="impClear(event)" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">×</button>
+            <button id="imp_btn_clear" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">×</button>
           </div>
         </div>
 
@@ -540,15 +536,15 @@ app.get('/', (c) => {
 
       <!-- Footer -->
       <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:10px;">
-        <button id="imp_btn_back" onclick="impGoStep1()" class="btn btn-secondary" style="display:none;">
+        <button id="imp_btn_back" class="btn btn-secondary" style="display:none;">
           <i class="fas fa-arrow-left"></i> Voltar
         </button>
         <div style="flex:1;"></div>
-        <button onclick="impClose()" id="imp_btn_cancel" class="btn btn-secondary">Cancelar</button>
-        <button id="imp_btn_preview" onclick="impPreview()" class="btn btn-primary" disabled style="opacity:0.5;cursor:not-allowed;">
+        <button id="imp_btn_cancel" class="btn btn-secondary">Cancelar</button>
+        <button id="imp_btn_preview" class="btn btn-primary" style="opacity:0.5;cursor:not-allowed;pointer-events:none;">
           <i class="fas fa-eye"></i> Visualizar Dados
         </button>
-        <button id="imp_btn_confirm" onclick="impConfirm()" class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
+        <button id="imp_btn_confirm" class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
           <i class="fas fa-check"></i> Confirmar Importação
         </button>
       </div>
@@ -803,354 +799,351 @@ app.get('/', (c) => {
     document.body.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
-  // ═══════════════════════════════════════════════════════════════════════════
-  // IMPORTAÇÃO DE PLANILHA — reescrito totalmente (sem bugs de display/disabled)
-  // ═══════════════════════════════════════════════════════════════════════════
-  ;(function() {
-    // Estado interno
-    let _file = null;
-    let _rows  = [];
+  // ── Importação de planilha ────────────────────────────────────────────────
+  // Toda a lógica fica em IIFE para isolar escopo; eventos são vinculados via
+  // addEventListener (sem inline onclick) para compatibilidade com Cloudflare.
+  (function() {
+    var _file = null;
+    var _rows = [];
 
-    // ── helpers de UI ────────────────────────────────────────────────────────
-    function $id(id) { return document.getElementById(id); }
+    function $q(id) { return document.getElementById(id); }
 
-    function impEnablePreview(on) {
-      const btn = $id('imp_btn_preview');
-      if (!btn) return;
-      btn.disabled = !on;
-      btn.style.opacity = on ? '1' : '0.5';
-      btn.style.cursor  = on ? 'pointer' : 'not-allowed';
+    function impShow(step) {
+      $q('imp_step1').style.display = step === 1 ? '' : 'none';
+      $q('imp_step2').style.display = step === 2 ? '' : 'none';
+      $q('imp_step3').style.display = step === 3 ? '' : 'none';
+      var bBack = $q('imp_btn_back');
+      if (bBack) bBack.style.display = step === 2 ? '' : 'none';
+      var bCancel = $q('imp_btn_cancel');
+      if (bCancel) bCancel.style.display = step === 3 ? 'none' : '';
+      var bPrev = $q('imp_btn_preview');
+      if (bPrev) bPrev.style.display = step === 1 ? '' : 'none';
+      var bConf = $q('imp_btn_confirm');
+      if (bConf) bConf.style.display = step === 2 ? '' : 'none';
     }
 
-    function impShowFileInfo(show) {
-      const el = $id('imp_fileinfo');
-      if (!el) return;
-      el.style.maxHeight = show ? '80px' : '0';
+    function impEnableBtn(id, on) {
+      var b = $q(id); if (!b) return;
+      b.style.opacity       = on ? '1' : '0.5';
+      b.style.cursor        = on ? 'pointer' : 'not-allowed';
+      b.style.pointerEvents = on ? '' : 'none';
     }
 
-    function impSetStep(step) {
-      $id('imp_step1').style.display = step === 1 ? '' : 'none';
-      $id('imp_step2').style.display = step === 2 ? '' : 'none';
-      $id('imp_step3').style.display = step === 3 ? '' : 'none';
-      // botões
-      $id('imp_btn_back').style.display    = step === 2 ? '' : 'none';
-      $id('imp_btn_cancel').style.display  = step === 3 ? 'none' : '';
-      $id('imp_btn_preview').style.display = step === 1 ? '' : 'none';
-      $id('imp_btn_confirm').style.display = step === 2 ? '' : 'none';
+    function impResetUI() {
+      _file = null; _rows = [];
+      var inp = $q('imp_input'); if (inp) inp.value = '';
+      var fi = $q('imp_fileinfo'); if (fi) fi.style.maxHeight = '0';
+      var z  = $q('imp_zone');    if (z) { z.style.borderColor = '#d1d5db'; z.style.background = '#f8f9fa'; }
+      var ic = $q('imp_zone_icon'); if (ic) ic.style.color = '#9ca3af';
+      impEnableBtn('imp_btn_preview', false);
+      impShow(1);
     }
 
-    // ── drag & drop ──────────────────────────────────────────────────────────
-    window.impDragOver = function(e) {
-      e.preventDefault();
-      const z = $id('imp_zone');
-      z.style.borderColor = '#2980B9';
-      z.style.background  = '#e8f4fd';
-    };
-    window.impDragLeave = function(e) {
-      const z = $id('imp_zone');
-      z.style.borderColor = _file ? '#27AE60' : '#d1d5db';
-      z.style.background  = _file ? '#f0fdf4' : '#f8f9fa';
-    };
-    window.impDrop = function(e) {
-      e.preventDefault();
-      impDragLeave(e);
-      const file = e.dataTransfer.files[0];
-      if (file) impSetFile(file);
-    };
-    window.impFileSelect = function(e) {
-      const file = e.target.files[0];
-      if (file) impSetFile(file);
-    };
+    function impClose() {
+      var modal = $q('importPlanilhaModal');
+      if (modal) modal.classList.remove('open');
+      setTimeout(impResetUI, 300);
+    }
 
     function impSetFile(file) {
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (!['csv','xlsx','xls'].includes(ext)) {
+      var ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (['csv','xlsx','xls'].indexOf(ext) === -1) {
         showToast('Formato inválido. Use .csv, .xlsx ou .xls', 'error'); return;
       }
       if (file.size > 5 * 1024 * 1024) {
         showToast('Arquivo muito grande. Máx. 5 MB', 'error'); return;
       }
       _file = file;
-      // Atualizar info
-      $id('imp_fname').textContent = file.name;
-      $id('imp_fsize').textContent = (file.size / 1024).toFixed(1) + ' KB';
-      impShowFileInfo(true);
-      // Zona verde
-      const z = $id('imp_zone');
-      z.style.borderColor = '#27AE60';
-      z.style.background  = '#f0fdf4';
-      $id('imp_zone_icon').style.color = '#27AE60';
-      // Habilitar botão — remover atributo disabled E property
-      impEnablePreview(true);
+      var fn = $q('imp_fname'); if (fn) fn.textContent = file.name;
+      var fs = $q('imp_fsize'); if (fs) fs.textContent = (file.size/1024).toFixed(1) + ' KB';
+      var fi = $q('imp_fileinfo'); if (fi) fi.style.maxHeight = '80px';
+      var z  = $q('imp_zone');    if (z) { z.style.borderColor = '#27AE60'; z.style.background = '#f0fdf4'; }
+      var ic = $q('imp_zone_icon'); if (ic) ic.style.color = '#27AE60';
+      impEnableBtn('imp_btn_preview', true);
     }
 
-    window.impClear = function(e) {
-      if (e) e.stopPropagation();
-      _file = null;
-      _rows = [];
-      $id('imp_input').value = '';
-      impShowFileInfo(false);
-      const z = $id('imp_zone');
-      z.style.borderColor = '#d1d5db';
-      z.style.background  = '#f8f9fa';
-      $id('imp_zone_icon').style.color = '#9ca3af';
-      impEnablePreview(false);
-    };
-
-    // ── fechar / voltar ──────────────────────────────────────────────────────
-    window.impClose = function() {
-      closeModal('importPlanilhaModal');
-      setTimeout(() => { impClear(); impSetStep(1); _rows = []; }, 350);
-    };
-    window.impGoStep1 = function() {
-      impSetStep(1);
-    };
-
-    // ── CSV parser ───────────────────────────────────────────────────────────
-    function normalizeHeader(h) {
-      return h.trim().toLowerCase()
-        .replace(/\s+/g,'_')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')  // remove acentos
-        .replace(/[^a-z0-9_]/g,'');
+    function impNorm(h) {
+      return (h || '').toString().trim().toLowerCase()
+        .replace(/\s+/g, '').replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
+        .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
+        .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
     }
 
-    function parseCsvText(text) {
-      // Remover BOM se houver
-      const clean = text.replace(/^\uFEFF/, '');
-      const lines = clean.split(/\r?\n/);
-      if (lines.length < 2) return [];
-
-      const headers = lines[0].split(',').map(normalizeHeader);
-
-      // Mapear colunas por nome normalizado
-      function findCol(...keys) {
-        for (const k of keys) {
-          const idx = headers.findIndex(h => h === k || h.includes(k));
-          if (idx >= 0) return idx;
+    function impFindIdx(headers, keys) {
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        for (var j = 0; j < headers.length; j++) {
+          if (headers[j] === key || headers[j].indexOf(key) === 0) return j;
         }
-        return -1;
       }
-      const cols = {
-        nome:     findCol('nome'),
-        codigo:   findCol('codigo', 'cod'),
-        unidade:  findCol('unidade', 'unid', 'un'),
-        tipo:     findCol('tipo'),
-        emin:     findCol('estoqueminimo', 'estoquemin', 'e_min', 'min'),
-        eatual:   findCol('estoqueatual', 'e_atual', 'atual'),
-        desc:     findCol('descricao', 'desc'),
-        forn:     findCol('fornecedor', 'forn'),
-        preco:    findCol('preco', 'valor', 'price'),
-        controle: findCol('controleserieoulate', 'controle', 'serie', 'lote', 'sn'),
-      };
+      return -1;
+    }
 
-      const rows = [];
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line.trim()) continue;
-        // Split CSV respeitando aspas
-        const parts = [];
-        let cur = '', inQ = false;
-        for (let ci = 0; ci < line.length; ci++) {
-          const ch = line[ci];
+    function impBuildRow(i, lineNum, g) {
+      var cRaw = impNorm(g(['controleserieoulate','controleserieoulote','controle','sn']));
+      var ct = cRaw.indexOf('serie') >= 0 ? 'serie' : cRaw.indexOf('lote') >= 0 ? 'lote' : '';
+      return {
+        _line: lineNum,
+        nome:         g(['nome']),
+        codigo:       g(['codigo','cod']),
+        unidade:      g(['unidade','unid']) || 'un',
+        tipo:         g(['tipo']) === 'internal' ? 'internal' : 'external',
+        stockMin:     parseInt(g(['estoqueminimo','estoquemin','min'])) || 0,
+        stockCurrent: parseInt(g(['estoqueatual','atual'])) || 0,
+        descricao:    g(['descricao','desc']),
+        fornecedor:   g(['fornecedor','forn']),
+        preco:        parseFloat((g(['preco','valor','price']) || '0').replace(',','.')) || 0,
+        controlType:  ct,
+        serialControlled: !!ct,
+      };
+    }
+
+    function impParseCsv(text) {
+      var clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+      var lines = clean.split('\n');
+      if (lines.length < 2) return [];
+      var headers = lines[0].split(',').map(impNorm);
+      var rows = [];
+      for (var i = 1; i < lines.length; i++) {
+        var line = lines[i]; if (!line.trim()) continue;
+        var parts = []; var cur = ''; var inQ = false;
+        for (var ci = 0; ci < line.length; ci++) {
+          var ch = line[ci];
           if (ch === '"') { inQ = !inQ; }
           else if (ch === ',' && !inQ) { parts.push(cur.trim()); cur = ''; }
           else { cur += ch; }
         }
         parts.push(cur.trim());
-
-        const g = (idx) => idx >= 0 && idx < parts.length
-          ? parts[idx].replace(/^["']|["']$/g,'').trim() : '';
-
-        const controleRaw = g(cols.controle).toLowerCase()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-        const controlType = controleRaw.startsWith('serie') || controleRaw === 's'
-          ? 'serie'
-          : (controleRaw.startsWith('lote') || controleRaw === 'l' ? 'lote' : '');
-
-        rows.push({
-          _line:        i + 1,
-          nome:         g(cols.nome),
-          codigo:       g(cols.codigo),
-          unidade:      g(cols.unidade) || 'un',
-          tipo:         g(cols.tipo) || 'external',
-          stockMin:     parseInt(g(cols.emin))   || 0,
-          stockCurrent: parseInt(g(cols.eatual)) || 0,
-          descricao:    g(cols.desc),
-          fornecedor:   g(cols.forn),
-          preco:        parseFloat(g(cols.preco).replace(',','.')) || 0,
-          controlType,
-          serialControlled: !!controlType,
-        });
+        var getCSV = (function(ps, hs) {
+          return function(keys) {
+            var idx = impFindIdx(hs, keys);
+            if (idx < 0 || idx >= ps.length) return '';
+            return ps[idx].replace(/^"|"$/g, '').trim();
+          };
+        })(parts, headers);
+        rows.push(impBuildRow(i, i + 1, getCSV));
       }
       return rows;
     }
 
-    // ── calcular status local ────────────────────────────────────────────────
-    function localStatus(cur, min) {
-      if (min <= 0) return { label:'Normal',      color:'#16a34a', bg:'#f0fdf4' };
-      const p = (cur / min) * 100;
-      if (p < 50)  return { label:'Crítico',     color:'#dc2626', bg:'#fef2f2' };
-      if (p < 80)  return { label:'Nec.Compra',  color:'#d97706', bg:'#fffbeb' };
-      if (p < 100) return { label:'Nec.Manuf.',  color:'#7c3aed', bg:'#f5f3ff' };
+    function impParseXlsx(wb) {
+      var wsName = wb.SheetNames[0];
+      var ws = wb.Sheets[wsName];
+      var jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      return jsonData.map(function(r, i) {
+        var colKeys = Object.keys(r).map(function(k){ return { key: k, norm: impNorm(k) }; });
+        var getXls = function(keys) {
+          var norm = impFindIdx(colKeys.map(function(x){ return x.norm; }), keys);
+          if (norm < 0) return '';
+          return String(r[colKeys[norm].key] || '').trim();
+        };
+        return impBuildRow(i, i + 2, getXls);
+      });
+    }
+
+    function impLocalStatus(cur, min) {
+      if (min <= 0) return { label:'Normal',     color:'#16a34a', bg:'#f0fdf4' };
+      var p = (cur / min) * 100;
+      if (p < 50)  return { label:'Crítico',    color:'#dc2626', bg:'#fef2f2' };
+      if (p < 80)  return { label:'Nec.Compra', color:'#d97706', bg:'#fffbeb' };
+      if (p < 100) return { label:'Nec.Manuf.', color:'#7c3aed', bg:'#f5f3ff' };
       return { label:'Normal', color:'#16a34a', bg:'#f0fdf4' };
     }
 
-    // ── STEP 1 → 2: visualizar preview ──────────────────────────────────────
-    window.impPreview = function() {
-      if (!_file) return;
-
-      // Feedback visual enquanto lê
-      const btn = $id('imp_btn_preview');
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
-      impEnablePreview(false);
-
-      const reader = new FileReader();
-      reader.onerror = () => {
-        showToast('Erro ao ler arquivo', 'error');
-        btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-        impEnablePreview(true);
-      };
-      reader.onload = (ev) => {
-        btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-
-        const text = ev.target.result;
-        _rows = parseCsvText(text);
-
-        if (_rows.length === 0) {
-          showToast('Nenhuma linha de dados encontrada no arquivo.', 'error');
-          impEnablePreview(true);
-          return;
-        }
-
-        // Renderizar tabela
-        const errors = [];
-        const snCount = _rows.filter(r => r.controlType).length;
-        const tbody = $id('imp_tbody');
-        tbody.innerHTML = _rows.map((r, i) => {
-          const bad = !r.nome || !r.codigo;
-          if (!r.nome)   errors.push('Linha ' + r._line + ': Nome vazio');
-          if (!r.codigo) errors.push('Linha ' + r._line + ': Código vazio');
-          const st  = localStatus(r.stockCurrent, r.stockMin);
-          const bg  = bad ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb');
-          const snBadge = r.controlType === 'serie'
-            ? '<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
-            : r.controlType === 'lote'
-            ? '<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
-            : '<span style="color:#d1d5db;">—</span>';
-          return '<tr style="background:' + bg + ';">'
-            + '<td style="padding:6px 10px;color:#9ca3af;">' + (i+1) + '</td>'
-            + '<td style="padding:6px 10px;font-weight:600;color:' + (bad?'#dc2626':'#374151') + ';">' + (r.nome || '<em style="color:#dc2626">⚠ vazio</em>') + '</td>'
-            + '<td style="padding:6px 10px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">' + (r.codigo || '<em style="color:#dc2626">⚠</em>') + '</span></td>'
-            + '<td style="padding:6px 10px;color:#6c757d;">' + r.unidade + '</td>'
-            + '<td style="padding:6px 10px;">' + r.stockMin + '</td>'
-            + '<td style="padding:6px 10px;">' + r.stockCurrent + '</td>'
-            + '<td style="padding:6px 10px;"><span style="background:' + st.bg + ';color:' + st.color + ';padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;">' + st.label + '</span></td>'
-            + '<td style="padding:6px 10px;">' + snBadge + '</td>'
-            + '</tr>';
-        }).join('');
-
-        // Badges
-        $id('imp_badge_ok').textContent  = _rows.length + ' linha(s)';
-        if (errors.length > 0) {
-          $id('imp_badge_err').textContent = errors.length + ' erro(s)';
-          $id('imp_badge_err').style.display = '';
-          $id('imp_errs').style.display = '';
-          $id('imp_errs').innerHTML = '<strong>⚠ Erros encontrados:</strong><br>' + errors.map(e => '• ' + e).join('<br>');
-          $id('imp_btn_confirm').disabled = true;
-          $id('imp_btn_confirm').style.opacity = '0.5';
-        } else {
-          $id('imp_badge_err').style.display = 'none';
-          $id('imp_errs').style.display = 'none';
-          $id('imp_btn_confirm').disabled = false;
-          $id('imp_btn_confirm').style.opacity = '1';
-        }
-        if (snCount > 0) {
-          $id('imp_badge_sn').textContent = snCount + ' c/ Série/Lote';
-          $id('imp_badge_sn').style.display = '';
-        } else {
-          $id('imp_badge_sn').style.display = 'none';
-        }
-
-        impSetStep(2);
-      };
-      reader.readAsText(_file, 'UTF-8');
-    };
-
-    // ── STEP 2 → 3: confirmar e enviar com barra de progresso ───────────────
-    window.impConfirm = async function() {
-      const validRows = _rows.filter(r => r.nome && r.codigo);
-      if (validRows.length === 0) {
-        showToast('Nenhum dado válido para importar', 'error'); return;
+    function impRenderPreview(rows) {
+      var errors = []; var snCount = 0; var html = '';
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var bad = !r.nome || !r.codigo;
+        if (!r.nome)   errors.push('Linha ' + r._line + ': Nome vazio');
+        if (!r.codigo) errors.push('Linha ' + r._line + ': Código vazio');
+        if (r.controlType) snCount++;
+        var st = impLocalStatus(r.stockCurrent, r.stockMin);
+        var bg = bad ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb');
+        var snB = r.controlType === 'serie'
+          ? '<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
+          : r.controlType === 'lote'
+          ? '<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
+          : '<span style="color:#d1d5db;">—</span>';
+        html += '<tr style="background:' + bg + ';">'
+          + '<td style="padding:6px 10px;color:#9ca3af;">' + (i+1) + '</td>'
+          + '<td style="padding:6px 10px;font-weight:600;color:' + (bad?'#dc2626':'#374151') + ';">' + (r.nome || '<em style="color:#dc2626">⚠ vazio</em>') + '</td>'
+          + '<td style="padding:6px 10px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">' + (r.codigo || '<em style="color:#dc2626">⚠</em>') + '</span></td>'
+          + '<td style="padding:6px 10px;color:#6c757d;">' + r.unidade + '</td>'
+          + '<td style="padding:6px 10px;">' + r.stockMin + '</td>'
+          + '<td style="padding:6px 10px;">' + r.stockCurrent + '</td>'
+          + '<td style="padding:6px 10px;"><span style="background:' + st.bg + ';color:' + st.color + ';padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;">' + st.label + '</span></td>'
+          + '<td style="padding:6px 10px;">' + snB + '</td>'
+          + '</tr>';
       }
+      var tbody = $q('imp_tbody'); if (tbody) tbody.innerHTML = html;
+      var bOk = $q('imp_badge_ok'); if (bOk) bOk.textContent = rows.length + ' linha(s)';
+      var bErr = $q('imp_badge_err');
+      var erEl = $q('imp_errs');
+      if (errors.length > 0) {
+        if (bErr) { bErr.textContent = errors.length + ' erro(s)'; bErr.style.display = ''; }
+        if (erEl) { erEl.style.display = ''; erEl.innerHTML = '<strong>⚠ Erros:</strong><br>' + errors.map(function(x){ return '• ' + x; }).join('<br>'); }
+        impEnableBtn('imp_btn_confirm', false);
+      } else {
+        if (bErr) bErr.style.display = 'none';
+        if (erEl) erEl.style.display = 'none';
+        impEnableBtn('imp_btn_confirm', true);
+      }
+      var bSn = $q('imp_badge_sn');
+      if (bSn) { bSn.textContent = snCount + ' c/ Série/Lote'; bSn.style.display = snCount > 0 ? '' : 'none'; }
+      impShow(2);
+    }
 
-      impSetStep(3);
-      $id('imp_prog_total').textContent = validRows.length;
-      $id('imp_prog_label').textContent = 'Importando ' + validRows.length + ' produto(s)...';
+    function impPreview() {
+      if (!_file) return;
+      var btn = $q('imp_btn_preview');
+      if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
+      impEnableBtn('imp_btn_preview', false);
+      var ext = (_file.name.split('.').pop() || '').toLowerCase();
+      if (ext === 'csv') {
+        var reader = new FileReader();
+        reader.onerror = function() {
+          showToast('Erro ao ler o arquivo CSV', 'error');
+          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+          impEnableBtn('imp_btn_preview', true);
+        };
+        reader.onload = function(ev) {
+          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+          _rows = impParseCsv(ev.target.result);
+          if (_rows.length === 0) {
+            showToast('Nenhuma linha de dados encontrada.', 'error');
+            impEnableBtn('imp_btn_preview', true); return;
+          }
+          impRenderPreview(_rows);
+        };
+        reader.readAsText(_file, 'UTF-8');
+      } else {
+        // xlsx / xls — requer SheetJS (carregado via CDN no head)
+        if (typeof XLSX === 'undefined') {
+          showToast('Biblioteca XLSX não carregada. Recarregue a página.', 'error');
+          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+          impEnableBtn('imp_btn_preview', true); return;
+        }
+        var rdr = new FileReader();
+        rdr.onerror = function() {
+          showToast('Erro ao ler o arquivo Excel', 'error');
+          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+          impEnableBtn('imp_btn_preview', true);
+        };
+        rdr.onload = function(ev) {
+          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+          try {
+            var wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+            _rows = impParseXlsx(wb);
+            if (_rows.length === 0) {
+              showToast('Nenhuma linha de dados encontrada.', 'error');
+              impEnableBtn('imp_btn_preview', true); return;
+            }
+            impRenderPreview(_rows);
+          } catch(err) {
+            showToast('Erro ao processar Excel: ' + err.message, 'error');
+            impEnableBtn('imp_btn_preview', true);
+          }
+        };
+        rdr.readAsArrayBuffer(_file);
+      }
+    }
 
-      // Animar barra enquanto aguarda (não temos streaming, simular progresso até 90%)
-      let simPct = 0;
-      const simTimer = setInterval(() => {
+    function impConfirm() {
+      var validRows = _rows.filter(function(r){ return r.nome && r.codigo; });
+      if (validRows.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
+      impShow(3);
+      var total = validRows.length;
+      var pLabel = $q('imp_prog_label');
+      var pTotal = $q('imp_prog_total');
+      var pBar   = $q('imp_prog_bar');
+      var pPct   = $q('imp_prog_pct');
+      var pCount = $q('imp_prog_count');
+      var pSub   = $q('imp_prog_sub');
+      if (pLabel) pLabel.textContent = 'Importando ' + total + ' produto(s)...';
+      if (pTotal) pTotal.textContent = total;
+      var simPct = 0;
+      var simTimer = setInterval(function() {
         simPct = Math.min(simPct + (90 - simPct) * 0.12, 88);
-        $id('imp_prog_bar').style.width = simPct.toFixed(1) + '%';
-        $id('imp_prog_pct').textContent  = Math.round(simPct) + '%';
-        const done = Math.round((simPct / 100) * validRows.length);
-        $id('imp_prog_count').textContent = done;
-        $id('imp_prog_sub').textContent = done < validRows.length
-          ? 'Processando produto ' + (done + 1) + ' de ' + validRows.length + '...'
+        var p = Math.round(simPct);
+        if (pBar)   pBar.style.width = simPct.toFixed(1) + '%';
+        if (pPct)   pPct.textContent = p + '%';
+        var done = Math.round((simPct / 100) * total);
+        if (pCount) pCount.textContent = done;
+        if (pSub)   pSub.textContent = done < total
+          ? 'Processando produto ' + (done + 1) + ' de ' + total + '...'
           : 'Finalizando...';
       }, 120);
-
-      try {
-        const res = await fetch('/produtos/api/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: validRows }),
-        });
+      fetch('/produtos/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: validRows }),
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
         clearInterval(simTimer);
-
-        // Completar barra até 100%
-        $id('imp_prog_bar').style.width  = '100%';
-        $id('imp_prog_bar').style.background = '#27AE60';
-        $id('imp_prog_pct').textContent   = '100%';
-        $id('imp_prog_count').textContent = validRows.length;
-        $id('imp_prog_sub').textContent   = '';
-
-        const data = await res.json();
+        if (pBar) { pBar.style.width = '100%'; pBar.style.background = data.ok ? '#27AE60' : '#dc2626'; }
+        if (pPct) pPct.textContent = '100%';
+        if (pCount) pCount.textContent = total;
+        if (pSub)  pSub.textContent = '';
         if (data.ok) {
-          $id('imp_prog_label').innerHTML =
-            '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>'
-            + 'Importação concluída!';
-
-          let msg = '✅ ' + (data.created||0) + ' criado(s), ' + (data.updated||0) + ' atualizado(s).';
-          if (data.pendingSerial > 0)
-            msg += '  •  ' + data.pendingSerial + ' produto(s) aguardando Liberação S/N no Estoque.';
-
-          setTimeout(() => {
+          if (pLabel) pLabel.innerHTML = '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>Importação concluída!';
+          var msg = '✅ ' + (data.created || 0) + ' criado(s), ' + (data.updated || 0) + ' atualizado(s).';
+          if (data.pendingSerial > 0) msg += ' • ' + data.pendingSerial + ' aguardando Liberação S/N.';
+          setTimeout(function() {
             impClose();
             showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
-            setTimeout(() => location.reload(), 1400);
-          }, 800);
+            setTimeout(function(){ location.reload(); }, 1200);
+          }, 900);
         } else {
-          $id('imp_prog_bar').style.background = '#dc2626';
-          $id('imp_prog_label').innerHTML =
-            '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>'
-            + (data.error || 'Erro na importação');
-          $id('imp_btn_cancel').style.display = '';
+          if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>' + (data.error || 'Erro na importação');
+          var bCan = $q('imp_btn_cancel'); if (bCan) bCan.style.display = '';
           showToast(data.error || 'Erro ao importar', 'error');
         }
-      } catch(err) {
+      })
+      .catch(function(e) {
         clearInterval(simTimer);
-        $id('imp_prog_bar').style.background = '#dc2626';
-        $id('imp_prog_label').innerHTML =
-          '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>Erro de conexão';
-        $id('imp_btn_cancel').style.display = '';
-        showToast('Erro de conexão com o servidor', 'error');
+        if (pBar)   pBar.style.background = '#dc2626';
+        if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>Erro de conexão';
+        var bCan2 = $q('imp_btn_cancel'); if (bCan2) bCan2.style.display = '';
+        showToast('Erro de conexão: ' + e.message, 'error');
+      });
+    }
+
+    // ── Vincular todos os eventos ao DOM ──────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function() {
+      // Fechar (X e Cancelar)
+      var bX = $q('imp_btn_x');       if (bX)     bX.addEventListener('click', impClose);
+      var bCn = $q('imp_btn_cancel'); if (bCn)    bCn.addEventListener('click', impClose);
+      var bBk = $q('imp_btn_back');   if (bBk)    bBk.addEventListener('click', function(){ impShow(1); });
+      var bPv = $q('imp_btn_preview');if (bPv)    bPv.addEventListener('click', impPreview);
+      var bCf = $q('imp_btn_confirm');if (bCf)    bCf.addEventListener('click', impConfirm);
+      // Drop zone (usando id imp_zone_drop adicionado ao div)
+      var zone = $q('imp_zone_drop') || $q('imp_zone');
+      if (zone) {
+        zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.style.borderColor='#2980B9'; zone.style.background='#e8f4fd'; });
+        zone.addEventListener('dragleave', function(){
+          zone.style.borderColor = _file ? '#27AE60' : '#d1d5db';
+          zone.style.background  = _file ? '#f0fdf4' : '#f8f9fa';
+        });
+        zone.addEventListener('drop', function(e){
+          e.preventDefault();
+          zone.style.borderColor = _file ? '#27AE60' : '#d1d5db';
+          zone.style.background  = _file ? '#f0fdf4' : '#f8f9fa';
+          var f = e.dataTransfer && e.dataTransfer.files[0];
+          if (f) impSetFile(f);
+        });
+        zone.addEventListener('click', function(){ var inp = $q('imp_input'); if (inp) inp.click(); });
       }
-    };
-
-  })(); // IIFE — evita poluir o escopo global
-  // ═══════════════════════════════════════════════════════════════════════════
-
+      // Input file
+      var inp = $q('imp_input');
+      if (inp) inp.addEventListener('change', function(e){ var f = e.target.files[0]; if (f) impSetFile(f); });
+      // Limpar arquivo
+      var bClr = $q('imp_btn_clear');
+      if (bClr) bClr.addEventListener('click', function(e){ e.stopPropagation(); impResetUI(); });
+    });
+  })();
+  // ── /Importação de planilha ───────────────────────────────────────────────
   </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
