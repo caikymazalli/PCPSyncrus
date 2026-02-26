@@ -304,24 +304,24 @@ app.get('/', (c) => {
               </label>
             </div>
           </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Razão Social *</label><input class="form-control" type="text" placeholder="Nome completo da empresa"></div>
-          <div class="form-group"><label class="form-label">Nome Fantasia</label><input class="form-control" type="text" placeholder="Nome comercial"></div>
-          <div class="form-group" id="fCnpjGroup"><label class="form-label">CNPJ *</label><input class="form-control" type="text" placeholder="00.000.000/0001-00"></div>
-          <div class="form-group"><label class="form-label">E-mail *</label><input class="form-control" type="email" placeholder="vendas@fornecedor.com"></div>
-          <div class="form-group"><label class="form-label">Telefone</label><input class="form-control" type="text" placeholder="(11) 9999-9999"></div>
-          <div class="form-group"><label class="form-label">Contato Principal</label><input class="form-control" type="text" placeholder="Nome do responsável"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Razão Social *</label><input class="form-control" id="sup_nome" type="text" placeholder="Nome completo da empresa"></div>
+          <div class="form-group"><label class="form-label">Nome Fantasia</label><input class="form-control" id="sup_fantasia" type="text" placeholder="Nome comercial"></div>
+          <div class="form-group" id="fCnpjGroup"><label class="form-label">CNPJ *</label><input class="form-control" id="sup_cnpj" type="text" placeholder="00.000.000/0001-00"></div>
+          <div class="form-group"><label class="form-label">E-mail *</label><input class="form-control" id="sup_email" type="email" placeholder="vendas@fornecedor.com"></div>
+          <div class="form-group"><label class="form-label">Telefone</label><input class="form-control" id="sup_tel" type="text" placeholder="(11) 9999-9999"></div>
+          <div class="form-group"><label class="form-label">Contato Principal</label><input class="form-control" id="sup_contato" type="text" placeholder="Nome do responsável"></div>
           <div class="form-group"><label class="form-label">Categoria</label>
-            <select class="form-control">
-              <option>Matéria-Prima</option><option>Componente</option><option>Fixador</option><option>Embalagem</option><option>Serviço</option>
+            <select class="form-control" id="sup_categoria">
+              <option value="materia_prima">Matéria-Prima</option><option value="componente">Componente</option><option value="fixador">Fixador</option><option value="embalagem">Embalagem</option><option value="servico">Serviço</option>
             </select>
           </div>
-          <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" type="text" placeholder="Cidade"></div>
-          <div class="form-group"><label class="form-label">Estado / País</label><input class="form-control" type="text" placeholder="SP / Brasil"></div>
+          <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" id="sup_cidade" type="text" placeholder="Cidade"></div>
+          <div class="form-group"><label class="form-label">Estado / País</label><input class="form-control" id="sup_estado" type="text" placeholder="SP / Brasil"></div>
           <div class="form-group">
             <label class="form-label"><i class="fas fa-clock" style="margin-right:4px;color:#2980B9;"></i>Prazo Mínimo de Entrega (dias) *</label>
-            <input class="form-control" type="number" min="1" placeholder="Ex: 7">
+            <input class="form-control" id="sup_prazo" type="number" min="1" placeholder="Ex: 7">
           </div>
-          <div class="form-group"><label class="form-label">Condições de Pagamento</label><input class="form-control" type="text" placeholder="Ex: 30/60/90 dias"></div>
+          <div class="form-group"><label class="form-label">Condições de Pagamento</label><input class="form-control" id="sup_pagamento" type="text" placeholder="Ex: 30/60/90 dias"></div>
           <div id="fNcmGroup" style="display:none;" class="form-group" style="grid-column:span 2;">
             <label class="form-label"><i class="fas fa-ship" style="margin-right:4px;color:#2980B9;"></i>NCM Principal (importação)</label>
             <input class="form-control" type="text" placeholder="Ex: 7318.15.00">
@@ -346,12 +346,12 @@ app.get('/', (c) => {
               </div>
             </div>
           </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" rows="2" placeholder="Informações adicionais, certificações, condições especiais..."></textarea></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" id="sup_obs" rows="2" placeholder="Informações adicionais, certificações, condições especiais..."></textarea></div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novoFornecedorModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Fornecedor cadastrado com sucesso!');closeModal('novoFornecedorModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Fornecedor</button>
+        <button onclick="salvarFornecedor()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Fornecedor</button>
       </div>
     </div>
   </div>
@@ -415,7 +415,7 @@ app.get('/', (c) => {
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('vinculacaoModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Vinculação salva!');closeModal('vinculacaoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Vinculação</button>
+        <button onclick="salvarVinculacao()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Vinculação</button>
       </div>
     </div>
   </div>
@@ -520,7 +520,39 @@ app.get('/', (c) => {
   }
 
   function openEditSupplier(id) {
-    alert('Abrindo edição do fornecedor: ' + id);
+    const s = suppliersData.find(x => x.id === id);
+    if (!s) return;
+    // Preencher campos do modal de edição (se existir) ou abrir detalhes
+    openSupplierDetail(id);
+  }
+
+  async function salvarVinculacao() {
+    const prod = document.getElementById('vincProduto')?.value || '';
+    if (!prod) { showToast('Selecione um produto!', 'error'); return; }
+    const vincType = document.querySelector('input[name="vincType"]:checked')?.value || 'external';
+    const rows = document.querySelectorAll('.vinc-supplier-row');
+    const suppliers_vinc = [];
+    rows.forEach((row, idx) => {
+      const sel = row.querySelector('select');
+      const priSel = row.querySelectorAll('select')[1];
+      if (sel?.value) suppliers_vinc.push({ supplierId: sel.value, priority: parseInt(priSel?.value || '1') });
+    });
+    if (vincType === 'external' && suppliers_vinc.length === 0) { showToast('Adicione ao menos um fornecedor!', 'error'); return; }
+    try {
+      const res = await fetch('/cadastros/api/supplier/vinc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productCode: prod, type: vincType, suppliers: suppliers_vinc })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Vinculação salva!');
+        closeModal('vinculacaoModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao salvar vinculação', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
   // Auto close alert after 8s
@@ -636,5 +668,24 @@ app.delete('/api/supplier/:id', async (c) => {
 })
 
 app.get('/api/suppliers', (c) => ok(c, { suppliers: getCtxTenant(c).suppliers }))
+
+// ── API: POST /cadastros/api/supplier/vinc ───────────────────────────────────
+app.post('/api/supplier/vinc', async (c) => {
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.productCode) return err(c, 'Produto obrigatório')
+  // Guardar vinculação na lista de productSuppliers do tenant
+  if (!tenant.productSuppliers) tenant.productSuppliers = []
+  // Remove vinculações anteriores do mesmo produto
+  tenant.productSuppliers = tenant.productSuppliers.filter((v: any) => v.productCode !== body.productCode)
+  if (body.type === 'external' && Array.isArray(body.suppliers)) {
+    body.suppliers.forEach((s: any) => {
+      tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierId: s.supplierId, priority: s.priority, type: 'external' })
+    })
+  } else if (body.type === 'internal') {
+    tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, type: 'internal' })
+  }
+  return ok(c, { saved: true })
+})
 
 export default app

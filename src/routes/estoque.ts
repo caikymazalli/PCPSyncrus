@@ -800,31 +800,31 @@ app.get('/', (c) => {
       </div>
       <div style="padding:24px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Almoxarifado *</label><input class="form-control" type="text" placeholder="Ex: Almoxarifado Filial Sul"></div>
-          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" type="text" placeholder="Ex: ALM-004"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Almoxarifado *</label><input class="form-control" id="alm_nome" type="text" placeholder="Ex: Almoxarifado Filial Sul"></div>
+          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="alm_codigo" type="text" placeholder="Ex: ALM-004"></div>
           <div class="form-group"><label class="form-label">Empresa / Filial *</label>
-            <select class="form-control">
+            <select class="form-control" id="alm_empresa">
               <option>${userInfo.empresa}</option>
             </select>
           </div>
-          <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" type="text" placeholder="Ex: Curitiba"></div>
-          <div class="form-group"><label class="form-label">Estado</label><input class="form-control" type="text" placeholder="Ex: PR"></div>
+          <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" id="alm_cidade" type="text" placeholder="Ex: Curitiba"></div>
+          <div class="form-group"><label class="form-label">Estado</label><input class="form-control" id="alm_estado" type="text" placeholder="Ex: PR"></div>
           <div class="form-group"><label class="form-label">Responsável *</label>
-            <select class="form-control">
-              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            <select class="form-control" id="alm_responsavel">
+              ${mockData.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Custodiante *</label>
-            <select class="form-control">
-              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            <select class="form-control" id="alm_custodiante">
+              ${mockData.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" rows="2" placeholder="Instruções especiais, localização física, etc."></textarea></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" id="alm_obs" rows="2" placeholder="Instruções especiais, localização física, etc."></textarea></div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novoAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('✅ Almoxarifado criado com sucesso!');closeModal('novoAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button onclick="salvarAlmoxarifado()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -922,7 +922,7 @@ app.get('/', (c) => {
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('editAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('✅ Almoxarifado atualizado!');closeModal('editAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button onclick="showToast('✅ Almoxarifado atualizado!');closeModal('editAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -1534,6 +1534,33 @@ app.get('/', (c) => {
     document.body.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
+
+  async function salvarAlmoxarifado() {
+    const name = document.getElementById('alm_nome')?.value?.trim() || '';
+    const code = document.getElementById('alm_codigo')?.value?.trim() || '';
+    const city = document.getElementById('alm_cidade')?.value?.trim() || '';
+    const state = document.getElementById('alm_estado')?.value?.trim() || '';
+    const responsible = document.getElementById('alm_responsavel')?.value || '';
+    const custodian = document.getElementById('alm_custodiante')?.value || '';
+    const notes = document.getElementById('alm_obs')?.value?.trim() || '';
+    if (!name) { showToast('Informe o nome do almoxarifado!', 'error'); return; }
+    if (!code) { showToast('Informe o código do almoxarifado!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/warehouse/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, code, city, state, responsible, custodian, notes })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Almoxarifado criado com sucesso!');
+        closeModal('novoAlmoxarifadoModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao criar almoxarifado', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
   </script>
   `
   return c.html(layout('Estoque', content, 'estoque', userInfo))
@@ -1678,6 +1705,29 @@ app.post('/api/serial-release', async (c) => {
 app.get('/api/pending-serial', (c) => {
   const tenant = getCtxTenant(c)
   return ok(c, { items: (tenant as any).serialPendingItems || [] })
+})
+
+// ── API: POST /estoque/api/warehouse/create ──────────────────────────────────
+app.post('/api/warehouse/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.code) return err(c, 'Nome e código obrigatórios')
+  const id = genId('alm')
+  const warehouse = {
+    id, name: body.name, code: body.code, city: body.city || '',
+    state: body.state || '', responsible: body.responsible || '',
+    custodian: body.custodian || '', notes: body.notes || '',
+    active: true, createdAt: new Date().toISOString(),
+  }
+  if (!tenant.warehouses) tenant.warehouses = []
+  tenant.warehouses.push(warehouse)
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`INSERT INTO warehouses (id, user_id, name, code, city, state, notes) VALUES (?,?,?,?,?,?,?)`)
+        .bind(id, userId, warehouse.name, warehouse.code, warehouse.city, warehouse.state, warehouse.notes).run()
+    } catch { /* D1 table may not exist yet */ }
+  }
+  return ok(c, { warehouse })
 })
 
 export default app

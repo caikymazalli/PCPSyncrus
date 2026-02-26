@@ -200,17 +200,17 @@ app.get('/', (c) => {
       </div>
       <div style="padding:20px 24px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Produto *</label><input class="form-control" type="text" placeholder="Ex: Engrenagem Helicoidal EH-60"></div>
-          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" type="text" placeholder="ENG-EH60"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Produto *</label><input class="form-control" id="eng_prod_nome" type="text" placeholder="Ex: Engrenagem Helicoidal EH-60"></div>
+          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="eng_prod_codigo" type="text" placeholder="ENG-EH60"></div>
           <div class="form-group"><label class="form-label">Unidade de Medida *</label>
-            <select class="form-control"><option value="un">un (unidade)</option><option value="kg">kg (quilograma)</option><option value="m">m (metro)</option><option value="l">l (litro)</option></select>
+            <select class="form-control" id="eng_prod_unidade"><option value="un">un (unidade)</option><option value="kg">kg (quilograma)</option><option value="m">m (metro)</option><option value="l">l (litro)</option></select>
           </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" rows="3" placeholder="Descrição detalhada do produto..."></textarea></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" id="eng_prod_desc" rows="3" placeholder="Descrição detalhada do produto..."></textarea></div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novoProdutoModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Produto salvo!');closeModal('novoProdutoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button onclick="salvarProdutoEngenharia()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -223,19 +223,26 @@ app.get('/', (c) => {
         <button onclick="closeModal('novoBOMModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:20px 24px;">
-        <div class="form-group"><label class="form-label">Nome do Componente *</label><input class="form-control" type="text" placeholder="Ex: Rolamento 6205-2RS"></div>
+        <div class="form-group">
+          <label class="form-label">Produto *</label>
+          <select class="form-control" id="bom_produto">
+            <option value="">— Selecione o produto —</option>
+            ${products.map((p: any) => `<option value="${p.id || p.code}" data-code="${p.code}" data-name="${p.name}">${p.name} (${p.code})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Nome do Componente *</label><input class="form-control" id="bom_componente" type="text" placeholder="Ex: Rolamento 6205-2RS"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <div class="form-group"><label class="form-label">Código do Componente</label><input class="form-control" type="text" placeholder="ROL-003"></div>
-          <div class="form-group"><label class="form-label">Quantidade *</label><input class="form-control" type="number" placeholder="0" step="0.01"></div>
+          <div class="form-group"><label class="form-label">Código do Componente</label><input class="form-control" id="bom_codigo" type="text" placeholder="ROL-003"></div>
+          <div class="form-group"><label class="form-label">Quantidade *</label><input class="form-control" id="bom_quantidade" type="number" placeholder="0" step="0.01"></div>
           <div class="form-group"><label class="form-label">Unidade *</label>
-            <select class="form-control"><option value="un">un</option><option value="kg">kg</option><option value="m">m</option><option value="l">l</option></select>
+            <select class="form-control" id="bom_unidade"><option value="un">un</option><option value="kg">kg</option><option value="m">m</option><option value="l">l</option></select>
           </div>
         </div>
-        <div class="form-group"><label class="form-label">Notas</label><input class="form-control" type="text" placeholder="Especificações adicionais..."></div>
+        <div class="form-group"><label class="form-label">Notas</label><input class="form-control" id="bom_notas" type="text" placeholder="Especificações adicionais..."></div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novoBOMModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Componente adicionado!');closeModal('novoBOMModal')" class="btn btn-primary"><i class="fas fa-save"></i> Adicionar</button>
+        <button onclick="salvarBomItem()" class="btn btn-primary"><i class="fas fa-save"></i> Adicionar</button>
       </div>
     </div>
   </div>
@@ -508,6 +515,30 @@ app.get('/', (c) => {
     } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
+  async function salvarProdutoEngenharia() {
+    const name = document.getElementById('eng_prod_nome')?.value?.trim() || '';
+    const code = document.getElementById('eng_prod_codigo')?.value?.trim() || '';
+    const unit = document.getElementById('eng_prod_unidade')?.value || 'un';
+    const description = document.getElementById('eng_prod_desc')?.value?.trim() || '';
+    if (!name) { showToast('Informe o nome do produto!', 'error'); return; }
+    if (!code) { showToast('Informe o código do produto!', 'error'); return; }
+    try {
+      const res = await fetch('/engenharia/api/product/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, code, unit, description })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Produto criado com sucesso!');
+        closeModal('novoProdutoModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao criar produto', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
   // ── Toast notification ────────────────────────────────────────────────────
   function showToast(msg, type = 'success') {
     const t = document.createElement('div');
@@ -642,5 +673,28 @@ app.delete('/api/route/:id', async (c) => {
 })
 
 app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
+
+// ── API: POST /engenharia/api/product/create ────────────────────────────────
+// Cria produto (na lista geral de produtos do tenant) via engenharia
+app.post('/api/product/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.code) return err(c, 'Nome e código obrigatórios')
+  const id = genId('prod')
+  const product = {
+    id, name: body.name, code: body.code, unit: body.unit || 'un',
+    type: 'internal', description: body.description || '',
+    stockMin: 0, stockMax: 0, stockCurrent: 0, criticalPercentage: 50,
+    stockStatus: 'normal', createdAt: new Date().toISOString(),
+  }
+  tenant.products.push(product)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'products', {
+      id, user_id: userId, name: product.name, code: product.code, unit: product.unit,
+      type: product.type, stock_min: 0, stock_current: 0, description: product.description,
+    })
+  }
+  return ok(c, { product })
+})
 
 export default app

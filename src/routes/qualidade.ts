@@ -34,25 +34,40 @@ app.get('/', (c) => {
       <div style="padding:24px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
-            <label class="form-label">Ordem de Produção *</label>
-            <select class="form-control">
+            <label class="form-label">Título / Descrição Breve *</label>
+            <input class="form-control" id="nc_titulo" type="text" placeholder="Ex: Dimensão fora de tolerância">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tipo *</label>
+            <select class="form-control" id="nc_tipo">
+              <option value="processo">Processo</option>
+              <option value="produto">Produto</option>
+              <option value="material">Material</option>
+              <option value="fornecedor">Fornecedor</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Ordem de Produção</label>
+            <select class="form-control" id="nc_ordem">
               <option value="">Selecionar...</option>
               ${mockData.productionOrders.map(o => `<option>${o.code}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">Etapa / Operação</label>
-            <input class="form-control" type="text" placeholder="Ex: Torneamento, Montagem...">
+            <input class="form-control" id="nc_produto" type="text" placeholder="Ex: Torneamento, Montagem...">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
           <div class="form-group">
             <label class="form-label">Qtd Rejeitada *</label>
-            <input class="form-control" type="number" min="1" placeholder="0">
+            <input class="form-control" id="nc_qtd" type="number" min="1" placeholder="0">
           </div>
           <div class="form-group">
             <label class="form-label">Severidade *</label>
-            <select class="form-control">
+            <select class="form-control" id="nc_gravidade">
               <option value="low">Baixa</option>
               <option value="medium" selected>Média</option>
               <option value="high">Alta</option>
@@ -61,22 +76,22 @@ app.get('/', (c) => {
           </div>
           <div class="form-group">
             <label class="form-label">Responsável Análise</label>
-            <select class="form-control">
-              ${mockData.users.filter(u => u.role === 'qualidade' || u.role === 'admin').map(u => `<option>${u.name}</option>`).join('')}
+            <select class="form-control" id="nc_responsavel">
+              ${mockData.users.filter(u => u.role === 'qualidade' || u.role === 'admin').map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Descrição da Não Conformidade *</label>
-          <textarea class="form-control" rows="3" placeholder="Descreva detalhadamente o defeito: localização na peça, extensão, impacto..."></textarea>
+          <textarea class="form-control" id="nc_descricao" rows="3" placeholder="Descreva detalhadamente o defeito: localização na peça, extensão, impacto..."></textarea>
         </div>
         <div class="form-group">
-          <label class="form-label">Causa Raiz</label>
-          <input class="form-control" type="text" placeholder="Ex: Desgaste de ferramenta, configuração incorreta...">
+          <label class="form-label">Setor</label>
+          <input class="form-control" id="nc_setor" type="text" placeholder="Ex: Usinagem, Qualidade...">
         </div>
         <div class="form-group">
-          <label class="form-label">Ação Corretiva</label>
-          <input class="form-control" type="text" placeholder="Ex: Substituição de ferramenta, re-treinamento operador...">
+          <label class="form-label">Prazo para Tratamento</label>
+          <input class="form-control" id="nc_prazo" type="date">
         </div>
         <div class="form-group">
           <label class="form-label"><i class="fas fa-images" style="margin-right:6px;color:#6c757d;"></i>Evidências Fotográficas</label>
@@ -93,7 +108,7 @@ app.get('/', (c) => {
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary" onclick="closeModal('novaNcModal')">Cancelar</button>
-          <button class="btn btn-danger" onclick="alert('NC registrada com sucesso!');closeModal('novaNcModal')"><i class="fas fa-save"></i> Registrar NC</button>
+          <button class="btn btn-danger" onclick="salvarNC()"><i class="fas fa-save"></i> Registrar NC</button>
         </div>
       </div>
     </div>

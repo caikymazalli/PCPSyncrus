@@ -179,7 +179,7 @@ app.get('/', (c) => {
           <div style="display:flex;gap:6px;">
             <a href="/engenharia" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;" title="Ver lista de materiais BOM"><i class="fas fa-list-ul"></i> Ver BOM</a>
             <div class="tooltip-wrap" data-tooltip="Editar produto"><button class="btn btn-secondary btn-sm" onclick="openEditProd('${p.id}','${p.name}','${p.code}','${p.unit}',${p.stockMin},${p.stockCurrent},'${p.stockStatus}','${(p as any).serialControlled}','${(p as any).controlType||''}')"><i class="fas fa-edit"></i></button></div>
-            <div class="tooltip-wrap" data-tooltip="Excluir produto"><button class="btn btn-danger btn-sm" onclick="if(confirm('Excluir ${p.name}?')) alert('Produto removido.')"><i class="fas fa-trash"></i></button></div>
+            <div class="tooltip-wrap" data-tooltip="Excluir produto"><button class="btn btn-danger btn-sm" onclick="deleteProduto('${p.id}')"><i class="fas fa-trash"></i></button></div>
           </div>
         </div>
       </div>`
@@ -311,6 +311,7 @@ app.get('/', (c) => {
   <!-- Edit Produto Modal -->
   <div class="modal-overlay" id="editProdModal">
     <div class="modal" style="max-width:520px;">
+      <input type="hidden" id="ep_id">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="editProdTitle"><i class="fas fa-edit" style="margin-right:8px;"></i>Editar Produto</h3>
         <button onclick="closeModal('editProdModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
@@ -387,7 +388,7 @@ app.get('/', (c) => {
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('editProdModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Produto atualizado!');closeModal('editProdModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button onclick="salvarEdicaoProduto()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -635,6 +636,7 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
   }
 
   function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType) {
+    document.getElementById('ep_id').value = id;
     document.getElementById('ep_name').value = name;
     document.getElementById('ep_code').value = code;
     document.getElementById('ep_unit').value = unit;
@@ -756,6 +758,38 @@ Fluido Hidráulico 20L,FLU-004,lt,20,8</div>
     } catch(e) {
       showToast('Erro de conexão', 'error');
     }
+  }
+
+  async function salvarEdicaoProduto() {
+    const id = document.getElementById('ep_id')?.value || '';
+    if (!id) { showToast('ID do produto não encontrado', 'error'); return; }
+    const name = document.getElementById('ep_name')?.value || '';
+    const code = document.getElementById('ep_code')?.value || '';
+    const unit = document.getElementById('ep_unit')?.value || 'un';
+    const stockMin = parseInt(document.getElementById('ep_stockMin')?.value) || 0;
+    const stockCurrent = parseInt(document.getElementById('ep_stockCurrent')?.value) || 0;
+    const typeEl = document.querySelector('input[name="editProdType"]:checked');
+    const type = typeEl ? typeEl.value : 'external';
+    const serialEl = document.querySelector('input[name="editProdSerial"]:checked');
+    const serialVal = serialEl ? serialEl.value : 'none';
+    const serialControlled = serialVal !== 'none';
+    const controlType = serialControlled ? serialVal : '';
+    if (!name) { showToast('Informe o nome do produto!', 'error'); return; }
+    try {
+      const res = await fetch('/produtos/api/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, code, unit, type, stockMin, stockCurrent, serialControlled, controlType })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Produto atualizado!');
+        closeModal('editProdModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao atualizar', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
   async function deleteProduto(id) {
