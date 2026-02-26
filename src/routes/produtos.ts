@@ -77,6 +77,9 @@ app.get('/', (c) => {
       <button class="btn btn-secondary" onclick="openModal('configLimitesModal')" title="Configurar limites de estoque por status">
         <i class="fas fa-sliders-h"></i> Config. Limites
       </button>
+      <button class="btn btn-secondary" onclick="openModal('importPlanilhaModal')" title="Importar produtos via planilha">
+        <i class="fas fa-file-upload"></i> Importar
+      </button>
       <button class="btn btn-primary" onclick="openModal('novoProdModal')" title="Cadastrar novo produto">
         <i class="fas fa-plus"></i> Novo Produto
       </button>
@@ -426,6 +429,102 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Modal: Importar Planilha de Produtos
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="importPlanilhaModal">
+    <div class="modal" style="max-width:640px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>Importar Planilha de Produtos
+        </h3>
+        <button onclick="closeImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+
+      <!-- STEP 1: Upload -->
+      <div id="importStep1" style="padding:20px 24px;">
+        <div style="background:#e8f4fd;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#1B4F72;">
+          <i class="fas fa-info-circle" style="margin-right:6px;"></i>
+          Colunas obrigatórias: <strong>Nome</strong> e <strong>Código</strong>.
+          Colunas opcionais: Unidade, Tipo, Estoque Mínimo, Estoque Atual, Descrição, Fornecedor, Preço.
+        </div>
+
+        <!-- Download modelo -->
+        <button onclick="baixarModeloProdutos()" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:16px;">
+          <i class="fas fa-download" style="color:#27AE60;"></i> Baixar Planilha Modelo (.csv)
+        </button>
+
+        <!-- Upload area -->
+        <div id="importDropZone"
+          ondragover="event.preventDefault();this.style.borderColor='#2980B9';this.style.background='#e8f4fd';"
+          ondragleave="this.style.borderColor='#d1d5db';this.style.background='#f8f9fa';"
+          ondrop="handleImportDrop(event)"
+          onclick="document.getElementById('importFileInput').click()"
+          style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:36px 20px;text-align:center;cursor:pointer;transition:all 0.2s;">
+          <i class="fas fa-cloud-upload-alt" style="font-size:36px;color:#9ca3af;margin-bottom:12px;display:block;"></i>
+          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Arraste o arquivo aqui ou clique para buscar</div>
+          <div style="font-size:12px;color:#9ca3af;">Formatos aceitos: .csv, .xlsx, .xls · Máx. 5MB</div>
+        </div>
+        <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleImportFileSelect(event)">
+
+        <!-- File info (hidden initially) -->
+        <div id="importFileInfo" style="display:none;margin-top:12px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;display:flex;align-items:center;gap:10px;">
+          <i class="fas fa-file-csv" style="color:#16a34a;font-size:20px;"></i>
+          <div style="flex:1;">
+            <div id="importFileName" style="font-size:13px;font-weight:700;color:#15803d;"></div>
+            <div id="importFileSize" style="font-size:11px;color:#6c757d;"></div>
+          </div>
+          <button onclick="limparArquivoImport()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:16px;">×</button>
+        </div>
+
+        <div style="margin-top:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;">
+          <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+          Produtos com o mesmo <strong>Código</strong> já cadastrado serão <strong>atualizados</strong>. Novos códigos serão incluídos.
+        </div>
+      </div>
+
+      <!-- STEP 2: Preview/Validação -->
+      <div id="importStep2" style="display:none;padding:20px 24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div id="importPreviewBadge" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></div>
+          <div id="importPreviewBadgeWarn" style="display:none;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#fffbeb;color:#d97706;"></div>
+        </div>
+        <div style="max-height:320px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f8f9fa;position:sticky;top:0;">
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">#</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Nome</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Código</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Unid.</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Est.Min</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Est.Atual</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="importPreviewBody"></tbody>
+          </table>
+        </div>
+        <div id="importValidationErrors" style="display:none;margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;font-size:12px;color:#dc2626;"></div>
+      </div>
+
+      <!-- Footer buttons -->
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;gap:10px;">
+        <button id="importBtnBack" onclick="voltarStep1()" class="btn btn-secondary" style="display:none;">
+          <i class="fas fa-arrow-left"></i> Voltar
+        </button>
+        <div style="flex:1;"></div>
+        <button onclick="closeImportModal()" class="btn btn-secondary">Cancelar</button>
+        <button id="importBtnPreview" onclick="previewPlanilha()" class="btn btn-primary" disabled>
+          <i class="fas fa-eye"></i> Visualizar Dados
+        </button>
+        <button id="importBtnConfirm" onclick="confirmarImportacao()" class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
+          <i class="fas fa-check"></i> Confirmar Importação
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Config Limites Modal -->
   <div class="modal-overlay" id="configLimitesModal">
     <div class="modal" style="max-width:540px;">
@@ -674,6 +773,232 @@ app.get('/', (c) => {
     document.body.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
+  // ── Importação de Planilha ────────────────────────────────────────────────
+  let _importParsedRows = [];
+
+  function closeImportModal() {
+    closeModal('importPlanilhaModal');
+    setTimeout(limparArquivoImport, 300);
+  }
+
+  function limparArquivoImport() {
+    document.getElementById('importFileInput').value = '';
+    document.getElementById('importFileInfo').style.display = 'none';
+    document.getElementById('importBtnPreview').disabled = true;
+    voltarStep1();
+    _importParsedRows = [];
+  }
+
+  function voltarStep1() {
+    document.getElementById('importStep1').style.display = '';
+    document.getElementById('importStep2').style.display = 'none';
+    document.getElementById('importBtnBack').style.display = 'none';
+    document.getElementById('importBtnPreview').style.display = '';
+    document.getElementById('importBtnConfirm').style.display = 'none';
+  }
+
+  function handleImportDrop(e) {
+    e.preventDefault();
+    const zone = document.getElementById('importDropZone');
+    zone.style.borderColor = '#d1d5db';
+    zone.style.background = '#f8f9fa';
+    const file = e.dataTransfer.files[0];
+    if (file) processImportFile(file);
+  }
+
+  function handleImportFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) processImportFile(file);
+  }
+
+  function processImportFile(file) {
+    const allowed = ['text/csv', 'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'];
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['csv','xlsx','xls'].includes(ext)) {
+      showToast('Formato não suportado. Use .csv, .xlsx ou .xls', 'error'); return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Arquivo muito grande. Máx. 5MB', 'error'); return;
+    }
+    const info = document.getElementById('importFileInfo');
+    document.getElementById('importFileName').textContent = file.name;
+    document.getElementById('importFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    info.style.display = 'flex';
+    document.getElementById('importBtnPreview').disabled = false;
+    // Highlight drop zone
+    const zone = document.getElementById('importDropZone');
+    zone.style.borderColor = '#27AE60';
+    zone.style.background = '#f0fdf4';
+    // Store file for later
+    window._importFile = file;
+  }
+
+  function baixarModeloProdutos() {
+    const csv = [
+      'Nome,Codigo,Unidade,Tipo,EstoqueMinimo,EstoqueAtual,Descricao,Fornecedor,Preco',
+      'Parafuso M8x30,PARA-M8-30,un,external,100,250,Parafuso sextavado M8x30mm,,0.45',
+      'Chapa de Aço 3mm,CHP-ACO-3,kg,external,50,120,Chapa laminada a frio,,8.90',
+      'Tampa Plástica A200,TAMP-A200,un,internal,20,5,Tampa para caixa série A200,,',
+      'Resina Epóxi,RES-EXP-1L,l,external,10,25,Resina epóxi bicomponente,,35.00',
+    ].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'modelo_produtos.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Modelo baixado com sucesso!');
+  }
+
+  function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
+    // Normalize header
+    const rawHeader = lines[0].split(',').map(h => h.trim().toLowerCase()
+      .replace(/[áàã]/g,'a').replace(/[éê]/g,'e').replace(/[í]/g,'i')
+      .replace(/[óô]/g,'o').replace(/[ú]/g,'u').replace(/\s+/g,'_')
+      .replace(/\./g,'').replace(/-/g,'_'));
+
+    const colMap = {
+      nome: rawHeader.findIndex(h => h.includes('nome')),
+      codigo: rawHeader.findIndex(h => h.includes('cod')),
+      unidade: rawHeader.findIndex(h => h.includes('unid') || h === 'un'),
+      tipo: rawHeader.findIndex(h => h === 'tipo'),
+      estoque_min: rawHeader.findIndex(h => h.includes('min')),
+      estoque_atual: rawHeader.findIndex(h => h.includes('atual') || h.includes('atual')),
+      descricao: rawHeader.findIndex(h => h.includes('desc')),
+      fornecedor: rawHeader.findIndex(h => h.includes('forn')),
+      preco: rawHeader.findIndex(h => h.includes('prec') || h.includes('valor')),
+    };
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      // Handle quoted fields
+      const cols = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || line.split(',');
+      const get = (idx) => idx >= 0 ? (cols[idx] || '').replace(/^"|"$/g,'').trim() : '';
+      rows.push({
+        _row: i,
+        nome: get(colMap.nome),
+        codigo: get(colMap.codigo),
+        unidade: get(colMap.unidade) || 'un',
+        tipo: get(colMap.tipo) || 'external',
+        stockMin: parseInt(get(colMap.estoque_min)) || 0,
+        stockCurrent: parseInt(get(colMap.estoque_atual)) || 0,
+        descricao: get(colMap.descricao),
+        fornecedor: get(colMap.fornecedor),
+        preco: parseFloat(get(colMap.preco)) || 0,
+      });
+    }
+    return rows;
+  }
+
+  function previewPlanilha() {
+    const file = window._importFile;
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const rows = parseCSV(text);
+      if (rows.length === 0) {
+        showToast('Nenhuma linha válida encontrada no arquivo.', 'error'); return;
+      }
+      _importParsedRows = rows;
+      renderPreview(rows);
+      // Switch to step 2
+      document.getElementById('importStep1').style.display = 'none';
+      document.getElementById('importStep2').style.display = '';
+      document.getElementById('importBtnBack').style.display = '';
+      document.getElementById('importBtnPreview').style.display = 'none';
+      document.getElementById('importBtnConfirm').style.display = '';
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function calcStatusLocal(current, min) {
+    if (min <= 0) return { label: 'Normal', color: '#16a34a', bg: '#f0fdf4' };
+    const pct = (current / min) * 100;
+    if (pct < 50)  return { label: 'Crítico',    color: '#dc2626', bg: '#fef2f2' };
+    if (pct < 80)  return { label: 'Nec.Compra', color: '#d97706', bg: '#fffbeb' };
+    if (pct < 100) return { label: 'Nec.Manuf.',  color: '#7c3aed', bg: '#f5f3ff' };
+    return { label: 'Normal', color: '#16a34a', bg: '#f0fdf4' };
+  }
+
+  function renderPreview(rows) {
+    const errors = [];
+    const tbody = document.getElementById('importPreviewBody');
+    tbody.innerHTML = rows.map((r, i) => {
+      const hasError = !r.nome || !r.codigo;
+      if (!r.nome) errors.push('Linha ' + (i+1) + ': Nome obrigatório');
+      if (!r.codigo) errors.push('Linha ' + (i+1) + ': Código obrigatório');
+      const st = calcStatusLocal(r.stockCurrent, r.stockMin);
+      const rowBg = hasError ? '#fef2f2' : (i % 2 === 0 ? 'white' : '#f9fafb');
+      return \`<tr style="background:\${rowBg};">
+        <td style="padding:7px 12px;color:#9ca3af;">\${i+1}</td>
+        <td style="padding:7px 12px;font-weight:600;color:\${hasError?'#dc2626':'#374151'};">\${r.nome || '<span style="color:#dc2626">⚠ vazio</span>'}</td>
+        <td style="padding:7px 12px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">\${r.codigo || '<span style="color:#dc2626">⚠</span>'}</span></td>
+        <td style="padding:7px 12px;color:#6c757d;">\${r.unidade}</td>
+        <td style="padding:7px 12px;color:#374151;">\${r.stockMin}</td>
+        <td style="padding:7px 12px;color:#374151;">\${r.stockCurrent}</td>
+        <td style="padding:7px 12px;"><span style="background:\${st.bg};color:\${st.color};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">\${st.label}</span></td>
+      </tr>\`;
+    }).join('');
+
+    const badge = document.getElementById('importPreviewBadge');
+    badge.textContent = rows.length + ' linha(s) encontrada(s)';
+
+    const warnBadge = document.getElementById('importPreviewBadgeWarn');
+    if (errors.length > 0) {
+      warnBadge.style.display = '';
+      warnBadge.textContent = errors.length + ' erro(s) encontrado(s)';
+      document.getElementById('importValidationErrors').style.display = '';
+      document.getElementById('importValidationErrors').innerHTML =
+        '<strong><i class="fas fa-exclamation-triangle"></i> Erros de validação:</strong><br>' +
+        errors.map(e => '• ' + e).join('<br>');
+      document.getElementById('importBtnConfirm').disabled = true;
+    } else {
+      warnBadge.style.display = 'none';
+      document.getElementById('importValidationErrors').style.display = 'none';
+      document.getElementById('importBtnConfirm').disabled = false;
+    }
+  }
+
+  async function confirmarImportacao() {
+    const rows = _importParsedRows.filter(r => r.nome && r.codigo);
+    if (rows.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
+
+    const btn = document.getElementById('importBtnConfirm');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando...';
+
+    try {
+      const res = await fetch('/produtos/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        closeImportModal();
+        showToast('✅ ' + (data.created||0) + ' produto(s) criado(s), ' + (data.updated||0) + ' atualizado(s)!');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast(data.error || 'Erro ao importar', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check"></i> Confirmar Importação';
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check"></i> Confirmar Importação';
+    }
+  }
+  // ── /Importação de Planilha ───────────────────────────────────────────────
+
   </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
@@ -761,6 +1086,91 @@ app.delete('/api/:id', async (c) => {
 app.get('/api/list', async (c) => {
   const tenant = getCtxTenant(c)
   return ok(c, { products: tenant.products })
+})
+
+// ── API: POST /produtos/api/import ────────────────────────────────────────────
+// Recebe array de linhas parseadas do CSV e persiste em memória + D1
+app.post('/api/import', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !Array.isArray(body.rows)) return err(c, 'Dados inválidos')
+
+  const rows: any[] = body.rows
+  if (rows.length === 0) return err(c, 'Nenhuma linha para importar')
+  if (rows.length > 500) return err(c, 'Limite de 500 linhas por importação')
+
+  let created = 0
+  let updated = 0
+
+  function calcStockStatus(current: number, min: number): string {
+    if (min <= 0) return 'normal'
+    const pct = (current / min) * 100
+    if (pct < 50)  return 'critical'
+    if (pct < 80)  return 'purchase_needed'
+    if (pct < 100) return 'manufacture_needed'
+    return 'normal'
+  }
+
+  for (const row of rows) {
+    const nome = (row.nome || '').trim()
+    const codigo = (row.codigo || '').trim()
+    if (!nome || !codigo) continue
+
+    const stockMin     = parseInt(row.stockMin)     || 0
+    const stockCurrent = parseInt(row.stockCurrent) || 0
+    const stockStatus  = calcStockStatus(stockCurrent, stockMin)
+    const unit         = (row.unidade || 'un').trim()
+    const type         = (row.tipo === 'internal' ? 'internal' : 'external')
+    const price        = parseFloat(row.preco) || 0
+    const notes        = (row.descricao || '').trim()
+
+    // Check if product with same code already exists
+    const existingIdx = (tenant.products as any[]).findIndex((p: any) => p.code === codigo)
+
+    if (existingIdx >= 0) {
+      // Update existing
+      const p = tenant.products[existingIdx] as any
+      p.name         = nome
+      p.unit         = unit
+      p.type         = type
+      p.stockMin     = stockMin
+      p.stockCurrent = stockCurrent
+      p.stockStatus  = stockStatus
+      p.price        = price
+      p.notes        = notes
+
+      if (db && userId !== 'demo-tenant') {
+        await dbUpdate(db, 'products', p.id, userId, {
+          name: nome, unit, type,
+          stock_min: stockMin, stock_current: stockCurrent, price, notes
+        }).catch(() => {})
+      }
+      updated++
+    } else {
+      // Create new
+      const id = genId('prod')
+      const product: any = {
+        id, name: nome, code: codigo, unit, type,
+        stockMin, stockMax: 0, stockCurrent, stockStatus,
+        criticalPercentage: 50, supplierId: '', supplierName: '',
+        price, notes, createdAt: new Date().toISOString(),
+      }
+      ;(tenant.products as any[]).push(product)
+
+      if (db && userId !== 'demo-tenant') {
+        await dbInsert(db, 'products', {
+          id, user_id: userId, name: nome, code: codigo, unit, type,
+          stock_min: stockMin, stock_max: 0, stock_current: stockCurrent,
+          price, notes,
+        }).catch(() => {})
+      }
+      created++
+    }
+  }
+
+  return ok(c, { created, updated, total: created + updated })
 })
 
 export default app
