@@ -450,7 +450,7 @@ app.get('/', (c) => {
         </div>
 
         <!-- Download modelo -->
-        <button onclick="baixarModeloProdutos()" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:16px;">
+        <button onclick="window.location.href='/produtos/api/modelo-csv'" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:16px;">
           <i class="fas fa-download" style="color:#27AE60;"></i> Baixar Planilha Modelo (.csv)
         </button>
 
@@ -481,6 +481,10 @@ app.get('/', (c) => {
           <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
           Produtos com o mesmo <strong>Código</strong> já cadastrado serão <strong>atualizados</strong>. Novos códigos serão incluídos.
         </div>
+        <div style="margin-top:8px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px 14px;font-size:12px;color:#6d28d9;">
+          <i class="fas fa-barcode" style="margin-right:6px;"></i>
+          Produtos com coluna <strong>ControleSerieOuLote</strong> preenchida (<code>serie</code> ou <code>lote</code>) gerarão itens na fila de <strong>Liberação de Série/Lote</strong> no Estoque, aguardando identificação individual.
+        </div>
       </div>
 
       <!-- STEP 2: Preview/Validação -->
@@ -500,6 +504,7 @@ app.get('/', (c) => {
                 <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Est.Min</th>
                 <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Est.Atual</th>
                 <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">Status</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;">S/N</th>
               </tr>
             </thead>
             <tbody id="importPreviewBody"></tbody>
@@ -835,24 +840,6 @@ app.get('/', (c) => {
     window._importFile = file;
   }
 
-  function baixarModeloProdutos() {
-    const csv = [
-      'Nome,Codigo,Unidade,Tipo,EstoqueMinimo,EstoqueAtual,Descricao,Fornecedor,Preco',
-      'Parafuso M8x30,PARA-M8-30,un,external,100,250,Parafuso sextavado M8x30mm,,0.45',
-      'Chapa de Aço 3mm,CHP-ACO-3,kg,external,50,120,Chapa laminada a frio,,8.90',
-      'Tampa Plástica A200,TAMP-A200,un,internal,20,5,Tampa para caixa série A200,,',
-      'Resina Epóxi,RES-EXP-1L,l,external,10,25,Resina epóxi bicomponente,,35.00',
-    ].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'modelo_produtos.csv';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Modelo baixado com sucesso!');
-  }
-
   function parseCSV(text) {
     const lines = text.trim().split(/\r?\n/);
     if (lines.length < 2) return [];
@@ -863,35 +850,48 @@ app.get('/', (c) => {
       .replace(/\./g,'').replace(/-/g,'_'));
 
     const colMap = {
-      nome: rawHeader.findIndex(h => h.includes('nome')),
-      codigo: rawHeader.findIndex(h => h.includes('cod')),
-      unidade: rawHeader.findIndex(h => h.includes('unid') || h === 'un'),
-      tipo: rawHeader.findIndex(h => h === 'tipo'),
-      estoque_min: rawHeader.findIndex(h => h.includes('min')),
-      estoque_atual: rawHeader.findIndex(h => h.includes('atual') || h.includes('atual')),
-      descricao: rawHeader.findIndex(h => h.includes('desc')),
-      fornecedor: rawHeader.findIndex(h => h.includes('forn')),
-      preco: rawHeader.findIndex(h => h.includes('prec') || h.includes('valor')),
+      nome:          rawHeader.findIndex(h => h.includes('nome')),
+      codigo:        rawHeader.findIndex(h => h.includes('cod')),
+      unidade:       rawHeader.findIndex(h => h.includes('unid') || h === 'un'),
+      tipo:          rawHeader.findIndex(h => h === 'tipo'),
+      estoque_min:   rawHeader.findIndex(h => h.includes('min')),
+      estoque_atual: rawHeader.findIndex(h => h.includes('atual')),
+      descricao:     rawHeader.findIndex(h => h.includes('desc')),
+      fornecedor:    rawHeader.findIndex(h => h.includes('forn')),
+      preco:         rawHeader.findIndex(h => h.includes('prec') || h.includes('valor')),
+      controle:      rawHeader.findIndex(h => h.includes('serie') || h.includes('lote') || h.includes('controle')),
     };
 
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      // Handle quoted fields
-      const cols = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || line.split(',');
+      // Split respeitando campos entre aspas
+      const cols = [];
+      let cur = '', inQ = false;
+      for (const ch of line + ',') {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+      }
       const get = (idx) => idx >= 0 ? (cols[idx] || '').replace(/^"|"$/g,'').trim() : '';
+      const controleRaw = get(colMap.controle).toLowerCase();
+      const controlType = controleRaw.includes('serie') || controleRaw === 'serie' ? 'serie'
+                        : controleRaw.includes('lote')  || controleRaw === 'lote'  ? 'lote'
+                        : '';
       rows.push({
         _row: i,
-        nome: get(colMap.nome),
-        codigo: get(colMap.codigo),
-        unidade: get(colMap.unidade) || 'un',
-        tipo: get(colMap.tipo) || 'external',
-        stockMin: parseInt(get(colMap.estoque_min)) || 0,
+        nome:         get(colMap.nome),
+        codigo:       get(colMap.codigo),
+        unidade:      get(colMap.unidade) || 'un',
+        tipo:         get(colMap.tipo) || 'external',
+        stockMin:     parseInt(get(colMap.estoque_min))   || 0,
         stockCurrent: parseInt(get(colMap.estoque_atual)) || 0,
-        descricao: get(colMap.descricao),
-        fornecedor: get(colMap.fornecedor),
-        preco: parseFloat(get(colMap.preco)) || 0,
+        descricao:    get(colMap.descricao),
+        fornecedor:   get(colMap.fornecedor),
+        preco:        parseFloat(get(colMap.preco)) || 0,
+        controlType,  // 'serie' | 'lote' | ''
+        serialControlled: !!controlType,
       });
     }
     return rows;
@@ -945,6 +945,9 @@ app.get('/', (c) => {
         <td style="padding:7px 12px;color:#374151;">\${r.stockMin}</td>
         <td style="padding:7px 12px;color:#374151;">\${r.stockCurrent}</td>
         <td style="padding:7px 12px;"><span style="background:\${st.bg};color:\${st.color};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">\${st.label}</span></td>
+        <td style="padding:7px 12px;">
+          \${r.controlType === 'serie' ? '<span style="background:#ede9fe;color:#7c3aed;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;"><i class="fas fa-barcode" style="font-size:9px;"></i> Série</span>' : r.controlType === 'lote' ? '<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;"><i class="fas fa-layer-group" style="font-size:9px;"></i> Lote</span>' : '<span style="color:#9ca3af;font-size:11px;">—</span>'}
+        </td>
       </tr>\`;
     }).join('');
 
@@ -984,8 +987,12 @@ app.get('/', (c) => {
       const data = await res.json();
       if (data.ok) {
         closeImportModal();
-        showToast('✅ ' + (data.created||0) + ' produto(s) criado(s), ' + (data.updated||0) + ' atualizado(s)!');
-        setTimeout(() => location.reload(), 1200);
+        let msg = '✅ ' + (data.created||0) + ' criado(s), ' + (data.updated||0) + ' atualizado(s)!';
+        if (data.pendingSerial > 0) {
+          msg += ' • ' + data.pendingSerial + ' produto(s) com Série/Lote aguardando liberação no Estoque.';
+        }
+        showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
+        setTimeout(() => location.reload(), 1800);
       } else {
         showToast(data.error || 'Erro ao importar', 'error');
         btn.disabled = false;
@@ -1082,6 +1089,30 @@ app.delete('/api/:id', async (c) => {
   return ok(c)
 })
 
+// ── API: GET /produtos/api/modelo-csv ────────────────────────────────────────
+// Serve o arquivo modelo para download direto (resolve problema de Blob no Cloudflare)
+app.get('/api/modelo-csv', (c) => {
+  const csv = [
+    'Nome,Codigo,Unidade,Tipo,EstoqueMinimo,EstoqueAtual,Descricao,Fornecedor,Preco,ControleSerieOuLote',
+    'Parafuso M8x30,PARA-M8-30,un,external,100,250,Parafuso sextavado M8x30mm,Fornecedor ABC,0.45,',
+    'Chapa de Aco 3mm,CHP-ACO-3,kg,external,50,120,Chapa laminada a frio,Metalurgica XYZ,8.90,',
+    'Tampa Plastica A200,TAMP-A200,un,internal,20,5,Tampa para caixa serie A200,,0,serie',
+    'Resina Epoxi,RES-EXP-1L,l,external,10,25,Resina epóxi bicomponente,Quimica Beta,35.00,',
+    'Motor Servo 5kW,MOT-SRV-5K,un,external,5,12,Motor servo trifásico,Eletro Plus,1250.00,serie',
+    'Tinta Primer 18L,TINT-PRM-18,l,external,30,60,Tinta primer anticorrosiva,Tintas Sul,45.00,lote',
+  ].join('\r\n')
+
+  // BOM UTF-8 para Excel reconhecer acentos corretamente
+  const bom = '\uFEFF'
+  return new Response(bom + csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="modelo_produtos.csv"',
+      'Cache-Control': 'no-store',
+    }
+  })
+})
+
 // ── API: GET /produtos/api/list ──────────────────────────────────────────────
 app.get('/api/list', async (c) => {
   const tenant = getCtxTenant(c)
@@ -1089,7 +1120,8 @@ app.get('/api/list', async (c) => {
 })
 
 // ── API: POST /produtos/api/import ────────────────────────────────────────────
-// Recebe array de linhas parseadas do CSV e persiste em memória + D1
+// Recebe array de linhas parseadas do CSV, persiste em memória + D1
+// Produtos com controlType='serie'|'lote' geram serialPendingItems no tenant
 app.post('/api/import', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
@@ -1103,6 +1135,8 @@ app.post('/api/import', async (c) => {
 
   let created = 0
   let updated = 0
+  let pendingSerial = 0
+  const importedAt = new Date().toISOString()
 
   function calcStockStatus(current: number, min: number): string {
     if (min <= 0) return 'normal'
@@ -1113,33 +1147,42 @@ app.post('/api/import', async (c) => {
     return 'normal'
   }
 
+  // Garantir arrays existem no tenant
+  if (!Array.isArray((tenant as any).serialPendingItems)) (tenant as any).serialPendingItems = []
+  if (!Array.isArray((tenant as any).serialNumbers))     (tenant as any).serialNumbers = []
+
   for (const row of rows) {
     const nome = (row.nome || '').trim()
     const codigo = (row.codigo || '').trim()
     if (!nome || !codigo) continue
 
-    const stockMin     = parseInt(row.stockMin)     || 0
-    const stockCurrent = parseInt(row.stockCurrent) || 0
-    const stockStatus  = calcStockStatus(stockCurrent, stockMin)
-    const unit         = (row.unidade || 'un').trim()
-    const type         = (row.tipo === 'internal' ? 'internal' : 'external')
-    const price        = parseFloat(row.preco) || 0
-    const notes        = (row.descricao || '').trim()
+    const stockMin      = parseInt(row.stockMin)     || 0
+    const stockCurrent  = parseInt(row.stockCurrent) || 0
+    const stockStatus   = calcStockStatus(stockCurrent, stockMin)
+    const unit          = (row.unidade || 'un').trim()
+    const type          = (row.tipo === 'internal' ? 'internal' : 'external')
+    const price         = parseFloat(row.preco) || 0
+    const notes         = (row.descricao || '').trim()
+    const controlType   = (row.controlType === 'serie' || row.controlType === 'lote') ? row.controlType : ''
+    const serialControlled = !!controlType
 
     // Check if product with same code already exists
     const existingIdx = (tenant.products as any[]).findIndex((p: any) => p.code === codigo)
+    let productId: string
 
     if (existingIdx >= 0) {
       // Update existing
       const p = tenant.products[existingIdx] as any
-      p.name         = nome
-      p.unit         = unit
-      p.type         = type
-      p.stockMin     = stockMin
-      p.stockCurrent = stockCurrent
-      p.stockStatus  = stockStatus
-      p.price        = price
-      p.notes        = notes
+      p.name            = nome
+      p.unit            = unit
+      p.type            = type
+      p.stockMin        = stockMin
+      p.stockCurrent    = stockCurrent
+      p.stockStatus     = stockStatus
+      p.price           = price
+      p.notes           = notes
+      if (serialControlled) { p.serialControlled = true; p.controlType = controlType }
+      productId = p.id
 
       if (db && userId !== 'demo-tenant') {
         await dbUpdate(db, 'products', p.id, userId, {
@@ -1150,27 +1193,54 @@ app.post('/api/import', async (c) => {
       updated++
     } else {
       // Create new
-      const id = genId('prod')
+      productId = genId('prod')
       const product: any = {
-        id, name: nome, code: codigo, unit, type,
+        id: productId, name: nome, code: codigo, unit, type,
         stockMin, stockMax: 0, stockCurrent, stockStatus,
+        serialControlled, controlType,
         criticalPercentage: 50, supplierId: '', supplierName: '',
-        price, notes, createdAt: new Date().toISOString(),
+        price, notes, createdAt: importedAt,
       }
       ;(tenant.products as any[]).push(product)
 
       if (db && userId !== 'demo-tenant') {
         await dbInsert(db, 'products', {
-          id, user_id: userId, name: nome, code: codigo, unit, type,
+          id: productId, user_id: userId, name: nome, code: codigo, unit, type,
           stock_min: stockMin, stock_max: 0, stock_current: stockCurrent,
           price, notes,
         }).catch(() => {})
       }
       created++
     }
+
+    // ── Gerar item de liberação de série/lote se necessário ──────────────────
+    if (serialControlled && stockCurrent > 0) {
+      // Checar se já existe pending para este produto nesta importação
+      const alreadyPending = (tenant as any).serialPendingItems.find(
+        (pi: any) => pi.productCode === codigo && pi.status === 'pending'
+      )
+      if (!alreadyPending) {
+        const pendingId = genId('spi')
+        const pendingItem = {
+          id: pendingId,
+          productId,
+          productCode: codigo,
+          productName: nome,
+          controlType,          // 'serie' | 'lote'
+          unit,
+          totalQty: stockCurrent,   // quantidade total importada
+          identifiedQty: 0,         // já identificados
+          status: 'pending',         // pending | partial | complete
+          importedAt,
+          entries: [] as any[],      // [{ number, qty, obs }]
+        }
+        ;(tenant as any).serialPendingItems.push(pendingItem)
+        pendingSerial++
+      }
+    }
   }
 
-  return ok(c, { created, updated, total: created + updated })
+  return ok(c, { created, updated, total: created + updated, pendingSerial })
 })
 
 export default app

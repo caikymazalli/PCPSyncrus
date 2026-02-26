@@ -16,6 +16,10 @@ app.get('/', (c) => {
   const serialNumbers    = (mockData as any).serialNumbers     || []
   const kardexMovements  = (mockData as any).kardexMovements   || []
   const transferencias   = (mockData as any).transferencias    || []
+  const serialPendingItems = (mockData as any).serialPendingItems || []
+
+  // Badge de liberação pendente
+  const pendingSerialCount = serialPendingItems.filter((p: any) => p.status === 'pending' || p.status === 'partial').length
 
   // Contadores de transferências (baseados em dados reais)
   const transfPendentes   = transferencias.filter((t: any) => t.status === 'pendente').length
@@ -114,8 +118,8 @@ app.get('/', (c) => {
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-secondary" onclick="openModal('uploadPlanilhaModal')" title="Importar estoque via planilha Excel/CSV">
-        <i class="fas fa-file-upload"></i> Import. Planilha
+      <button class="btn btn-secondary" onclick="window.location.href='/produtos'" title="Cadastrar e importar produtos via planilha">
+        <i class="fas fa-file-upload"></i> Import. Produtos
       </button>
       <button class="btn btn-secondary" onclick="alert('Exportando relatório de estoque...')" title="Exportar relatório">
         <i class="fas fa-download"></i> Exportar
@@ -140,6 +144,10 @@ app.get('/', (c) => {
       </button>
       <button class="tab-btn" onclick="switchTab('tabAlmoxarifados','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Almoxarifados</button>
       <button class="tab-btn" onclick="switchTab('tabTransferencias','estoque')"><i class="fas fa-exchange-alt" style="margin-right:6px;"></i>Transferências
+      </button>
+      <button class="tab-btn" onclick="switchTab('tabLiberacaoSerial','estoque')" id="tabLiberacaoSerialBtn">
+        <i class="fas fa-barcode" style="margin-right:6px;"></i>Liberação S/N
+        ${pendingSerialCount > 0 ? `<span style="background:#7c3aed;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${pendingSerialCount}</span>` : ''}
       </button>
     </div>
 
@@ -645,9 +653,145 @@ app.get('/', (c) => {
       </div>
     </div>
 
+    <!-- LIBERAÇÃO DE SÉRIE/LOTE TAB -->
+    <div class="tab-content" id="tabLiberacaoSerial">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1B4F72;">
+            <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Fila de Liberação — Série e Lote
+          </div>
+          <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+            Produtos importados com controle por Série ou Lote aguardando identificação individual dos itens.
+            Um lote ou grupo só é considerado <strong>completo</strong> quando todos os itens estiverem classificados.
+          </div>
+        </div>
+        <a href="/produtos" class="btn btn-secondary btn-sm">
+          <i class="fas fa-file-upload"></i> Importar mais produtos
+        </a>
+      </div>
+
+      ${(serialPendingItems as any[]).length === 0 ? `
+      <!-- Estado vazio -->
+      <div class="card" style="padding:56px 20px;text-align:center;">
+        <div style="width:64px;height:64px;background:#f5f3ff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fas fa-barcode" style="font-size:28px;color:#7c3aed;opacity:0.5;"></i>
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#6c757d;margin-bottom:6px;">Nenhum item aguardando liberação</div>
+        <div style="font-size:13px;color:#9ca3af;max-width:380px;margin:0 auto 20px;">
+          Quando você importar produtos com a coluna <strong>ControleSerieOuLote</strong> preenchida, eles aparecerão aqui para identificação individual.
+        </div>
+        <a href="/produtos" class="btn btn-primary btn-sm">
+          <i class="fas fa-file-upload"></i> Importar Planilha de Produtos
+        </a>
+      </div>` : `
+      <!-- Lista de itens pendentes -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        ${(serialPendingItems as any[]).map((pi: any) => {
+          const pct = pi.totalQty > 0 ? Math.round((pi.identifiedQty / pi.totalQty) * 100) : 0
+          const statusColors: Record<string, { bg: string, color: string, label: string }> = {
+            pending:  { bg: '#fffbeb', color: '#d97706', label: 'Pendente' },
+            partial:  { bg: '#eff6ff', color: '#2563eb', label: 'Parcial'  },
+            complete: { bg: '#f0fdf4', color: '#16a34a', label: 'Completo' },
+          }
+          const st = statusColors[pi.status] || statusColors.pending
+          const ctColor = pi.controlType === 'serie' ? '#7c3aed' : '#d97706'
+          const ctBg    = pi.controlType === 'serie' ? '#ede9fe' : '#fef3c7'
+          const ctIcon  = pi.controlType === 'serie' ? 'fa-barcode' : 'fa-layer-group'
+          const ctLabel = pi.controlType === 'serie' ? 'Número de Série' : 'Número de Lote'
+          return `
+          <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${ctColor};">
+            <div style="padding:16px 20px;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <div style="flex:1;min-width:200px;">
+                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+                    <span style="font-size:15px;font-weight:700;color:#1B4F72;">${pi.productName}</span>
+                    <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${pi.productCode}</span>
+                    <span style="background:${ctBg};color:${ctColor};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">
+                      <i class="fas ${ctIcon}" style="font-size:9px;"></i> ${ctLabel}
+                    </span>
+                    <span style="background:${st.bg};color:${st.color};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">
+                      ${st.label}
+                    </span>
+                  </div>
+                  <div style="font-size:12px;color:#6c757d;">
+                    Importado em ${new Date(pi.importedAt).toLocaleDateString('pt-BR')} às ${new Date(pi.importedAt).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}
+                    &nbsp;·&nbsp; ${pi.identifiedQty} / ${pi.totalQty} ${pi.unit} identificado(s)
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                  ${pi.status !== 'complete' ? `
+                  <button class="btn btn-primary btn-sm" onclick="openSerialRelease('${pi.id}')">
+                    <i class="fas fa-plus-circle"></i> Identificar
+                  </button>` : `
+                  <span style="font-size:12px;color:#16a34a;font-weight:600;"><i class="fas fa-check-circle"></i> Concluído</span>`}
+                </div>
+              </div>
+
+              <!-- Barra de progresso -->
+              <div style="margin-top:12px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <span style="font-size:11px;color:#6c757d;">Progresso de identificação</span>
+                  <span style="font-size:11px;font-weight:700;color:${ctColor};">${pct}%</span>
+                </div>
+                <div style="background:#f1f5f9;border-radius:6px;height:8px;overflow:hidden;">
+                  <div style="width:${pct}%;background:${pct===100?'#16a34a':ctColor};height:100%;border-radius:6px;transition:width 0.3s;"></div>
+                </div>
+              </div>
+
+              <!-- Entradas já registradas -->
+              ${(pi.entries || []).length > 0 ? `
+              <div style="margin-top:12px;background:#f8f9fa;border-radius:8px;padding:10px 14px;">
+                <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
+                  <i class="fas fa-list-ul" style="margin-right:4px;color:${ctColor};"></i>Itens Identificados
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                  ${(pi.entries || []).map((e: any) => `
+                  <span style="background:${ctBg};color:${ctColor};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;font-family:monospace;">
+                    ${e.number}${e.qty > 1 ? ` <span style="font-weight:400;color:#9ca3af;">× ${e.qty}</span>` : ''}
+                  </span>`).join('')}
+                </div>
+              </div>` : ''}
+            </div>
+          </div>`
+        }).join('')}
+      </div>`}
+
+    </div>
+
   </div>
 
-  <!-- Modal: Novo Almoxarifado -->
+  <!-- Modal: Liberação de Série/Lote -->
+  <div class="modal-overlay" id="serialReleaseModal">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="srModalTitle">
+          <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Identificar Números de Série/Lote
+        </h3>
+        <button onclick="closeModal('serialReleaseModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;" id="srModalBody">
+        <!-- Preenchido por JS -->
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;">
+        <!-- Progresso -->
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:12px;color:#6c757d;" id="srProgressLabel">0 / 0 identificados</span>
+            <span style="font-size:12px;font-weight:700;color:#7c3aed;" id="srProgressPct">0%</span>
+          </div>
+          <div style="background:#f1f5f9;border-radius:6px;height:8px;overflow:hidden;">
+            <div id="srProgressBar" style="width:0%;background:#7c3aed;height:100%;border-radius:6px;transition:width 0.3s;"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button onclick="closeModal('serialReleaseModal')" class="btn btn-secondary">Fechar</button>
+          <button id="srSaveBtn" onclick="salvarLiberacao()" class="btn btn-primary" disabled>
+            <i class="fas fa-save"></i> Salvar Identificações
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal-overlay" id="novoAlmoxarifadoModal">
     <div class="modal" style="max-width:560px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
@@ -783,68 +927,30 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <!-- Upload Planilha Modal -->
+  <!-- Upload Planilha Modal — redireciona para Cadastro de Produtos (fonte principal) -->
   <div class="modal-overlay" id="uploadPlanilhaModal">
-    <div class="modal" style="max-width:580px;">
+    <div class="modal" style="max-width:480px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-file-upload" style="margin-right:8px;"></i>Importar Planilha de Estoque</h3>
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>Importação de Estoque via Planilha
+        </h3>
         <button onclick="closeModal('uploadPlanilhaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
-      <div style="padding:24px;">
-        <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:20px;">
-          <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;"><i class="fas fa-info-circle" style="margin-right:6px;"></i>Formato da Planilha Padrão</div>
-          <div style="font-size:12px;color:#374151;line-height:1.6;">A planilha deve ter as colunas na seguinte ordem:<br>
-            <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">Código | Nome | Categoria | Unidade | Qtd Atual | Qtd Mínima | Localização | Nº Série/Lote (opcional)</code>
-          </div>
-          <div style="font-size:11px;color:#374151;margin-top:8px;background:#fff;border-radius:6px;padding:8px;border-left:3px solid #7c3aed;">
-            <i class="fas fa-barcode" style="color:#7c3aed;margin-right:4px;"></i>
-            <strong>Itens com controle de série/lote:</strong> Inclua uma linha por série ou uma linha por lote com a respectiva quantidade. As quantidades do mesmo código serão somadas automaticamente.
-          </div>
-          <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="alert('Download do modelo...')">
-            <i class="fas fa-download"></i> Baixar Planilha Modelo (.xlsx)
-          </button>
+      <div style="padding:28px 24px;text-align:center;">
+        <div style="width:64px;height:64px;background:#e8f4fd;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fas fa-boxes" style="font-size:26px;color:#2980B9;"></i>
         </div>
-
-        <div class="form-group">
-          <label class="form-label">Tipo de Importação</label>
-          <select class="form-control" id="importType">
-            <option value="update">Atualizar existentes + Incluir novos</option>
-            <option value="replace">Substituir estoque completamente</option>
-            <option value="new_only">Apenas incluir novos itens</option>
-          </select>
+        <div style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Importação centralizada em Produtos</div>
+        <div style="font-size:13px;color:#6c757d;margin-bottom:20px;line-height:1.6;">
+          A importação de planilha é realizada na área de <strong>Cadastro de Produtos</strong>.<br>
+          Ao importar, os produtos são criados ou atualizados e, para itens com controle de <strong>Série ou Lote</strong>, a fila de liberação é gerada automaticamente aqui no Estoque.
         </div>
-
-        <div id="uploadArea" style="border:2px dashed #d1d5db;border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;"
-             onclick="document.getElementById('planilhaFile').click()"
-             ondragover="event.preventDefault();this.style.borderColor='#2980B9';this.style.background='#f0f7ff';"
-             ondragleave="this.style.borderColor='#d1d5db';this.style.background='white';"
-             ondrop="handlePlanilhaDrop(event)">
-          <i class="fas fa-cloud-upload-alt" style="font-size:40px;color:#9ca3af;margin-bottom:10px;"></i>
-          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Clique ou arraste sua planilha aqui</div>
-          <div style="font-size:12px;color:#9ca3af;">Suporta .xlsx, .xls e .csv • Máx. 10MB</div>
-          <input type="file" id="planilhaFile" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handlePlanilhaSelect(event)">
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button onclick="closeModal('uploadPlanilhaModal')" class="btn btn-secondary">Fechar</button>
+          <a href="/produtos" class="btn btn-primary">
+            <i class="fas fa-file-upload"></i> Ir para Cadastro de Produtos
+          </a>
         </div>
-
-        <div id="fileSelectedInfo" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:16px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <i class="fas fa-file-excel" style="color:#16a34a;font-size:20px;"></i>
-            <div>
-              <div id="fileName" style="font-size:13px;font-weight:700;color:#374151;"></div>
-              <div style="font-size:11px;color:#6c757d;">Pronto para importação</div>
-            </div>
-          </div>
-        </div>
-
-        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;">
-          <div style="font-size:12px;color:#92400e;"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
-          <strong>Atenção:</strong> Após a importação, o estoque será atualizado automaticamente no MRP. Para itens controlados por série/lote, cada linha da planilha gerará um registro no Kardex.</div>
-        </div>
-      </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeModal('uploadPlanilhaModal')" class="btn btn-secondary">Cancelar</button>
-        <button id="importBtn" onclick="importarPlanilha()" class="btn btn-primary" disabled style="opacity:0.5;">
-          <i class="fas fa-upload"></i> Importar
-        </button>
       </div>
     </div>
   </div>
@@ -1061,29 +1167,207 @@ app.get('/', (c) => {
 
   function handlePlanilhaDrop(event) {
     event.preventDefault();
-    document.getElementById('uploadArea').style.borderColor = '#d1d5db';
-    document.getElementById('uploadArea').style.background = 'white';
-    const file = event.dataTransfer.files[0];
-    if (file) showFileSelected(file);
+    // Redireciona para Produtos (importação centralizada)
+    window.location.href = '/produtos';
   }
 
   function handlePlanilhaSelect(event) {
-    const file = event.target.files[0];
-    if (file) showFileSelected(file);
+    window.location.href = '/produtos';
   }
 
   function showFileSelected(file) {
-    document.getElementById('fileName').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
-    document.getElementById('fileSelectedInfo').style.display = 'block';
-    document.getElementById('uploadArea').style.borderColor = '#16a34a';
-    document.getElementById('importBtn').disabled = false;
-    document.getElementById('importBtn').style.opacity = '1';
+    // Legado - não utilizado
   }
 
   function importarPlanilha() {
-    alert('✅ Planilha importada com sucesso!\\n\\n7 itens atualizados\\n2 itens novos adicionados\\n3 números de série/lote registrados no Kardex\\n\\nO MRP será recalculado automaticamente.');
     closeModal('uploadPlanilhaModal');
+    window.location.href = '/produtos';
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // LIBERAÇÃO DE SÉRIE / LOTE
+  // ══════════════════════════════════════════════════════════════════════
+  const _serialPendingData = ${JSON.stringify(serialPendingItems)};
+  let _srCurrentId = null;
+  let _srEntries = [];
+
+  function openSerialRelease(pendingId) {
+    const item = _serialPendingData.find(p => p.id === pendingId);
+    if (!item) return;
+    _srCurrentId = pendingId;
+    _srEntries = JSON.parse(JSON.stringify(item.entries || []));
+
+    const ctColor = item.controlType === 'serie' ? '#7c3aed' : '#d97706';
+    const ctIcon  = item.controlType === 'serie' ? 'fa-barcode' : 'fa-layer-group';
+    const ctLabel = item.controlType === 'serie' ? 'Número de Série' : 'Número de Lote';
+
+    document.getElementById('srModalTitle').innerHTML =
+      '<i class="fas ' + ctIcon + '" style="margin-right:8px;color:' + ctColor + ';"></i>Identificar ' + ctLabel;
+
+    const body = document.getElementById('srModalBody');
+    body.innerHTML = \`
+      <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <div style="font-size:13px;font-weight:700;color:#1B4F72;">\${item.productName}</div>
+          <div style="font-size:11px;color:#9ca3af;font-family:monospace;">\${item.productCode} · \${item.unit}</div>
+        </div>
+        <div style="text-align:center;padding:10px 16px;background:white;border-radius:8px;border:1px solid #e5e7eb;">
+          <div style="font-size:20px;font-weight:800;color:\${ctColor};">\${item.totalQty}</div>
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;">Total a identificar</div>
+        </div>
+      </div>
+
+      <!-- Formulário de nova entrada -->
+      <div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid #ddd6fe;">
+        <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">
+          <i class="fas fa-plus-circle" style="margin-right:4px;"></i> Adicionar identificação
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:end;">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">\${ctLabel} *</label>
+            <input class="form-control" id="srNumberInput" type="text"
+              placeholder="\${item.controlType === 'serie' ? 'Ex: SN-2024-0001' : 'Ex: LOTE-2024-A01'}"
+              style="font-family:monospace;font-size:13px;"
+              onkeydown="if(event.key==='Enter') addSerialEntry()">
+          </div>
+          \${item.controlType === 'lote' ? \`
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Quantidade *</label>
+            <input class="form-control" id="srQtyInput" type="number" value="1" min="1" style="width:80px;text-align:center;font-weight:700;">
+          </div>\` : '<input type="hidden" id="srQtyInput" value="1">'}
+          <button class="btn btn-primary" onclick="addSerialEntry()" style="white-space:nowrap;">
+            <i class="fas fa-plus"></i> Adicionar
+          </button>
+        </div>
+        <div id="srInputError" style="display:none;font-size:11px;color:#dc2626;margin-top:6px;"></div>
+      </div>
+
+      <!-- Lista de entradas -->
+      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
+        <i class="fas fa-list-ul" style="margin-right:4px;color:\${ctColor};"></i>Itens identificados
+      </div>
+      <div id="srEntriesList" style="min-height:60px;max-height:200px;overflow-y:auto;"></div>
+    \`;
+
+    renderSrEntries(item);
+    updateSrProgress(item);
+    openModal('serialReleaseModal');
+  }
+
+  function addSerialEntry() {
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    if (!item) return;
+    const numInput = document.getElementById('srNumberInput');
+    const qtyInput = document.getElementById('srQtyInput');
+    const errEl = document.getElementById('srInputError');
+    const number = numInput.value.trim();
+    const qty = parseInt(qtyInput.value) || 1;
+
+    errEl.style.display = 'none';
+    if (!number) { errEl.textContent = 'Informe o número!'; errEl.style.display = ''; return; }
+    if (qty < 1)  { errEl.textContent = 'Quantidade deve ser ≥ 1.'; errEl.style.display = ''; return; }
+
+    // Checar duplicados
+    if (_srEntries.find(e => e.number === number)) {
+      errEl.textContent = 'Este número já foi adicionado.'; errEl.style.display = ''; return;
+    }
+
+    // Checar se excede totalQty
+    const identifiedSoFar = _srEntries.reduce((s, e) => s + (e.qty || 1), 0);
+    const remaining = item.totalQty - identifiedSoFar;
+    if (qty > remaining) {
+      errEl.textContent = 'Quantidade excede o restante (' + remaining + ' ' + item.unit + ').';
+      errEl.style.display = ''; return;
+    }
+
+    _srEntries.push({ number, qty, addedAt: new Date().toISOString() });
+    numInput.value = '';
+    if (item.controlType === 'lote') qtyInput.value = '1';
+    numInput.focus();
+    renderSrEntries(item);
+    updateSrProgress(item);
+  }
+
+  function removeSrEntry(number) {
+    _srEntries = _srEntries.filter(e => e.number !== number);
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    renderSrEntries(item);
+    updateSrProgress(item);
+  }
+
+  function renderSrEntries(item) {
+    const list = document.getElementById('srEntriesList');
+    if (!list) return;
+    const ctColor = item.controlType === 'serie' ? '#7c3aed' : '#d97706';
+    const ctBg    = item.controlType === 'serie' ? '#ede9fe' : '#fef3c7';
+    if (_srEntries.length === 0) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px;border:1px dashed #e5e7eb;border-radius:8px;">Nenhum item identificado ainda.</div>';
+      return;
+    }
+    list.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;">' +
+      _srEntries.map(e => \`
+      <div style="display:flex;align-items:center;justify-content:space-between;background:\${ctBg};border-radius:8px;padding:8px 12px;">
+        <span style="font-family:monospace;font-size:13px;font-weight:700;color:\${ctColor};">\${e.number}</span>
+        \${item.controlType === 'lote' ? \`<span style="font-size:11px;color:#6c757d;margin-left:8px;">\${e.qty} \${item.unit}</span>\` : ''}
+        <button onclick="removeSrEntry('\${e.number.replace(/'/g,\"\\\\'\")}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:15px;line-height:1;padding:0 4px;">×</button>
+      </div>\`).join('') + '</div>';
+  }
+
+  function updateSrProgress(item) {
+    const identifiedQty = _srEntries.reduce((s, e) => s + (e.qty || 1), 0);
+    const total = item.totalQty;
+    const pct = total > 0 ? Math.round((identifiedQty / total) * 100) : 0;
+    const bar = document.getElementById('srProgressBar');
+    const label = document.getElementById('srProgressLabel');
+    const pctEl = document.getElementById('srProgressPct');
+    if (bar) { bar.style.width = pct + '%'; bar.style.background = pct >= 100 ? '#16a34a' : '#7c3aed'; }
+    if (label) label.textContent = identifiedQty + ' / ' + total + ' ' + item.unit + ' identificado(s)';
+    if (pctEl) pctEl.textContent = pct + '%';
+    const saveBtn = document.getElementById('srSaveBtn');
+    if (saveBtn) saveBtn.disabled = _srEntries.length === 0;
+  }
+
+  async function salvarLiberacao() {
+    if (!_srCurrentId || _srEntries.length === 0) return;
+    const btn = document.getElementById('srSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+    try {
+      const res = await fetch('/estoque/api/serial-release', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingId: _srCurrentId, entries: _srEntries })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        closeModal('serialReleaseModal');
+        const status = data.status;
+        const msg = status === 'complete'
+          ? '✅ Todos os itens identificados! Liberação concluída.'
+          : '📋 Identificações salvas (' + data.identifiedQty + '/' + data.totalQty + '). Liberação parcial.';
+        showEstoqueToast(msg, status === 'complete' ? 'success' : 'info');
+        setTimeout(() => location.reload(), 1400);
+      } else {
+        showEstoqueToast(data.error || 'Erro ao salvar', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Salvar Identificações';
+      }
+    } catch(e) {
+      showEstoqueToast('Erro de conexão', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save"></i> Salvar Identificações';
+    }
+  }
+
+  function showEstoqueToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);display:flex;align-items:center;gap:8px;max-width:380px;transition:opacity 0.3s;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class="fas fa-check-circle"></i>' : type === 'error' ? '<i class="fas fa-exclamation-circle"></i>' : '<i class="fas fa-info-circle"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4000);
+  }
+  // ══════════════════════════════════════════════════════════════════════
 
   // ---- SERIAL LIST ----
   function openSerialList(itemCode, itemName, controlType) {
@@ -1330,6 +1614,70 @@ app.post('/api/movement', async (c) => {
   if (!tenant.stockMovements) (tenant as any).stockMovements = []
   ;(tenant as any).stockMovements.push(movement)
   return ok(c, { movement, newQty: item.currentQty })
+})
+
+// ── API: POST /estoque/api/serial-release ────────────────────────────────────
+// Recebe entries (número + qty) para um serialPendingItem e atualiza seu status
+app.post('/api/serial-release', async (c) => {
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.pendingId || !Array.isArray(body.entries)) return err(c, 'Dados inválidos')
+
+  // Garantir arrays existem
+  if (!Array.isArray((tenant as any).serialPendingItems)) (tenant as any).serialPendingItems = []
+  if (!Array.isArray((tenant as any).serialNumbers))     (tenant as any).serialNumbers = []
+
+  const idx = (tenant as any).serialPendingItems.findIndex((p: any) => p.id === body.pendingId)
+  if (idx === -1) return err(c, 'Item de liberação não encontrado', 404)
+
+  const pi = (tenant as any).serialPendingItems[idx]
+
+  // Merge entries — não duplicar numbers
+  const existingNumbers = new Set((pi.entries || []).map((e: any) => e.number))
+  const newEntries: any[] = []
+  for (const entry of body.entries) {
+    if (!entry.number || existingNumbers.has(entry.number)) continue
+    newEntries.push({ number: entry.number, qty: parseInt(entry.qty) || 1, addedAt: new Date().toISOString() })
+    existingNumbers.add(entry.number)
+
+    // Registrar no serialNumbers do tenant para aparecer na aba Série/Lote do estoque geral
+    ;(tenant as any).serialNumbers.push({
+      id: genId('sn'),
+      itemCode: pi.productCode,
+      number: entry.number,
+      qty: parseInt(entry.qty) || 1,
+      controlType: pi.controlType,
+      status: 'em_estoque',
+      origin: 'planilha',
+      createdAt: new Date().toISOString(),
+    })
+  }
+
+  pi.entries = [...(pi.entries || []), ...newEntries]
+  pi.identifiedQty = pi.entries.reduce((s: number, e: any) => s + (parseInt(e.qty) || 1), 0)
+
+  // Atualizar status
+  if (pi.identifiedQty >= pi.totalQty) {
+    pi.status = 'complete'
+  } else if (pi.identifiedQty > 0) {
+    pi.status = 'partial'
+  } else {
+    pi.status = 'pending'
+  }
+
+  return ok(c, {
+    status: pi.status,
+    identifiedQty: pi.identifiedQty,
+    totalQty: pi.totalQty,
+    newAdded: newEntries.length,
+  })
+})
+
+// ── API: GET /estoque/api/pending-serial ─────────────────────────────────────
+// Lista itens aguardando liberação de série/lote
+app.get('/api/pending-serial', (c) => {
+  const tenant = getCtxTenant(c)
+  return ok(c, { items: (tenant as any).serialPendingItems || [] })
 })
 
 export default app

@@ -51,6 +51,8 @@ export interface TenantData {
   productSuppliers: any[]
   workOrders: any[]
   routes: any[]
+  serialNumbers: any[]       // Números de série/lote já registrados
+  serialPendingItems: any[]  // Fila de liberação: importados aguardando identificação
 }
 
 export interface RegisteredUser {
@@ -115,6 +117,8 @@ tenants[demoUserId] = {
   productSuppliers:  JSON.parse(JSON.stringify(_md.productSuppliers  || [])),
   workOrders:        JSON.parse(JSON.stringify(_md.workOrders        || [])),
   routes:            JSON.parse(JSON.stringify(_md.routes            || [])),
+  serialNumbers:     JSON.parse(JSON.stringify(_md.serialNumbers     || [])),
+  serialPendingItems: JSON.parse(JSON.stringify(_md.serialPendingItems || [])),
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -214,7 +218,8 @@ export function getTenantData(userId: string): TenantData {
                cancelledOrders:0, totalProduced:0, totalRejected:0, totalProducts:0,
                totalMachines:0, totalPlants:0, completionRate:0, qualityRate:100 },
       chartData: { labels:[], planned:[], produced:[], rejected:[], stockStatus: { critical:0, normal:0, purchase_needed:0, manufacture_needed:0 } },
-      bomItems: [], productSuppliers: [], workOrders: [],
+      bomItems: [], productSuppliers: [], workOrders: [], routes: [],
+      serialNumbers: [], serialPendingItems: [],
     }
   }
   return tenants[userId]
