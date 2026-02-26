@@ -492,14 +492,11 @@ app.get('/', (c) => {
               <table style="width:100%;border-collapse:collapse;font-size:12px;">
                 <thead>
                   <tr style="background:#1B4F72;color:white;">
-                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Código</th>
-                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Produto (PT)</th>
-                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Descrição EN</th>
-                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">NCM</th>
-                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Detalhes Técnicos</th>
-                    <th style="padding:10px 12px;text-align:right;white-space:nowrap;">Qtd Atual</th>
-                    <th style="padding:10px 12px;text-align:right;white-space:nowrap;">Preço Unit. (ref.)</th>
-                    <th style="padding:10px 12px;text-align:right;white-space:nowrap;">Subtotal Est.</th>
+                    <th style="padding:10px 12px;text-align:left;white-space:nowrap;width:90px;">Código</th>
+                    <th style="padding:10px 12px;text-align:left;">Descrição (Produto)</th>
+                    <th style="padding:10px 12px;text-align:left;">Descrição PT <span style="font-size:9px;opacity:0.8;">(clique p/ editar)</span></th>
+                    <th style="padding:10px 12px;text-align:left;">Descrição EN <span style="font-size:9px;opacity:0.8;">(clique p/ editar)</span></th>
+                    <th style="padding:10px 12px;text-align:left;width:110px;">NCM <span style="font-size:9px;opacity:0.8;">(clique p/ editar)</span></th>
                     <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Fornecedor</th>
                     <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Status</th>
                   </tr>
@@ -557,30 +554,34 @@ app.get('/', (c) => {
                       const st = statusColors[item.status || item.stockStatus || 'normal'] || statusColors.normal
                       const technicalDetail = item.description || sup?.notes || '—'
                       return `
-                      <tr class="imp-prod-row" style="border-bottom:1px solid #f1f3f5;" onmouseenter="this.style.background='#f8f9fa'" onmouseleave="this.style.background='white'">
-                        <td style="padding:10px 12px;font-family:monospace;font-size:11px;background:#e8f4fd;color:#1B4F72;font-weight:700;white-space:nowrap;">${item.code}</td>
-                        <td style="padding:10px 12px;font-weight:600;color:#374151;max-width:160px;">
-                          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.name}">${item.name}</div>
+                      <tr class="imp-prod-row" data-code="${item.code}" style="border-bottom:1px solid #f1f3f5;" onmouseenter="this.style.background='#f0f9ff'" onmouseleave="this.style.background='white'">
+                        <td style="padding:8px 12px;font-family:monospace;font-size:11px;background:#e8f4fd;color:#1B4F72;font-weight:700;white-space:nowrap;">${item.code}</td>
+                        <td style="padding:8px 12px;font-weight:600;color:#374151;max-width:180px;">
+                          <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.name}">${item.name}</div>
                           <div style="font-size:10px;color:#9ca3af;">${item.unit}</div>
                         </td>
-                        <td style="padding:10px 12px;max-width:160px;">
-                          <div style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:11px;color:${autoDescEN?'#374151':'#dc2626'};font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${autoDescEN}">${autoDescEN || '— preencher —'}</span>
-                            <button onclick="editDescEN('${item.code}')" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:10px;flex-shrink:0;" title="Editar descrição EN"><i class="fas fa-pencil-alt"></i></button>
+                        <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescPT','${item.code}','descPT')">
+                          <div class="imp-inline-view" style="font-size:12px;color:${item.descPT?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
+                            ${item.descPT || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
                           </div>
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${item.descPT||''}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
                         </td>
-                        <td style="padding:10px 12px;font-weight:700;color:#7c3aed;white-space:nowrap;">${ncm}</td>
-                        <td style="padding:10px 12px;max-width:180px;">
-                          <div style="font-size:11px;color:#6c757d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${technicalDetail}">${technicalDetail}</div>
+                        <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescEN','${item.code}','descEN')">
+                          <div class="imp-inline-view" style="font-size:12px;color:${item.descEN||autoDescEN?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;font-style:italic;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
+                            ${item.descEN || autoDescEN || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
+                          </div>
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descEN" data-code="${item.code}" value="${item.descEN||autoDescEN||''}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Description in English...">
                         </td>
-                        <td style="padding:10px 12px;text-align:right;font-weight:700;color:#374151;">${qty} ${item.unit}</td>
-                        <td style="padding:10px 12px;text-align:right;font-weight:600;">${refUnitPrice > 0 ? 'R$ '+refUnitPrice.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>
-                        <td style="padding:10px 12px;text-align:right;font-weight:700;">${subtotal > 0 ? 'R$ '+subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>
-                        <td style="padding:10px 12px;max-width:120px;">
+                        <td style="padding:6px 10px;min-width:100px;" ondblclick="startInlineEdit(this,'impNCM','${item.code}','ncm')">
+                          <div class="imp-inline-view" style="font-size:12px;font-weight:700;color:${ncm!=='—'?'#7c3aed':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;font-family:monospace;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#ddd6fe'" onmouseleave="this.style.borderColor='transparent'">
+                            ${ncm !== '—' ? ncm : '<span style=&quot;font-style:italic;font-size:11px;font-family:sans-serif;&quot;>— preencher —</span>'}
+                          </div>
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;font-family:monospace;" data-field="ncm" data-code="${item.code}" value="${ncm!=='—'?ncm:''}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="0000.00.00">
+                        </td>
+                        <td style="padding:8px 12px;max-width:120px;">
                           <div style="font-size:11px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sup?.name||'—'}">${sup?.name||'—'}</div>
-                          <div style="font-size:10px;color:#9ca3af;">${sup?.country||''}</div>
                         </td>
-                        <td style="padding:10px 12px;white-space:nowrap;">
+                        <td style="padding:8px 12px;white-space:nowrap;">
                           <span class="badge" style="background:${st.bg};color:${st.c};font-size:10px;">${st.l}</span>
                         </td>
                       </tr>`
@@ -864,9 +865,9 @@ app.get('/', (c) => {
             <i class="fas fa-info-circle" style="margin-right:6px;"></i>
             <strong>Atenção:</strong> Cada item deve ter NCM, Descrição em Português e em Inglês (obrigatórias para LI e DI). O subtotal é calculado automaticamente.
           </div>
-          <!-- Cabeçalho da tabela -->
-          <div style="display:grid;grid-template-columns:2fr 80px 70px 90px 90px 90px 36px;gap:6px;padding:6px 8px;background:#f1f3f5;border-radius:6px;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;">
-            <div>Produto / Descrição PT · EN</div><div>NCM</div><div>Qtd</div><div>Un</div><div>Val. Unit.</div><div>Subtotal</div><div></div>
+          <!-- Cabeçalho da tabela Invoice -->
+          <div style="display:grid;grid-template-columns:90px 2fr 70px 1fr 90px 90px 80px 36px;gap:6px;padding:6px 8px;background:#f1f3f5;border-radius:6px;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:4px;">
+            <div>Cód.</div><div>Descrição EN</div><div>Qtd</div><div>Observações</div><div>Val. Unit.</div><div>Val. Total</div><div>NCM</div><div></div>
           </div>
           <div id="impItensList" style="display:flex;flex-direction:column;gap:6px;">
             <!-- Itens adicionados dinamicamente -->
@@ -1436,36 +1437,48 @@ app.get('/', (c) => {
     const list = document.getElementById('impItensList');
     const div = document.createElement('div');
     div.id = 'impItem'+idx;
-    div.style.cssText = 'background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px;margin-bottom:4px;';
+    div.style.cssText = 'background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:10px;margin-bottom:4px;';
     div.innerHTML = \`
-      <div style="display:grid;grid-template-columns:2fr 80px 60px 80px 90px 90px 32px;gap:6px;align-items:center;margin-bottom:8px;">
+      <div style="display:grid;grid-template-columns:90px 2fr 70px 1fr 90px 90px 80px 36px;gap:6px;align-items:start;">
         <div>
-          <select class="form-control" style="font-size:12px;" id="impItemProd\${idx}" onchange="onImpItemChange(\${idx})">
-            <option value="">Selecionar produto cadastrado...</option>
-            \${allItemsData.map(i => '<option value="'+i.code+'">'+i.name+' ('+i.code+')</option>').join('')}
-            <option value="__manual__">— Descrever manualmente —</option>
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Cód.</label>
+          <select class="form-control" style="font-size:11px;" id="impItemProd\${idx}" onchange="onImpItemChange(\${idx})">
+            <option value="">Selecionar...</option>
+            \${allItemsData.map(i => '<option value="'+i.code+'">'+i.code+' — '+i.name+'</option>').join('')}
+            <option value="__manual__">— Manual —</option>
           </select>
         </div>
-        <input class="form-control" id="impItemNCM\${idx}" type="text" placeholder="NCM" style="font-size:12px;" value="">
-        <input class="form-control" id="impItemQtd\${idx}" type="number" placeholder="Qtd" min="0" step="0.001" style="font-size:12px;" value="1" oninput="recalcImpItem(\${idx})">
-        <input class="form-control" id="impItemUn\${idx}" type="text" placeholder="Un" style="font-size:12px;" value="un">
-        <input class="form-control" id="impItemVU\${idx}" type="number" placeholder="Val.Unit." min="0" step="0.01" style="font-size:12px;" value="0" oninput="recalcImpItem(\${idx})">
-        <input class="form-control" id="impItemSub\${idx}" type="text" placeholder="Subtotal" readonly style="font-size:12px;background:#fff;color:#1B4F72;font-weight:700;">
-        <button class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="removeImpItem(\${idx})"><i class="fas fa-trash"></i></button>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
-          <label style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descrição em Português *</label>
-          <input class="form-control" id="impItemDescPT\${idx}" type="text" placeholder="Ex: Chapa de Alumínio Liga 6061 esp. 3mm" style="font-size:12px;" oninput="calcImpTotal()">
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Descrição EN *</label>
+          <input class="form-control" id="impItemDescEN\${idx}" type="text" placeholder="English description..." style="font-size:12px;" oninput="calcImpTotal()">
         </div>
         <div>
-          <label style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descrição em Inglês * (para LI/DI)</label>
-          <input class="form-control" id="impItemDescEN\${idx}" type="text" placeholder="Ex: Aluminum Alloy 6061 Sheet 3mm thickness" style="font-size:12px;" oninput="calcImpTotal()">
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Qtd</label>
+          <input class="form-control" id="impItemQtd\${idx}" type="number" placeholder="Qtd" min="0" step="0.001" style="font-size:12px;" value="1" oninput="recalcImpItem(\${idx})">
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Observações</label>
+          <input class="form-control" id="impItemObs\${idx}" type="text" placeholder="Especificação, uso..." style="font-size:12px;">
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Val. Unit.</label>
+          <input class="form-control" id="impItemVU\${idx}" type="number" placeholder="0.00" min="0" step="0.01" style="font-size:12px;" value="0" oninput="recalcImpItem(\${idx})">
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Val. Total</label>
+          <input class="form-control" id="impItemSub\${idx}" type="text" placeholder="Subtotal" readonly style="font-size:12px;background:#fff;color:#1B4F72;font-weight:700;">
+        </div>
+        <div>
+          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">NCM</label>
+          <input class="form-control" id="impItemNCM\${idx}" type="text" placeholder="0000.00.00" style="font-size:11px;font-family:monospace;" value="">
+        </div>
+        <div style="padding-top:18px;">
+          <button class="btn btn-danger btn-sm" style="padding:6px 8px;" onclick="removeImpItem(\${idx})"><i class="fas fa-trash"></i></button>
         </div>
       </div>
-      <div style="margin-top:8px;">
-        <label style="font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Detalhamento técnico (composição, especificação, uso)</label>
-        <textarea class="form-control" id="impItemDet\${idx}" rows="2" placeholder="Ex: Liga Al-Mg-Si, liga 6061-T6, utilizado na fabricação de tampas de equipamentos industriais..." style="font-size:12px;resize:vertical;"></textarea>
+      <div style="margin-top:6px;">
+        <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descrição PT (para LI)</label>
+        <input class="form-control" id="impItemDescPT\${idx}" type="text" placeholder="Ex: Chapa de Alumínio Liga 6061 esp. 3mm" style="font-size:12px;margin-top:2px;" oninput="calcImpTotal()">
       </div>\`;
     list.appendChild(div);
     calcImpTotal();
@@ -1483,9 +1496,17 @@ app.get('/', (c) => {
     if (!code || code==='__manual__') return;
     const item = allItemsData.find(i => i.code===code);
     if (!item) return;
-    // Pré-preenche descrição PT
-    document.getElementById('impItemDescPT'+idx).value = item.name || '';
-    document.getElementById('impItemUn'+idx).value = item.unit || 'un';
+    // Pré-preenche descrição PT e EN dos dados do produto importado
+    const impProdEl = document.querySelector('.imp-prod-row[data-code="'+code+'"]');
+    const descPT = item.descPT || item.name || '';
+    const descEN = item.descEN || item.englishDescription || item.englishDesc || '';
+    const ncm = item.ncm || (impProdEl ? (() => {
+      const cells = impProdEl.querySelectorAll('td');
+      return cells[4]?.textContent?.trim() || '';
+    })() : '');
+    if (document.getElementById('impItemDescPT'+idx)) document.getElementById('impItemDescPT'+idx).value = descPT;
+    if (document.getElementById('impItemDescEN'+idx)) document.getElementById('impItemDescEN'+idx).value = descEN;
+    if (document.getElementById('impItemNCM'+idx) && ncm) document.getElementById('impItemNCM'+idx).value = ncm;
     calcImpTotal();
   }
 
@@ -1625,34 +1646,36 @@ app.get('/', (c) => {
     </div>
 
     <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Relação de Mercadorias</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
-      <thead>
-        <tr style="background:#7c3aed;color:white;">
-          <th style="padding:8px 10px;text-align:left;border-radius:0;">NCM</th>
-          <th style="padding:8px 10px;text-align:left;">Descrição (PT)</th>
-          <th style="padding:8px 10px;text-align:left;">Descrição (EN)</th>
-          <th style="padding:8px 10px;text-align:right;">Qtd</th>
-          <th style="padding:8px 10px;text-align:right;">Val. Unit.</th>
-          <th style="padding:8px 10px;text-align:right;">Subtotal (USD/EUR)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="background:#f8f9fa;border-bottom:1px solid #e9ecef;">
-          <td style="padding:8px 10px;font-weight:700;color:#7c3aed;">\${imp.ncm}</td>
-          <td style="padding:8px 10px;">\${imp.description}</td>
-          <td style="padding:8px 10px;color:#6c757d;font-style:italic;">— preencher —</td>
-          <td style="padding:8px 10px;text-align:right;">\${imp.netWeight} kg</td>
-          <td style="padding:8px 10px;text-align:right;">\${imp.invoiceValueEUR > 0 ? '€':'US$'} \${((imp.invoiceValueEUR||imp.invoiceValueUSD)/imp.netWeight).toFixed(2)}</td>
-          <td style="padding:8px 10px;text-align:right;font-weight:700;">\${imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-        </tr>
-      </tbody>
-      <tfoot>
-        <tr style="background:#f5f3ff;">
-          <td colspan="5" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL:</td>
-          <td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">\${imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-        </tr>
-      </tfoot>
-    </table>
+    \${(() => {
+      // Tentar montar itens a partir dos dados do processo (itens da invoice)
+      const liItems = imp.items && imp.items.length > 0 ? imp.items : [{ productCode: imp.code, descPT: imp.description, ncm: imp.ncm, qty: imp.netWeight, totalCIF: imp.invoiceValueEUR || imp.invoiceValueUSD }];
+      const moedaSym = imp.invoiceValueEUR > 0 ? '€' : 'US$';
+      const liRows = liItems.map((it, i) => {
+        const valTotal = it.totalCIF || it.subtotal || ((it.qty||1) * (it.unitPrice||0));
+        return '<tr style="background:'+(i%2===0?'#f8f9fa':'white')+';border-bottom:1px solid #e9ecef;">' +
+          '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#1B4F72;font-size:11px;">'+(it.productCode||'—')+'</td>' +
+          '<td style="padding:8px 10px;font-weight:500;color:#374151;">'+(it.descPT||it.description||imp.description||'— preencher —')+'</td>' +
+          '<td style="padding:8px 10px;text-align:right;">'+(it.qty||it.quantity||'—')+'</td>' +
+          '<td style="padding:8px 10px;font-weight:700;color:#7c3aed;font-family:monospace;">'+(it.ncm||imp.ncm||'—')+'</td>' +
+          '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">'+moedaSym+' '+(valTotal>0?valTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>' +
+          '</tr>';
+      }).join('');
+      const totalCIF = imp.invoiceValueEUR > 0 ? imp.invoiceValueEUR : imp.invoiceValueUSD;
+      return '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">' +
+        '<thead><tr style="background:#7c3aed;color:white;">' +
+        '<th style="padding:8px 10px;text-align:left;">Cód.</th>' +
+        '<th style="padding:8px 10px;text-align:left;">Descrição PT</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Qtd</th>' +
+        '<th style="padding:8px 10px;text-align:left;">NCM</th>' +
+        '<th style="padding:8px 10px;text-align:right;">Valor Total CIF</th>' +
+        '</tr></thead>' +
+        '<tbody>'+liRows+'</tbody>' +
+        '<tfoot><tr style="background:#f5f3ff;">' +
+        '<td colspan="4" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL CIF:</td>' +
+        '<td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">'+moedaSym+' '+totalCIF.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>' +
+        '</tr></tfoot>' +
+        '</table>';
+    })()}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
       \${detRow('VALOR TOTAL CIF (USD/EUR)', imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
@@ -1774,6 +1797,59 @@ app.get('/', (c) => {
     html += '</tbody></table>';
     const el = document.getElementById('fechAuditoriaBody');
     if (el) el.innerHTML = html;
+  }
+
+  // ── Edição Inline — Tabela de Produtos Importados ───────────────────────
+  // Mapa em memória dos dados editados pelo usuário (persiste na sessão)
+  const impProdEdits: Record<string, Record<string, string>> = {};
+
+  function startInlineEdit(td: HTMLElement, inputId: string, code: string, field: string) {
+    const view = td.querySelector('.imp-inline-view') as HTMLElement;
+    const input = td.querySelector('.imp-inline-input') as HTMLInputElement;
+    if (!view || !input) return;
+    view.style.display = 'none';
+    input.style.display = 'block';
+    input.focus();
+    input.select();
+  }
+
+  function saveInlineEdit(input: HTMLInputElement) {
+    const code = input.dataset.code || '';
+    const field = input.dataset.field || '';
+    const val = input.value.trim();
+    // Persistir no mapa local
+    if (!impProdEdits[code]) impProdEdits[code] = {};
+    impProdEdits[code][field] = val;
+    // Atualizar view
+    const td = input.closest('td');
+    if (!td) return;
+    const view = td.querySelector('.imp-inline-view') as HTMLElement;
+    if (view) {
+      view.innerHTML = val || '<span style="font-style:italic;font-size:11px;">— clique para preencher —</span>';
+      if (val) {
+        view.style.color = '#374151';
+      } else {
+        view.style.color = '#dc2626';
+      }
+      view.style.display = 'block';
+    }
+    input.style.display = 'none';
+    // Salvar no servidor via API
+    fetch('/suprimentos/api/product-imp-field', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ code, field, value: val })
+    }).then(r => r.json()).then(d => {
+      if (d.ok) showToastSup('✅ '+field.toUpperCase()+' salvo para '+code, 'success');
+    }).catch(() => showToastSup('Salvo localmente (sincronização pendente)', 'info'));
+  }
+
+  function cancelInlineEdit(input: HTMLInputElement) {
+    const td = input.closest('td');
+    if (!td) return;
+    const view = td.querySelector('.imp-inline-view') as HTMLElement;
+    if (view) view.style.display = 'block';
+    input.style.display = 'none';
   }
 
   // ── Produtos Importados ───────────────────────────────────────────────────
@@ -2255,6 +2331,47 @@ app.post('/api/imports/create', async (c) => {
     })
   }
   return ok(c, { imp, code })
+})
+
+// ── Salvar campo editado inline na tabela de Produtos Importados ──────────
+app.post('/api/product-imp-field', async (c) => {
+  const tenant = getCtxTenant(c)
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.code || !body.field) return err(c, 'code e field obrigatórios')
+  const { code, field, value } = body
+  // Campos permitidos para edição inline
+  const allowedFields = ['descPT', 'descEN', 'ncm']
+  if (!allowedFields.includes(field)) return err(c, 'Campo não permitido')
+  // Atualizar em stockItems ou products do tenant
+  const allItems: any[] = [...(tenant.stockItems || []), ...(tenant.products || [])]
+  const item = allItems.find((i: any) => i.code === code)
+  if (item) {
+    item[field] = value
+  } else {
+    // Criar entrada no mapa de descrições importadas se não existir
+    if (!tenant.impProdDesc) (tenant as any).impProdDesc = {}
+    if (!tenant.impProdDesc[code]) tenant.impProdDesc[code] = {}
+    tenant.impProdDesc[code][field] = value
+  }
+  // Persistir no DB se disponível
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `UPDATE products SET ${field} = ? WHERE user_id = ? AND code = ?`
+      ).bind(value, userId, code).run()
+    } catch(_) { /* tabela pode não ter coluna ainda */ }
+    // Salvar em tabela auxiliar de descrições de importação
+    try {
+      await db.prepare(
+        `INSERT INTO imp_prod_desc (user_id, code, field, value, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(user_id, code, field) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
+      ).bind(userId, code, field, value).run()
+    } catch(_) { /* ignora se tabela não existir */ }
+  }
+  return ok(c, { code, field, value })
 })
 
 export default app

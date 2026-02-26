@@ -286,7 +286,7 @@ app.get('/', (c) => {
   <div class="modal-overlay" id="novoFornecedorModal">
     <div class="modal" style="max-width:680px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-truck" style="margin-right:8px;"></i>Cadastrar Fornecedor</h3>
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="fornModalTitle"><i class="fas fa-truck" style="margin-right:8px;"></i>Cadastrar Fornecedor</h3>
         <button onclick="closeModal('novoFornecedorModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:24px;">
@@ -304,6 +304,7 @@ app.get('/', (c) => {
               </label>
             </div>
           </div>
+          <input type="hidden" id="sup_id" value="">
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Razão Social *</label><input class="form-control" id="sup_nome" type="text" placeholder="Nome completo da empresa"></div>
           <div class="form-group"><label class="form-label">Nome Fantasia</label><input class="form-control" id="sup_fantasia" type="text" placeholder="Nome comercial"></div>
           <div class="form-group" id="fCnpjGroup"><label class="form-label">CNPJ *</label><input class="form-control" id="sup_cnpj" type="text" placeholder="00.000.000/0001-00"></div>
@@ -322,30 +323,7 @@ app.get('/', (c) => {
             <input class="form-control" id="sup_prazo" type="number" min="1" placeholder="Ex: 7">
           </div>
           <div class="form-group"><label class="form-label">Condições de Pagamento</label><input class="form-control" id="sup_pagamento" type="text" placeholder="Ex: 30/60/90 dias"></div>
-          <div id="fNcmGroup" style="display:none;" class="form-group" style="grid-column:span 2;">
-            <label class="form-label"><i class="fas fa-ship" style="margin-right:4px;color:#2980B9;"></i>NCM Principal (importação)</label>
-            <input class="form-control" type="text" placeholder="Ex: 7318.15.00">
-          </div>
-          <!-- Campos de descrição PT/EN para importados -->
-          <div id="fDescImpGroup" style="display:none;grid-column:span 2;">
-            <div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:4px;">
-              <div style="font-size:12px;font-weight:700;color:#2980B9;margin-bottom:10px;"><i class="fas fa-language" style="margin-right:6px;"></i>Descrições para LI / DI (obrigatórias para fornecedores importados)</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div class="form-group" style="margin:0;">
-                  <label class="form-label">Descrição em Português *</label>
-                  <input class="form-control" id="fDescPT" type="text" placeholder="Ex: Parafuso sextavado aço carbono M8x25">
-                </div>
-                <div class="form-group" style="margin:0;">
-                  <label class="form-label">Descrição em Inglês * (para LI/DI)</label>
-                  <input class="form-control" id="fDescEN" type="text" placeholder="Ex: Hexagon head bolt carbon steel M8x25">
-                </div>
-                <div class="form-group" style="margin:0;grid-column:span 2;">
-                  <label class="form-label">Detalhamento técnico (composição, aplicação, norma)</label>
-                  <textarea class="form-control" id="fDescTech" rows="2" placeholder="Ex: Aço carbono grau 8.8, rosca métrica M8, comprimento 25mm, DIN 931, galvanizado, utilizado em fixação de equipamentos industriais..."></textarea>
-                </div>
-              </div>
-            </div>
-          </div>
+          <div id="fNcmGroup" style="display:none;" class="form-group"><label class="form-label"><i class="fas fa-info-circle" style="margin-right:4px;color:#2980B9;"></i>Nota: NCM e Descrições PT/EN são cadastrados por produto em <a href="/suprimentos" style="color:#2980B9;font-weight:700;">Suprimentos → Importação</a></label></div>
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" id="sup_obs" rows="2" placeholder="Informações adicionais, certificações, condições especiais..."></textarea></div>
         </div>
       </div>
@@ -522,8 +500,28 @@ app.get('/', (c) => {
   function openEditSupplier(id) {
     const s = suppliersData.find(x => x.id === id);
     if (!s) return;
-    // Preencher campos do modal de edição (se existir) ou abrir detalhes
-    openSupplierDetail(id);
+    // Preencher todos os campos do modal com os dados do fornecedor
+    document.getElementById('sup_id').value = s.id || '';
+    document.getElementById('sup_nome').value = s.name || '';
+    document.getElementById('sup_fantasia').value = s.fantasia || s.tradeName || '';
+    document.getElementById('sup_cnpj').value = s.cnpj || '';
+    document.getElementById('sup_email').value = s.email || '';
+    document.getElementById('sup_tel').value = s.phone || s.tel || '';
+    document.getElementById('sup_contato').value = s.contact || '';
+    document.getElementById('sup_cidade').value = s.city || '';
+    document.getElementById('sup_estado').value = s.state || '';
+    document.getElementById('sup_categoria').value = s.category || 'materia_prima';
+    document.getElementById('sup_pagamento').value = s.paymentTerms || '';
+    document.getElementById('sup_prazo').value = s.deliveryLeadDays || '';
+    document.getElementById('sup_obs').value = s.notes || s.obs || '';
+    // Tipo nacional/importado
+    const tipo = s.type || (s.country && s.country !== 'Brasil' ? 'importado' : 'nacional');
+    const radios = document.querySelectorAll('input[name="fType"]');
+    radios.forEach(r => { r.checked = (r.value === tipo); });
+    toggleFornType(tipo);
+    // Atualizar título do modal para indicar edição
+    document.getElementById('fornModalTitle').innerHTML = '<i class="fas fa-edit" style="margin-right:8px;"></i>Editar Fornecedor: ' + (s.name || '');
+    openModal('novoFornecedorModal');
   }
 
   async function salvarVinculacao() {
@@ -560,6 +558,7 @@ app.get('/', (c) => {
   
 
   async function salvarFornecedor() {
+    const editId = document.getElementById('sup_id')?.value || '';
     const name = document.getElementById('sup_nome')?.value || '';
     const cnpj = document.getElementById('sup_cnpj')?.value || '';
     const email = document.getElementById('sup_email')?.value || '';
@@ -571,22 +570,36 @@ app.get('/', (c) => {
     const paymentTerms = document.getElementById('sup_pagamento')?.value || '';
     const deliveryLeadDays = document.getElementById('sup_prazo')?.value || 0;
     const notes = document.getElementById('sup_obs')?.value || '';
+    const type = document.querySelector('input[name="fType"]:checked')?.value || 'nacional';
     
     if (!name) { showToast('Informe o nome!', 'error'); return; }
     
+    const payload = { name, cnpj, email, phone, contact, city, state, category, paymentTerms, deliveryLeadDays, notes, type };
+    
     try {
-      const res = await fetch('/cadastros/api/supplier/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, cnpj, email, phone, contact, city, state, category, paymentTerms, deliveryLeadDays, notes })
-      });
+      let res;
+      if (editId) {
+        res = await fetch('/cadastros/api/supplier/' + editId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch('/cadastros/api/supplier/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
       const data = await res.json();
       if (data.ok) {
-        showToast('✅ Fornecedor cadastrado!');
+        showToast(editId ? '✅ Fornecedor atualizado!' : '✅ Fornecedor cadastrado!');
+        document.getElementById('sup_id').value = '';
+        document.getElementById('fornModalTitle').innerHTML = '<i class="fas fa-truck" style="margin-right:8px;"></i>Cadastrar Fornecedor';
         closeModal('novoFornecedorModal');
         setTimeout(() => location.reload(), 800);
       } else {
-        showToast(data.error || 'Erro ao cadastrar', 'error');
+        showToast(data.error || 'Erro ao salvar', 'error');
       }
     } catch(e) { showToast('Erro de conexão', 'error'); }
   }
