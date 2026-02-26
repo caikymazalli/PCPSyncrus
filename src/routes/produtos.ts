@@ -433,19 +433,19 @@ app.get('/', (c) => {
        Modal: Importar Planilha de Produtos
   ══════════════════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="importPlanilhaModal">
-    <div class="modal" style="max-width:660px;width:96%;">
+    <div class="modal" style="max-width:660px;width:96%;max-height:92vh;display:flex;flex-direction:column;">
 
       <!-- Header -->
-      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
           <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>
           Importar Planilha de Produtos
         </h3>
-        <button onclick="impFechar()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button id="imp_btn_x" type="button" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;padding:4px 8px;">×</button>
       </div>
 
       <!-- STEP 1: Upload -->
-      <div id="imp_step1" style="padding:20px 24px;">
+      <div id="imp_step1" style="padding:20px 24px;overflow-y:auto;">
         <div style="background:#e8f4fd;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#1B4F72;line-height:1.6;">
           <i class="fas fa-info-circle" style="margin-right:5px;"></i>
           Obrigatórias: <strong>Nome</strong> e <strong>Codigo</strong>. &nbsp;
@@ -454,25 +454,24 @@ app.get('/', (c) => {
 
         <!-- Baixar modelo -->
         <a href="/produtos/api/modelo-csv" download="modelo_produtos.csv"
-           style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;margin-bottom:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;color:#15803d;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;">
+           style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;margin-bottom:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;color:#15803d;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;box-sizing:border-box;">
           <i class="fas fa-download"></i> Baixar Planilha Modelo (.csv)
         </a>
 
-        <!-- Drop zone — eventos inline para garantir funcionamento -->
-        <div id="imp_zona"
-          ondragover="event.preventDefault(); this.style.borderColor='#2980B9'; this.style.background='#e8f4fd';"
-          ondragleave="this.style.borderColor=impArq?'#27AE60':'#d1d5db'; this.style.background=impArq?'#f0fdf4':'#f8f9fa';"
-          ondrop="event.preventDefault(); this.style.borderColor='#d1d5db'; this.style.background='#f8f9fa'; impDefinirArquivo(event.dataTransfer.files[0]);"
-          onclick="document.getElementById('imp_input').click();"
-          style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:34px 20px;text-align:center;cursor:pointer;transition:all 0.2s;user-select:none;">
-          <i class="fas fa-cloud-upload-alt" id="imp_icone" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;"></i>
-          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Arraste o arquivo aqui ou clique para buscar</div>
-          <div style="font-size:12px;color:#9ca3af;">Formatos: .csv · .xlsx · .xls &nbsp;|&nbsp; Máx. 5 MB</div>
-        </div>
-
-        <!-- Input file real — fora da zona para evitar conflito de click -->
-        <input type="file" id="imp_input" accept=".csv,.xlsx,.xls" style="display:none;"
-               onchange="impDefinirArquivo(this.files[0]);">
+        <!-- Label wrapping file input — garante click em qualquer browser -->
+        <label id="imp_zona"
+          style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:34px 20px;text-align:center;cursor:pointer;transition:all 0.2s;user-select:none;display:block;"
+          ondragover="event.preventDefault();event.stopPropagation();document.getElementById('imp_zona').style.borderColor='#2980B9';document.getElementById('imp_zona').style.background='#e8f4fd';"
+          ondragleave="event.stopPropagation();var z=document.getElementById('imp_zona');z.style.borderColor=window.impArq?'#27AE60':'#d1d5db';z.style.background=window.impArq?'#f0fdf4':'#f8f9fa';"
+          ondrop="event.preventDefault();event.stopPropagation();var z=document.getElementById('imp_zona');z.style.borderColor='#d1d5db';z.style.background='#f8f9fa';impDefinirArquivo(event.dataTransfer.files[0]);">
+          <i class="fas fa-cloud-upload-alt" id="imp_icone" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;pointer-events:none;"></i>
+          <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;pointer-events:none;">Arraste o arquivo aqui ou clique para buscar</div>
+          <div style="font-size:12px;color:#9ca3af;pointer-events:none;">Formatos: .csv · .xlsx · .xls &nbsp;|&nbsp; Máx. 5 MB</div>
+          <!-- Input dentro do label — associação nativa do browser -->
+          <input type="file" id="imp_input" accept=".csv,.xlsx,.xls"
+                 style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;"
+                 onchange="impDefinirArquivo(this.files[0]);">
+        </label>
 
         <!-- Info do arquivo selecionado -->
         <div id="imp_arqinfo" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;align-items:center;gap:10px;">
@@ -481,7 +480,7 @@ app.get('/', (c) => {
             <div id="imp_fname" style="font-size:13px;font-weight:700;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
             <div id="imp_fsize" style="font-size:11px;color:#6c757d;"></div>
           </div>
-          <button onclick="impLimpar(); event.stopPropagation();" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;padding:2px 6px;">×</button>
+          <button type="button" onclick="impLimpar();event.stopPropagation();" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;padding:2px 6px;">×</button>
         </div>
 
         <div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12px;color:#92400e;">
@@ -491,7 +490,7 @@ app.get('/', (c) => {
       </div>
 
       <!-- STEP 2: Preview -->
-      <div id="imp_step2" style="display:none;padding:20px 24px;">
+      <div id="imp_step2" style="display:none;padding:20px 24px;overflow-y:auto;">
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
           <span id="imp_badge_ok" style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></span>
           <span id="imp_badge_err" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;"></span>
@@ -516,7 +515,7 @@ app.get('/', (c) => {
       </div>
 
       <!-- STEP 3: Progresso -->
-      <div id="imp_step3" style="display:none;padding:28px 24px;text-align:center;">
+      <div id="imp_step3" style="display:none;padding:28px 24px;text-align:center;overflow-y:auto;">
         <div id="imp_prog_label" style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:18px;">Importando produtos...</div>
         <div style="background:#f1f5f9;border-radius:999px;height:16px;overflow:hidden;margin-bottom:10px;">
           <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.25s ease;"></div>
@@ -529,324 +528,92 @@ app.get('/', (c) => {
       </div>
 
       <!-- Footer -->
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;align-items:center;gap:10px;">
-        <button id="imp_btn_back" onclick="impVoltar();" class="btn btn-secondary" style="display:none;margin-right:auto;">
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-shrink:0;">
+        <button id="imp_btn_back" type="button" onclick="impVoltar();" class="btn btn-secondary" style="display:none;margin-right:auto;">
           <i class="fas fa-arrow-left"></i> Voltar
         </button>
-        <button id="imp_btn_cancel" onclick="impFechar();" class="btn btn-secondary">Cancelar</button>
-        <button id="imp_btn_preview" onclick="impVisualizar();" class="btn btn-primary"
-                style="opacity:0.5;cursor:not-allowed;" disabled>
+        <button id="imp_btn_cancel" type="button" onclick="impFechar();" class="btn btn-secondary">Cancelar</button>
+        <button id="imp_btn_preview" type="button" onclick="impVisualizar();"
+                class="btn btn-primary" style="opacity:0.5;cursor:not-allowed;pointer-events:none;"
+                data-imp-disabled="true">
           <i class="fas fa-eye"></i> Visualizar Dados
         </button>
-        <button id="imp_btn_confirm" onclick="impConfirmar();" class="btn btn-primary"
-                style="display:none;background:#27AE60;border-color:#27AE60;">
+        <button id="imp_btn_confirm" type="button" onclick="impConfirmar();"
+                class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
           <i class="fas fa-check"></i> Confirmar Importação
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Config Limites Modal -->
-  <div class="modal-overlay" id="configLimitesModal">
-    <div class="modal" style="max-width:540px;">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-sliders-h" style="margin-right:8px;"></i>Configurador de Limites de Estoque</h3>
-        <button onclick="closeModal('configLimitesModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
-      </div>
-      <div style="padding:20px 24px;">
-        <div style="background:#e8f4fd;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#1B4F72;">
-          <i class="fas fa-info-circle" style="margin-right:6px;"></i>Defina os percentuais do estoque mínimo que determinam o status de cada produto. Esses valores são usados pelo MRP automaticamente.
-        </div>
-        <div style="display:flex;flex-direction:column;gap:14px;">
-          ${[
-            { key: 'critical', label: 'Crítico', color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle', desc: 'Abaixo de X% do estoque mínimo', default: 50 },
-            { key: 'purchase_needed', label: 'Necessidade de Compra', color: '#d97706', bg: '#fffbeb', icon: 'fa-shopping-cart', desc: 'Entre X% e 100% do estoque mínimo (compra externa)', default: 100 },
-            { key: 'manufacture_needed', label: 'Necessidade de Manufatura', color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry', desc: 'Produção interna necessária para repor estoque', default: 120 },
-            { key: 'normal', label: 'Normal', color: '#16a34a', bg: '#f0fdf4', icon: 'fa-check-circle', desc: 'Acima de X% do estoque mínimo', default: 120 },
-          ].map(l => `
-          <div style="display:flex;align-items:center;gap:12px;padding:12px;background:${l.bg};border-radius:8px;border-left:3px solid ${l.color};">
-            <i class="fas ${l.icon}" style="color:${l.color};font-size:18px;width:24px;text-align:center;"></i>
-            <div style="flex:1;">
-              <div style="font-size:13px;font-weight:700;color:${l.color};">${l.label}</div>
-              <div style="font-size:11px;color:#6c757d;">${l.desc}</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <input type="number" value="${l.default}" min="0" max="999" style="width:64px;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;text-align:center;font-weight:700;">
-              <span style="font-size:12px;color:#6c757d;">%</span>
-            </div>
-          </div>`).join('')}
-        </div>
-        <div style="margin-top:16px;background:#f8f9fa;border-radius:8px;padding:12px;">
-          <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;"><i class="fas fa-link" style="margin-right:6px;color:#2980B9;"></i>Integração com MRP</div>
-          <div style="font-size:12px;color:#6c757d;">Produtos com status "Crítico" e "Necessidade de Compra" são automaticamente incluídos no cálculo MRP como itens prioritários para reposição.</div>
-        </div>
-      </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeModal('configLimitesModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="alert('Configuração de limites salva com sucesso! O MRP será recalculado automaticamente.');closeModal('configLimitesModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Config.</button>
-      </div>
-    </div>
-  </div>
-
   <script>
-  function filterProds() {
-    const search = document.getElementById('prodSearch').value.toLowerCase();
-    const status = document.getElementById('prodStatusFilter').value;
-    document.querySelectorAll('.prod-card').forEach(card => {
-      const matchSearch = !search || (card.dataset.search || '').includes(search);
-      const matchStatus = !status || card.dataset.status === status;
-      card.parentElement.style.display = (matchSearch && matchStatus) ? '' : 'none';
-    });
-  }
-
-  function filterByStatus(status) {
-    document.getElementById('prodStatusFilter').value = status;
-    filterProds();
-    document.getElementById('prodGrid').scrollIntoView({ behavior:'smooth' });
-  }
-
-  function scrollToSection(id) {
-    document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
-  }
-
-  function calcStatus(current, min) {
-    if (min <= 0) return 'normal';
-    const pct = (current / min) * 100;
-    if (pct < 50) return 'critical';
-    if (pct < 80) return 'purchase_needed';
-    if (pct < 100) return 'manufacture_needed';
-    return 'normal';
-  }
-
-  function updateStatusPreview() {
-    const min = parseInt(document.getElementById('newProdStockMin').value) || 0;
-    const curr = parseInt(document.getElementById('newProdStockCurrent').value) || 0;
-    if (min > 0) {
-      const status = calcStatus(curr, min);
-      const radio = document.querySelector('input[name="stockStatus"][value="' + status + '"]');
-      if (radio) { radio.checked = true; highlightStatus(); }
-    }
-  }
-
-  function highlightStatus() {
-    const selected = document.querySelector('input[name="stockStatus"]:checked')?.value;
-    ['critical','normal','purchase_needed','manufacture_needed'].forEach(s => {
-      const el = document.getElementById('st_' + (s === 'purchase_needed' ? 'purchase' : s === 'manufacture_needed' ? 'manufacture' : s));
-      if (el) el.style.borderColor = (selected === s) ? '#2980B9' : '#d1d5db';
-    });
-  }
-
-  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType) {
-    document.getElementById('ep_name').value = name;
-    document.getElementById('ep_code').value = code;
-    document.getElementById('ep_unit').value = unit;
-    document.getElementById('ep_stockMin').value = stockMin;
-    document.getElementById('ep_stockCurrent').value = stockCurrent;
-    // Set serial control
-    const serialVal = serialControlled === 'true' ? (controlType || 'serie') : 'none';
-    const radio = document.querySelector('input[name="editProdSerial"][value="' + serialVal + '"]');
-    if (radio) radio.checked = true;
-    toggleEditSerialHint(serialVal);
-    calcEditStatus();
-    openModal('editProdModal');
-  }
-
-  function toggleEditSerialHint(val) {
-    ['epSlCtrl_no','epSlCtrl_serie','epSlCtrl_lote'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.borderColor = '#d1d5db';
-    });
-    if (val === 'serie') document.getElementById('epSlCtrl_serie').style.borderColor = '#7c3aed';
-    else if (val === 'lote') document.getElementById('epSlCtrl_lote').style.borderColor = '#d97706';
-    else document.getElementById('epSlCtrl_no').style.borderColor = '#16a34a';
-  }
-
-  function toggleSerialType(val) {
-    const hint = document.getElementById('serialTypeHint');
-    const hintText = document.getElementById('serialTypeHintText');
-    ['slCtrl_no','slCtrl_serie','slCtrl_lote'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.borderColor = '#d1d5db';
-    });
-    if (val === 'serie') {
-      hint.style.display = 'block';
-      hintText.textContent = 'Cada unidade terá um número de série único. O número deve ser informado nos apontamentos e ao importar via planilha.';
-      document.getElementById('slCtrl_serie').style.borderColor = '#7c3aed';
-    } else if (val === 'lote') {
-      hint.style.display = 'block';
-      hintText.textContent = 'Peças serão agrupadas por lote. O número do lote deve ser informado nos apontamentos e ao importar via planilha (quantidades somadas por lote).';
-      document.getElementById('slCtrl_lote').style.borderColor = '#d97706';
-    } else {
-      hint.style.display = 'none';
-      document.getElementById('slCtrl_no').style.borderColor = '#16a34a';
-    }
-  }
-
-  function calcEditStatus() {
-    const min = parseInt(document.getElementById('ep_stockMin').value) || 0;
-    const curr = parseInt(document.getElementById('ep_stockCurrent').value) || 0;
-    const status = calcStatus(curr, min);
-    const info = {
-      critical: { label:'Crítico', color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
-      normal: { label:'Normal', color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
-      purchase_needed: { label:'Necessidade de Compra', color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
-      manufacture_needed: { label:'Necessidade de Manufatura', color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' },
-    };
-    const s = info[status] || info.normal;
-    const el = document.getElementById('editStatusDisplay');
-    el.style.background = s.bg;
-    el.style.color = s.color;
-    el.innerHTML = '<i class="fas ' + s.icon + '"></i> ' + s.label;
-  }
-
-  // ── Tipo de Produto (interno/externo) ────────────────────────────────────
-  function onProdTypeChange(ctx, val) {
-    const isNew = ctx === 'new';
-    const supSect = document.getElementById(isNew ? 'newProdSupplierSection' : 'editProdSupplierSection');
-    const intSect = document.getElementById(isNew ? 'newProdInternalSection' : 'editProdInternalSection');
-    if (supSect) supSect.style.display = val === 'external' ? '' : 'none';
-    if (intSect) intSect.style.display = val === 'internal' ? '' : 'none';
-    // Highlight border
-    const extLabel = document.getElementById(isNew ? 'ptype_ext' : 'ep_ptype_ext');
-    const intLabel = document.getElementById(isNew ? 'ptype_int' : 'ep_ptype_int');
-    if (extLabel) extLabel.style.borderColor = val === 'external' ? '#2980B9' : '#d1d5db';
-    if (intLabel) intLabel.style.borderColor = val === 'internal' ? '#7c3aed' : '#d1d5db';
-  }
-
-  function salvarNovoProduto() {
-    const type = document.querySelector('input[name="newProdType"]:checked')?.value || 'external';
-    const nome = document.querySelector('#novoProdModal input[placeholder="Nome do produto"]')?.value;
-    if (!nome) { alert('⚠ Informe o nome do produto!'); return; }
-    const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
-    const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
-    const critPct = parseInt(document.getElementById('newProdCritPct')?.value) || 50;
-    closeModal('novoProdModal');
-    // Verificar se já é crítico ao criar
-    if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
-      setTimeout(() => showAutoOPPopup(nome || 'Novo Produto', stockCurrent, stockMin), 400);
-    } else {
-      alert('✅ Produto criado com sucesso!');
-    }
-  }
-
-  function showAutoOPPopup(prodName, stockCurrent, stockMin) {
-    document.getElementById('autoOPPopup').style.display = 'flex';
-    document.getElementById('autoOPProdName').textContent = prodName;
-    document.getElementById('autoOPQty').textContent = stockMin - stockCurrent;
-  }
-
-  // Auto-close popup after 8 seconds
-  setTimeout(() => {
-    const popup = document.getElementById('criticalStockPopup');
-    if (popup) popup.style.display = 'none';
-  }, 8000);
-
-
-  async function salvarNovoProduto() {
-    const typeEl = document.querySelector('input[name="newProdType"]:checked');
-    const type = typeEl ? typeEl.value : 'external';
-    const nome = document.querySelector('#novoProdModal input[placeholder="Nome do produto"]')?.value || '';
-    const code = document.querySelector('#novoProdModal input[placeholder="Código"]')?.value || '';
-    const unit = document.querySelector('#novoProdModal select')?.value || 'un';
-    if (!nome) { showToast('⚠ Informe o nome do produto!', 'error'); return; }
-    const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
-    const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
-    const critPct = parseInt(document.getElementById('newProdCritPct')?.value) || 50;
-    
-    try {
-      const res = await fetch('/produtos/api/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nome, code, unit, type, stockMin, stockCurrent, criticalPercentage: critPct })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('✅ Produto criado com sucesso!');
-        closeModal('novoProdModal');
-        setTimeout(() => location.reload(), 800);
-        if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
-          setTimeout(() => showAutoOPPopup(nome, stockCurrent, stockMin), 900);
-        }
-      } else {
-        showToast(data.error || 'Erro ao criar produto', 'error');
-      }
-    } catch(e) {
-      showToast('Erro de conexão', 'error');
-    }
-  }
-
-  async function deleteProduto(id) {
-    if (!confirm('Excluir este produto?')) return;
-    try {
-      const res = await fetch('/produtos/api/' + id, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) { showToast('Produto excluído!'); setTimeout(() => location.reload(), 500); }
-      else showToast(data.error || 'Erro ao excluir', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
-  }
-
-  // ── Toast notification ────────────────────────────────────────────────────
-  function showToast(msg, type = 'success') {
-    const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
-    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
-    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
-  }
   // ── Importação de planilha ─────────────────────────────────────────────────
-  // Estado global do módulo de importação
-  var impArq  = null;   // arquivo selecionado
-  var impLinhas = [];   // linhas parseadas
+  // Variáveis globais do módulo (acessíveis por todos os handlers inline)
+  window.impArq    = null;  // File object
+  window.impLinhas = [];    // Rows parsed
 
-  // Normaliza string para comparação de headers
-  function impNorm(s) {
-    return (s || '').toString().trim().toLowerCase()
-      .replace(/\s+/g,'').replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
-      .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
-      .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
-  }
-
-  // Fecha e limpa o modal
+  // Fecha o modal e reseta tudo
   function impFechar() {
-    document.getElementById('importPlanilhaModal').classList.remove('open');
-    setTimeout(function(){ impLimpar(); impTela(1); }, 280);
+    var m = document.getElementById('importPlanilhaModal');
+    if (m) m.classList.remove('open');
+    // Reseta estado após animação
+    setTimeout(function() {
+      window.impArq = null;
+      window.impLinhas = [];
+      var inp = document.getElementById('imp_input');
+      if (inp) inp.value = '';
+      impMostrarInfo(false);
+      var z = document.getElementById('imp_zona');
+      if (z) { z.style.borderColor = '#d1d5db'; z.style.background = '#f8f9fa'; }
+      var ic = document.getElementById('imp_icone');
+      if (ic) ic.style.color = '#9ca3af';
+      impHabilitarPreview(false);
+      impTela(1);
+    }, 280);
   }
 
   // Volta para step 1
   function impVoltar() { impTela(1); }
 
-  // Limpa o estado de arquivo
+  // Limpa arquivo selecionado (botão X no fileinfo)
   function impLimpar() {
-    impArq = null;
-    impLinhas = [];
+    window.impArq = null;
+    window.impLinhas = [];
     var inp = document.getElementById('imp_input');
     if (inp) inp.value = '';
-    var ai = document.getElementById('imp_arqinfo');
-    if (ai) ai.style.display = 'none';
-    var zona = document.getElementById('imp_zona');
-    if (zona) { zona.style.borderColor = '#d1d5db'; zona.style.background = '#f8f9fa'; }
+    impMostrarInfo(false);
+    var z = document.getElementById('imp_zona');
+    if (z) { z.style.borderColor = '#d1d5db'; z.style.background = '#f8f9fa'; }
     var ic = document.getElementById('imp_icone');
     if (ic) ic.style.color = '#9ca3af';
-    impBotaoPreview(false);
+    impHabilitarPreview(false);
   }
 
-  // Liga/desliga botão Visualizar
-  function impBotaoPreview(on) {
+  // Exibe ou oculta o painel de info do arquivo
+  function impMostrarInfo(show) {
+    var el = document.getElementById('imp_arqinfo');
+    if (el) el.style.display = show ? 'flex' : 'none';
+  }
+
+  // Habilita / desabilita botão Visualizar
+  // Usa data-attribute + pointer-events para não depender do atributo disabled nativo
+  function impHabilitarPreview(on) {
     var b = document.getElementById('imp_btn_preview');
     if (!b) return;
     if (on) {
-      b.removeAttribute('disabled');
+      b.removeAttribute('data-imp-disabled');
       b.style.opacity = '1';
       b.style.cursor  = 'pointer';
+      b.style.pointerEvents = '';
     } else {
-      b.setAttribute('disabled', 'disabled');
+      b.setAttribute('data-imp-disabled', 'true');
       b.style.opacity = '0.5';
       b.style.cursor  = 'not-allowed';
+      b.style.pointerEvents = 'none';
     }
   }
 
-  // Controla qual step está visível
+  // Controla qual step está visível + botões do footer
   function impTela(step) {
     document.getElementById('imp_step1').style.display = step === 1 ? '' : 'none';
     document.getElementById('imp_step2').style.display = step === 2 ? '' : 'none';
@@ -861,7 +628,7 @@ app.get('/', (c) => {
     if (bConfirm) bConfirm.style.display = step === 2 ? '' : 'none';
   }
 
-  // Recebe um arquivo e valida
+  // Recebe um File object e valida
   function impDefinirArquivo(file) {
     if (!file) return;
     var ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -873,18 +640,25 @@ app.get('/', (c) => {
       showToast('Arquivo muito grande. Máx. 5 MB', 'error');
       return;
     }
-    impArq = file;
+    window.impArq = file;
     var fn = document.getElementById('imp_fname');
     var fs = document.getElementById('imp_fsize');
-    var ai = document.getElementById('imp_arqinfo');
     if (fn) fn.textContent = file.name;
     if (fs) fs.textContent = (file.size / 1024).toFixed(1) + ' KB';
-    if (ai) ai.style.display = 'flex';
-    var zona = document.getElementById('imp_zona');
-    if (zona) { zona.style.borderColor = '#27AE60'; zona.style.background = '#f0fdf4'; }
+    impMostrarInfo(true);
+    var z = document.getElementById('imp_zona');
+    if (z) { z.style.borderColor = '#27AE60'; z.style.background = '#f0fdf4'; }
     var ic = document.getElementById('imp_icone');
     if (ic) ic.style.color = '#27AE60';
-    impBotaoPreview(true);
+    impHabilitarPreview(true);
+  }
+
+  // Normaliza string para comparação de headers
+  function impNorm(s) {
+    return (s || '').toString().trim().toLowerCase()
+      .replace(/\s+/g,'').replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
+      .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
+      .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
   }
 
   // Encontra índice de coluna por lista de nomes normalizados
@@ -904,16 +678,16 @@ app.get('/', (c) => {
     if (linhas.length < 2) return [];
     var hdrs = linhas[0].split(',').map(impNorm);
     var ci = {
-      nome:     impAcharCol(hdrs, ['nome']),
-      codigo:   impAcharCol(hdrs, ['codigo','cod']),
-      unidade:  impAcharCol(hdrs, ['unidade','unid']),
-      tipo:     impAcharCol(hdrs, ['tipo']),
-      emin:     impAcharCol(hdrs, ['estoqueminimo','estoquemin','min']),
-      eatual:   impAcharCol(hdrs, ['estoqueatual','atual']),
-      desc:     impAcharCol(hdrs, ['descricao','desc']),
-      forn:     impAcharCol(hdrs, ['fornecedor','forn']),
-      preco:    impAcharCol(hdrs, ['preco','valor','price']),
-      ctrl:     impAcharCol(hdrs, ['controleserieoulate','controleserieoulote','controleserielote','controle','sn']),
+      nome:   impAcharCol(hdrs,['nome']),
+      codigo: impAcharCol(hdrs,['codigo','cod']),
+      unid:   impAcharCol(hdrs,['unidade','unid']),
+      tipo:   impAcharCol(hdrs,['tipo']),
+      emin:   impAcharCol(hdrs,['estoqueminimo','estoquemin','min']),
+      eatual: impAcharCol(hdrs,['estoqueatual','atual']),
+      desc:   impAcharCol(hdrs,['descricao','desc']),
+      forn:   impAcharCol(hdrs,['fornecedor','forn']),
+      preco:  impAcharCol(hdrs,['preco','valor','price']),
+      ctrl:   impAcharCol(hdrs,['controleserieoulate','controleserieoulote','controleserielote','controle','sn']),
     };
     var rows = [];
     for (var i = 1; i < linhas.length; i++) {
@@ -926,23 +700,23 @@ app.get('/', (c) => {
         else { cur += ch; }
       }
       partes.push(cur.trim());
-      var g = function(idx) {
+      var gv = function(idx) {
         if (idx < 0 || idx >= partes.length) return '';
         return partes[idx].replace(/^"|"$/g,'').trim();
       };
-      var ctrlRaw = impNorm(g(ci.ctrl));
+      var ctrlRaw = impNorm(gv(ci.ctrl));
       var ct = ctrlRaw.indexOf('serie') >= 0 ? 'serie' : ctrlRaw.indexOf('lote') >= 0 ? 'lote' : '';
       rows.push({
-        _linha: i + 1,
-        nome:         g(ci.nome),
-        codigo:       g(ci.codigo),
-        unidade:      g(ci.unidade) || 'un',
-        tipo:         g(ci.tipo) === 'internal' ? 'internal' : 'external',
-        stockMin:     parseInt(g(ci.emin))   || 0,
-        stockCurrent: parseInt(g(ci.eatual)) || 0,
-        descricao:    g(ci.desc),
-        fornecedor:   g(ci.forn),
-        preco:        parseFloat((g(ci.preco)||'0').replace(',','.')) || 0,
+        _linha: i+1,
+        nome:         gv(ci.nome),
+        codigo:       gv(ci.codigo),
+        unidade:      gv(ci.unid) || 'un',
+        tipo:         gv(ci.tipo) === 'internal' ? 'internal' : 'external',
+        stockMin:     parseInt(gv(ci.emin))   || 0,
+        stockCurrent: parseInt(gv(ci.eatual)) || 0,
+        descricao:    gv(ci.desc),
+        fornecedor:   gv(ci.forn),
+        preco:        parseFloat((gv(ci.preco)||'0').replace(',','.')) || 0,
         controlType:  ct,
         serialControlled: ct !== '',
       });
@@ -950,36 +724,35 @@ app.get('/', (c) => {
     return rows;
   }
 
-  // Parse XLSX usando SheetJS
+  // Parse XLSX via SheetJS (já carregado no <head>)
   function impParsearXLSX(wb) {
-    if (typeof XLSX === 'undefined') return [];
+    if (typeof XLSX === 'undefined') { showToast('SheetJS não disponível — recarregue a página', 'error'); return []; }
     var ws = wb.Sheets[wb.SheetNames[0]];
     var json = XLSX.utils.sheet_to_json(ws, { defval: '' });
     return json.map(function(r, i) {
-      var colKeys = Object.keys(r).map(function(k){ return { k: k, n: impNorm(k) }; });
-      var g = function(nomes) {
-        var idx = -1;
-        for (var n = 0; n < nomes.length && idx < 0; n++) {
-          for (var j = 0; j < colKeys.length; j++) {
-            if (colKeys[j].n === nomes[n] || colKeys[j].n.indexOf(nomes[n]) === 0) { idx = j; break; }
+      var ks = Object.keys(r).map(function(k){ return { k:k, n:impNorm(k) }; });
+      var gv = function(nomes) {
+        for (var ni = 0; ni < nomes.length; ni++) {
+          for (var ji = 0; ji < ks.length; ji++) {
+            if (ks[ji].n === nomes[ni] || ks[ji].n.indexOf(nomes[ni]) === 0)
+              return String(r[ks[ji].k] || '').trim();
           }
         }
-        if (idx < 0) return '';
-        return String(r[colKeys[idx].k] || '').trim();
+        return '';
       };
-      var ctrlRaw = impNorm(g(['controleserieoulate','controleserieoulote','controleserielote','controle','sn']));
+      var ctrlRaw = impNorm(gv(['controleserieoulate','controleserieoulote','controleserielote','controle','sn']));
       var ct = ctrlRaw.indexOf('serie') >= 0 ? 'serie' : ctrlRaw.indexOf('lote') >= 0 ? 'lote' : '';
       return {
-        _linha: i + 2,
-        nome:         g(['nome']),
-        codigo:       g(['codigo','cod']),
-        unidade:      g(['unidade','unid']) || 'un',
-        tipo:         g(['tipo']) === 'internal' ? 'internal' : 'external',
-        stockMin:     parseInt(g(['estoqueminimo','estoquemin','min'])) || 0,
-        stockCurrent: parseInt(g(['estoqueatual','atual'])) || 0,
-        descricao:    g(['descricao','desc']),
-        fornecedor:   g(['fornecedor','forn']),
-        preco:        parseFloat((g(['preco','valor','price'])||'0').replace(',','.')) || 0,
+        _linha: i+2,
+        nome:         gv(['nome']),
+        codigo:       gv(['codigo','cod']),
+        unidade:      gv(['unidade','unid']) || 'un',
+        tipo:         gv(['tipo']) === 'internal' ? 'internal' : 'external',
+        stockMin:     parseInt(gv(['estoqueminimo','estoquemin','min'])) || 0,
+        stockCurrent: parseInt(gv(['estoqueatual','atual'])) || 0,
+        descricao:    gv(['descricao','desc']),
+        fornecedor:   gv(['fornecedor','forn']),
+        preco:        parseFloat((gv(['preco','valor','price'])||'0').replace(',','.')) || 0,
         controlType:  ct,
         serialControlled: ct !== '',
       };
@@ -990,13 +763,13 @@ app.get('/', (c) => {
   function impStatus(cur, min) {
     if (min <= 0) return { l:'Normal',    c:'#16a34a', b:'#f0fdf4' };
     var p = (cur/min)*100;
-    if (p < 50)  return { l:'Crítico',   c:'#dc2626', b:'#fef2f2' };
-    if (p < 80)  return { l:'Nec.Compra',c:'#d97706', b:'#fffbeb' };
-    if (p < 100) return { l:'Nec.Manuf.',c:'#7c3aed', b:'#f5f3ff' };
+    if (p < 50)  return { l:'Crítico',    c:'#dc2626', b:'#fef2f2' };
+    if (p < 80)  return { l:'Nec.Compra', c:'#d97706', b:'#fffbeb' };
+    if (p < 100) return { l:'Nec.Manuf.', c:'#7c3aed', b:'#f5f3ff' };
     return { l:'Normal', c:'#16a34a', b:'#f0fdf4' };
   }
 
-  // Renderiza preview na tabela
+  // Renderiza preview
   function impRenderizarPreview(rows) {
     var erros = []; var snQt = 0; var html = '';
     for (var i = 0; i < rows.length; i++) {
@@ -1031,11 +804,11 @@ app.get('/', (c) => {
     if (erros.length > 0) {
       if (bErr) { bErr.textContent = erros.length + ' erro(s)'; bErr.style.display = ''; }
       if (erEl) { erEl.style.display = ''; erEl.innerHTML = '<strong>⚠ Erros encontrados:</strong><br>' + erros.map(function(x){ return '• '+x; }).join('<br>'); }
-      if (bConf) { bConf.setAttribute('disabled','disabled'); bConf.style.opacity='0.5'; bConf.style.cursor='not-allowed'; }
+      if (bConf) { bConf.style.opacity='0.5'; bConf.style.cursor='not-allowed'; bConf.style.pointerEvents='none'; }
     } else {
       if (bErr) bErr.style.display = 'none';
       if (erEl) erEl.style.display = 'none';
-      if (bConf) { bConf.removeAttribute('disabled'); bConf.style.opacity='1'; bConf.style.cursor='pointer'; }
+      if (bConf) { bConf.style.opacity='1'; bConf.style.cursor='pointer'; bConf.style.pointerEvents=''; }
     }
     var bSn = document.getElementById('imp_badge_sn');
     if (bSn) { bSn.textContent = snQt + ' c/ Série/Lote'; bSn.style.display = snQt > 0 ? '' : 'none'; }
@@ -1044,10 +817,10 @@ app.get('/', (c) => {
 
   // Clique em "Visualizar Dados"
   function impVisualizar() {
-    if (!impArq) { showToast('Selecione um arquivo primeiro', 'error'); return; }
+    if (!window.impArq) { showToast('Selecione um arquivo primeiro', 'error'); return; }
     var btn = document.getElementById('imp_btn_preview');
     if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
-    var ext = (impArq.name.split('.').pop() || '').toLowerCase();
+    var ext = (window.impArq.name.split('.').pop() || '').toLowerCase();
     if (ext === 'csv') {
       var reader = new FileReader();
       reader.onerror = function() {
@@ -1056,14 +829,15 @@ app.get('/', (c) => {
       };
       reader.onload = function(ev) {
         if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-        impLinhas = impParsearCSV(ev.target.result);
-        if (impLinhas.length === 0) { showToast('Nenhuma linha encontrada no arquivo', 'error'); return; }
-        impRenderizarPreview(impLinhas);
+        var rows = impParsearCSV(ev.target.result);
+        if (rows.length === 0) { showToast('Nenhuma linha encontrada no arquivo', 'error'); return; }
+        window.impLinhas = rows;
+        impRenderizarPreview(rows);
       };
-      reader.readAsText(impArq, 'UTF-8');
+      reader.readAsText(window.impArq, 'UTF-8');
     } else {
       if (typeof XLSX === 'undefined') {
-        showToast('SheetJS não carregado. Recarregue a página.', 'error');
+        showToast('SheetJS não carregado — recarregue a página', 'error');
         if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
         return;
       }
@@ -1075,24 +849,26 @@ app.get('/', (c) => {
       rdr.onload = function(ev) {
         if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
         try {
-          var wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
-          impLinhas = impParsearXLSX(wb);
-          if (impLinhas.length === 0) { showToast('Nenhuma linha encontrada no arquivo', 'error'); return; }
-          impRenderizarPreview(impLinhas);
+          var data = new Uint8Array(ev.target.result);
+          var wb = XLSX.read(data, { type: 'array' });
+          var rows = impParsearXLSX(wb);
+          if (rows.length === 0) { showToast('Nenhuma linha encontrada', 'error'); return; }
+          window.impLinhas = rows;
+          impRenderizarPreview(rows);
         } catch(err) {
           showToast('Erro ao processar Excel: ' + err.message, 'error');
         }
       };
-      rdr.readAsArrayBuffer(impArq);
+      rdr.readAsArrayBuffer(window.impArq);
     }
   }
 
   // Clique em "Confirmar Importação"
   function impConfirmar() {
-    var validas = impLinhas.filter(function(r){ return r.nome && r.codigo; });
+    var validas = window.impLinhas.filter(function(r){ return r.nome && r.codigo; });
     if (validas.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
     impTela(3);
-    var total = validas.length;
+    var total  = validas.length;
     var pLabel = document.getElementById('imp_prog_label');
     var pBar   = document.getElementById('imp_prog_bar');
     var pPct   = document.getElementById('imp_prog_pct');
@@ -1101,43 +877,41 @@ app.get('/', (c) => {
     var pSub   = document.getElementById('imp_prog_sub');
     if (pLabel) pLabel.textContent = 'Importando ' + total + ' produto(s)...';
     if (pTotal) pTotal.textContent = total;
-    // Barra animada de 0% a ~88% enquanto aguarda resposta
     var sim = 0;
     var timer = setInterval(function() {
       sim = Math.min(sim + (88 - sim) * 0.1, 87);
-      var p = Math.round(sim);
       if (pBar)   pBar.style.width = sim.toFixed(1) + '%';
-      if (pPct)   pPct.textContent = p + '%';
+      if (pPct)   pPct.textContent = Math.round(sim) + '%';
       var done = Math.round((sim / 100) * total);
       if (pCount) pCount.textContent = done;
       if (pSub)   pSub.textContent = done < total ? 'Processando ' + (done+1) + ' de ' + total + '...' : 'Finalizando...';
     }, 150);
     fetch('/produtos/api/import', {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ rows: validas }),
+      body: JSON.stringify({ rows: validas }),
     })
     .then(function(res) { return res.json(); })
-    .then(function(data) {
+    .then(function(d) {
       clearInterval(timer);
-      if (pBar)   { pBar.style.width = '100%'; pBar.style.background = data.ok ? '#27AE60' : '#dc2626'; }
+      if (pBar)   { pBar.style.width = '100%'; pBar.style.background = d.ok ? '#27AE60' : '#dc2626'; }
       if (pPct)   pPct.textContent = '100%';
       if (pCount) pCount.textContent = total;
       if (pSub)   pSub.textContent = '';
-      if (data.ok) {
+      if (d.ok) {
         if (pLabel) pLabel.innerHTML = '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>Importação concluída!';
-        var msg = '✅ ' + (data.created||0) + ' criado(s), ' + (data.updated||0) + ' atualizado(s).';
-        if (data.pendingSerial > 0) msg += ' • ' + data.pendingSerial + ' aguardando Liberação S/N.';
+        var msg = '\u2705 ' + (d.created||0) + ' criado(s), ' + (d.updated||0) + ' atualizado(s).';
+        if (d.pendingSerial > 0) msg += ' \u2022 ' + d.pendingSerial + ' aguardando Liberação S/N.';
         setTimeout(function() {
           impFechar();
-          showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
+          showToast(msg, d.pendingSerial > 0 ? 'info' : 'success');
           setTimeout(function(){ location.reload(); }, 1200);
         }, 1000);
       } else {
-        if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>' + (data.error || 'Erro na importação');
+        if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>' + (d.error || 'Erro na importação');
         var bCan = document.getElementById('imp_btn_cancel');
         if (bCan) bCan.style.display = '';
-        showToast(data.error || 'Erro ao importar', 'error');
+        showToast(d.error || 'Erro ao importar', 'error');
       }
     })
     .catch(function(e) {
@@ -1149,6 +923,18 @@ app.get('/', (c) => {
       showToast('Erro de conexão: ' + e.message, 'error');
     });
   }
+
+  // Fechar modal ao clicar no overlay (fora do modal)
+  (function() {
+    var overlay = document.getElementById('importPlanilhaModal');
+    if (!overlay) return;
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) impFechar();
+    });
+    // Botão X
+    var btnX = document.getElementById('imp_btn_x');
+    if (btnX) btnX.addEventListener('click', impFechar);
+  })();
   // ── /Importação de planilha ───────────────────────────────────────────────  </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
