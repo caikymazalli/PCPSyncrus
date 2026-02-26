@@ -439,112 +439,107 @@ app.get('/', (c) => {
       <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
           <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>
-          <span id="imp_title">Importar Planilha de Produtos</span>
+          Importar Planilha de Produtos
         </h3>
-        <button id="imp_btn_x" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
+        <button onclick="impFechar()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">×</button>
       </div>
 
-      <!-- ── STEP 1: Upload ── -->
+      <!-- STEP 1: Upload -->
       <div id="imp_step1" style="padding:20px 24px;">
-
-        <!-- Info box -->
         <div style="background:#e8f4fd;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#1B4F72;line-height:1.6;">
           <i class="fas fa-info-circle" style="margin-right:5px;"></i>
-          Colunas obrigatórias: <strong>Nome</strong> e <strong>Codigo</strong>.
-          Opcionais: Unidade · Tipo · EstoqueMinimo · EstoqueAtual · Descricao · Fornecedor · Preco · <strong>ControleSerieOuLote</strong> (<code>serie</code> ou <code>lote</code>)
+          Obrigatórias: <strong>Nome</strong> e <strong>Codigo</strong>. &nbsp;
+          Opcionais: Unidade · Tipo · EstoqueMinimo · EstoqueAtual · Descricao · Fornecedor · Preco · <strong>ControleSerieOuLote</strong> (serie / lote)
         </div>
 
-        <!-- Download modelo -->
-        <a href="/produtos/api/modelo-csv" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:14px;text-decoration:none;display:flex;">
-          <i class="fas fa-download" style="color:#27AE60;margin-right:6px;"></i> Baixar Planilha Modelo (.csv)
+        <!-- Baixar modelo -->
+        <a href="/produtos/api/modelo-csv" download="modelo_produtos.csv"
+           style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;margin-bottom:14px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;color:#15803d;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;">
+          <i class="fas fa-download"></i> Baixar Planilha Modelo (.csv)
         </a>
 
-        <!-- Drop zone -->
-        <div id="imp_zone"
+        <!-- Drop zone — eventos inline para garantir funcionamento -->
+        <div id="imp_zona"
+          ondragover="event.preventDefault(); this.style.borderColor='#2980B9'; this.style.background='#e8f4fd';"
+          ondragleave="this.style.borderColor=impArq?'#27AE60':'#d1d5db'; this.style.background=impArq?'#f0fdf4':'#f8f9fa';"
+          ondrop="event.preventDefault(); this.style.borderColor='#d1d5db'; this.style.background='#f8f9fa'; impDefinirArquivo(event.dataTransfer.files[0]);"
+          onclick="document.getElementById('imp_input').click();"
           style="border:2px dashed #d1d5db;border-radius:12px;background:#f8f9fa;padding:34px 20px;text-align:center;cursor:pointer;transition:all 0.2s;user-select:none;">
-          <i class="fas fa-cloud-upload-alt" id="imp_zone_icon" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;"></i>
+          <i class="fas fa-cloud-upload-alt" id="imp_icone" style="font-size:38px;color:#9ca3af;margin-bottom:10px;display:block;"></i>
           <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px;">Arraste o arquivo aqui ou clique para buscar</div>
           <div style="font-size:12px;color:#9ca3af;">Formatos: .csv · .xlsx · .xls &nbsp;|&nbsp; Máx. 5 MB</div>
         </div>
-        <input type="file" id="imp_input" accept=".csv,.xlsx,.xls" style="display:none;">
 
-        <!-- File selected info — começa oculto com height:0 para evitar conflito de display -->
-        <div id="imp_fileinfo" style="overflow:hidden;max-height:0;transition:max-height 0.25s;margin-top:10px;">
-          <div style="padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;display:flex;align-items:center;gap:10px;">
-            <i class="fas fa-file-csv" style="color:#16a34a;font-size:22px;flex-shrink:0;"></i>
-            <div style="flex:1;min-width:0;">
-              <div id="imp_fname" style="font-size:13px;font-weight:700;color:#15803d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-              <div id="imp_fsize" style="font-size:11px;color:#6c757d;"></div>
-            </div>
-            <button id="imp_btn_clear" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;">×</button>
+        <!-- Input file real — fora da zona para evitar conflito de click -->
+        <input type="file" id="imp_input" accept=".csv,.xlsx,.xls" style="display:none;"
+               onchange="impDefinirArquivo(this.files[0]);">
+
+        <!-- Info do arquivo selecionado -->
+        <div id="imp_arqinfo" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;align-items:center;gap:10px;">
+          <i class="fas fa-file-alt" style="color:#16a34a;font-size:20px;flex-shrink:0;"></i>
+          <div style="flex:1;min-width:0;">
+            <div id="imp_fname" style="font-size:13px;font-weight:700;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+            <div id="imp_fsize" style="font-size:11px;color:#6c757d;"></div>
           </div>
+          <button onclick="impLimpar(); event.stopPropagation();" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px;padding:2px 6px;">×</button>
         </div>
 
-        <!-- Avisos -->
-        <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px;">
-          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12px;color:#92400e;">
-            <i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i>
-            Produtos com mesmo <strong>Código</strong> serão <strong>atualizados</strong>. Novos códigos serão criados.
-          </div>
-          <div style="background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:9px 13px;font-size:12px;color:#6d28d9;">
-            <i class="fas fa-barcode" style="margin-right:5px;"></i>
-            Itens com <strong>ControleSerieOuLote</strong> preenchido geram fila de <strong>Liberação S/N</strong> no Estoque.
-          </div>
+        <div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12px;color:#92400e;">
+          <i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i>
+          Produtos com mesmo <strong>Código</strong> serão <strong>atualizados</strong>. Novos códigos serão criados.
         </div>
       </div>
 
-      <!-- ── STEP 2: Preview ── -->
+      <!-- STEP 2: Preview -->
       <div id="imp_step2" style="display:none;padding:20px 24px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-          <span id="imp_badge_ok" style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></span>
-          <span id="imp_badge_err" style="display:none;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;"></span>
-          <span id="imp_badge_sn" style="display:none;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;background:#f5f3ff;color:#7c3aed;"></span>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <span id="imp_badge_ok" style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;"></span>
+          <span id="imp_badge_err" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;"></span>
+          <span id="imp_badge_sn" style="display:none;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f5f3ff;color:#7c3aed;"></span>
         </div>
         <div style="max-height:300px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
           <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <thead>
-              <tr style="background:#f8f9fa;">
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">#</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Nome</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Código</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Un.</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Min</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Atual</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Status</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">S/N</th>
-              </tr>
-            </thead>
+            <thead><tr style="background:#f8f9fa;">
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">#</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Nome</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Código</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Un.</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Min</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">E.Atual</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">Status</th>
+              <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#f8f9fa;">S/N</th>
+            </tr></thead>
             <tbody id="imp_tbody"></tbody>
           </table>
         </div>
-        <div id="imp_errs" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 13px;font-size:12px;color:#dc2626;line-height:1.7;"></div>
+        <div id="imp_errs" style="display:none;margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;font-size:12px;color:#dc2626;line-height:1.7;"></div>
       </div>
 
-      <!-- ── STEP 3: Progresso de importação ── -->
+      <!-- STEP 3: Progresso -->
       <div id="imp_step3" style="display:none;padding:28px 24px;text-align:center;">
-        <div style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:20px;" id="imp_prog_label">Importando produtos...</div>
-        <!-- Barra de progresso -->
-        <div style="background:#f1f5f9;border-radius:999px;height:14px;overflow:hidden;margin-bottom:10px;position:relative;">
-          <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.3s;"></div>
+        <div id="imp_prog_label" style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:18px;">Importando produtos...</div>
+        <div style="background:#f1f5f9;border-radius:999px;height:16px;overflow:hidden;margin-bottom:10px;">
+          <div id="imp_prog_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2980B9,#27AE60);border-radius:999px;transition:width 0.25s ease;"></div>
         </div>
-        <div style="font-size:13px;color:#6c757d;margin-bottom:6px;">
-          <span id="imp_prog_count">0</span> de <span id="imp_prog_total">0</span> produtos processados
-          &nbsp;·&nbsp; <span id="imp_prog_pct" style="font-weight:700;color:#2980B9;">0%</span>
+        <div style="font-size:13px;color:#6c757d;margin-bottom:4px;">
+          <span id="imp_prog_count">0</span> / <span id="imp_prog_total">0</span> produtos
+          &nbsp;·&nbsp;<span id="imp_prog_pct" style="font-weight:700;color:#2980B9;">0%</span>
         </div>
-        <div style="font-size:11px;color:#9ca3af;" id="imp_prog_sub">Aguarde...</div>
+        <div id="imp_prog_sub" style="font-size:11px;color:#9ca3af;margin-top:4px;">Aguarde...</div>
       </div>
 
       <!-- Footer -->
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:10px;">
-        <button id="imp_btn_back" class="btn btn-secondary" style="display:none;">
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;align-items:center;gap:10px;">
+        <button id="imp_btn_back" onclick="impVoltar();" class="btn btn-secondary" style="display:none;margin-right:auto;">
           <i class="fas fa-arrow-left"></i> Voltar
         </button>
-        <div style="flex:1;"></div>
-        <button id="imp_btn_cancel" class="btn btn-secondary">Cancelar</button>
-        <button id="imp_btn_preview" class="btn btn-primary" style="opacity:0.5;cursor:not-allowed;pointer-events:none;">
+        <button id="imp_btn_cancel" onclick="impFechar();" class="btn btn-secondary">Cancelar</button>
+        <button id="imp_btn_preview" onclick="impVisualizar();" class="btn btn-primary"
+                style="opacity:0.5;cursor:not-allowed;" disabled>
           <i class="fas fa-eye"></i> Visualizar Dados
         </button>
-        <button id="imp_btn_confirm" class="btn btn-primary" style="display:none;background:#27AE60;border-color:#27AE60;">
+        <button id="imp_btn_confirm" onclick="impConfirmar();" class="btn btn-primary"
+                style="display:none;background:#27AE60;border-color:#27AE60;">
           <i class="fas fa-check"></i> Confirmar Importação
         </button>
       </div>
@@ -799,91 +794,183 @@ app.get('/', (c) => {
     document.body.appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
-  // ── Importação de planilha ────────────────────────────────────────────────
-  // Toda a lógica fica em IIFE para isolar escopo; eventos são vinculados via
-  // addEventListener (sem inline onclick) para compatibilidade com Cloudflare.
-  (function() {
-    var _file = null;
-    var _rows = [];
+  // ── Importação de planilha ─────────────────────────────────────────────────
+  // Estado global do módulo de importação
+  var impArq  = null;   // arquivo selecionado
+  var impLinhas = [];   // linhas parseadas
 
-    function $q(id) { return document.getElementById(id); }
+  // Normaliza string para comparação de headers
+  function impNorm(s) {
+    return (s || '').toString().trim().toLowerCase()
+      .replace(/\s+/g,'').replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
+      .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
+      .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
+  }
 
-    function impShow(step) {
-      $q('imp_step1').style.display = step === 1 ? '' : 'none';
-      $q('imp_step2').style.display = step === 2 ? '' : 'none';
-      $q('imp_step3').style.display = step === 3 ? '' : 'none';
-      var bBack = $q('imp_btn_back');
-      if (bBack) bBack.style.display = step === 2 ? '' : 'none';
-      var bCancel = $q('imp_btn_cancel');
-      if (bCancel) bCancel.style.display = step === 3 ? 'none' : '';
-      var bPrev = $q('imp_btn_preview');
-      if (bPrev) bPrev.style.display = step === 1 ? '' : 'none';
-      var bConf = $q('imp_btn_confirm');
-      if (bConf) bConf.style.display = step === 2 ? '' : 'none';
+  // Fecha e limpa o modal
+  function impFechar() {
+    document.getElementById('importPlanilhaModal').classList.remove('open');
+    setTimeout(function(){ impLimpar(); impTela(1); }, 280);
+  }
+
+  // Volta para step 1
+  function impVoltar() { impTela(1); }
+
+  // Limpa o estado de arquivo
+  function impLimpar() {
+    impArq = null;
+    impLinhas = [];
+    var inp = document.getElementById('imp_input');
+    if (inp) inp.value = '';
+    var ai = document.getElementById('imp_arqinfo');
+    if (ai) ai.style.display = 'none';
+    var zona = document.getElementById('imp_zona');
+    if (zona) { zona.style.borderColor = '#d1d5db'; zona.style.background = '#f8f9fa'; }
+    var ic = document.getElementById('imp_icone');
+    if (ic) ic.style.color = '#9ca3af';
+    impBotaoPreview(false);
+  }
+
+  // Liga/desliga botão Visualizar
+  function impBotaoPreview(on) {
+    var b = document.getElementById('imp_btn_preview');
+    if (!b) return;
+    if (on) {
+      b.removeAttribute('disabled');
+      b.style.opacity = '1';
+      b.style.cursor  = 'pointer';
+    } else {
+      b.setAttribute('disabled', 'disabled');
+      b.style.opacity = '0.5';
+      b.style.cursor  = 'not-allowed';
     }
+  }
 
-    function impEnableBtn(id, on) {
-      var b = $q(id); if (!b) return;
-      b.style.opacity       = on ? '1' : '0.5';
-      b.style.cursor        = on ? 'pointer' : 'not-allowed';
-      b.style.pointerEvents = on ? '' : 'none';
+  // Controla qual step está visível
+  function impTela(step) {
+    document.getElementById('imp_step1').style.display = step === 1 ? '' : 'none';
+    document.getElementById('imp_step2').style.display = step === 2 ? '' : 'none';
+    document.getElementById('imp_step3').style.display = step === 3 ? '' : 'none';
+    var bBack    = document.getElementById('imp_btn_back');
+    var bCancel  = document.getElementById('imp_btn_cancel');
+    var bPreview = document.getElementById('imp_btn_preview');
+    var bConfirm = document.getElementById('imp_btn_confirm');
+    if (bBack)    bBack.style.display    = step === 2 ? '' : 'none';
+    if (bCancel)  bCancel.style.display  = step === 3 ? 'none' : '';
+    if (bPreview) bPreview.style.display = step === 1 ? '' : 'none';
+    if (bConfirm) bConfirm.style.display = step === 2 ? '' : 'none';
+  }
+
+  // Recebe um arquivo e valida
+  function impDefinirArquivo(file) {
+    if (!file) return;
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (['csv','xlsx','xls'].indexOf(ext) === -1) {
+      showToast('Formato inválido. Use .csv, .xlsx ou .xls', 'error');
+      return;
     }
-
-    function impResetUI() {
-      _file = null; _rows = [];
-      var inp = $q('imp_input'); if (inp) inp.value = '';
-      var fi = $q('imp_fileinfo'); if (fi) fi.style.maxHeight = '0';
-      var z  = $q('imp_zone');    if (z) { z.style.borderColor = '#d1d5db'; z.style.background = '#f8f9fa'; }
-      var ic = $q('imp_zone_icon'); if (ic) ic.style.color = '#9ca3af';
-      impEnableBtn('imp_btn_preview', false);
-      impShow(1);
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Arquivo muito grande. Máx. 5 MB', 'error');
+      return;
     }
+    impArq = file;
+    var fn = document.getElementById('imp_fname');
+    var fs = document.getElementById('imp_fsize');
+    var ai = document.getElementById('imp_arqinfo');
+    if (fn) fn.textContent = file.name;
+    if (fs) fs.textContent = (file.size / 1024).toFixed(1) + ' KB';
+    if (ai) ai.style.display = 'flex';
+    var zona = document.getElementById('imp_zona');
+    if (zona) { zona.style.borderColor = '#27AE60'; zona.style.background = '#f0fdf4'; }
+    var ic = document.getElementById('imp_icone');
+    if (ic) ic.style.color = '#27AE60';
+    impBotaoPreview(true);
+  }
 
-    function impClose() {
-      var modal = $q('importPlanilhaModal');
-      if (modal) modal.classList.remove('open');
-      setTimeout(impResetUI, 300);
-    }
-
-    function impSetFile(file) {
-      var ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (['csv','xlsx','xls'].indexOf(ext) === -1) {
-        showToast('Formato inválido. Use .csv, .xlsx ou .xls', 'error'); return;
+  // Encontra índice de coluna por lista de nomes normalizados
+  function impAcharCol(hdrs, nomes) {
+    for (var n = 0; n < nomes.length; n++) {
+      for (var j = 0; j < hdrs.length; j++) {
+        if (hdrs[j] === nomes[n] || hdrs[j].indexOf(nomes[n]) === 0) return j;
       }
-      if (file.size > 5 * 1024 * 1024) {
-        showToast('Arquivo muito grande. Máx. 5 MB', 'error'); return;
+    }
+    return -1;
+  }
+
+  // Parse CSV
+  function impParsearCSV(texto) {
+    var limpo = texto.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+    var linhas = limpo.split('\n');
+    if (linhas.length < 2) return [];
+    var hdrs = linhas[0].split(',').map(impNorm);
+    var ci = {
+      nome:     impAcharCol(hdrs, ['nome']),
+      codigo:   impAcharCol(hdrs, ['codigo','cod']),
+      unidade:  impAcharCol(hdrs, ['unidade','unid']),
+      tipo:     impAcharCol(hdrs, ['tipo']),
+      emin:     impAcharCol(hdrs, ['estoqueminimo','estoquemin','min']),
+      eatual:   impAcharCol(hdrs, ['estoqueatual','atual']),
+      desc:     impAcharCol(hdrs, ['descricao','desc']),
+      forn:     impAcharCol(hdrs, ['fornecedor','forn']),
+      preco:    impAcharCol(hdrs, ['preco','valor','price']),
+      ctrl:     impAcharCol(hdrs, ['controleserieoulate','controleserieoulote','controleserielote','controle','sn']),
+    };
+    var rows = [];
+    for (var i = 1; i < linhas.length; i++) {
+      var ln = linhas[i]; if (!ln.trim()) continue;
+      var partes = []; var cur = ''; var inQ = false;
+      for (var k = 0; k < ln.length; k++) {
+        var ch = ln[k];
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { partes.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
       }
-      _file = file;
-      var fn = $q('imp_fname'); if (fn) fn.textContent = file.name;
-      var fs = $q('imp_fsize'); if (fs) fs.textContent = (file.size/1024).toFixed(1) + ' KB';
-      var fi = $q('imp_fileinfo'); if (fi) fi.style.maxHeight = '80px';
-      var z  = $q('imp_zone');    if (z) { z.style.borderColor = '#27AE60'; z.style.background = '#f0fdf4'; }
-      var ic = $q('imp_zone_icon'); if (ic) ic.style.color = '#27AE60';
-      impEnableBtn('imp_btn_preview', true);
+      partes.push(cur.trim());
+      var g = function(idx) {
+        if (idx < 0 || idx >= partes.length) return '';
+        return partes[idx].replace(/^"|"$/g,'').trim();
+      };
+      var ctrlRaw = impNorm(g(ci.ctrl));
+      var ct = ctrlRaw.indexOf('serie') >= 0 ? 'serie' : ctrlRaw.indexOf('lote') >= 0 ? 'lote' : '';
+      rows.push({
+        _linha: i + 1,
+        nome:         g(ci.nome),
+        codigo:       g(ci.codigo),
+        unidade:      g(ci.unidade) || 'un',
+        tipo:         g(ci.tipo) === 'internal' ? 'internal' : 'external',
+        stockMin:     parseInt(g(ci.emin))   || 0,
+        stockCurrent: parseInt(g(ci.eatual)) || 0,
+        descricao:    g(ci.desc),
+        fornecedor:   g(ci.forn),
+        preco:        parseFloat((g(ci.preco)||'0').replace(',','.')) || 0,
+        controlType:  ct,
+        serialControlled: ct !== '',
+      });
     }
+    return rows;
+  }
 
-    function impNorm(h) {
-      return (h || '').toString().trim().toLowerCase()
-        .replace(/\s+/g, '').replace(/[áàãâä]/g,'a').replace(/[éèêë]/g,'e')
-        .replace(/[íìîï]/g,'i').replace(/[óòõôö]/g,'o').replace(/[úùûü]/g,'u')
-        .replace(/[ç]/g,'c').replace(/[^a-z0-9]/g,'');
-    }
-
-    function impFindIdx(headers, keys) {
-      for (var k = 0; k < keys.length; k++) {
-        var key = keys[k];
-        for (var j = 0; j < headers.length; j++) {
-          if (headers[j] === key || headers[j].indexOf(key) === 0) return j;
+  // Parse XLSX usando SheetJS
+  function impParsearXLSX(wb) {
+    if (typeof XLSX === 'undefined') return [];
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    return json.map(function(r, i) {
+      var colKeys = Object.keys(r).map(function(k){ return { k: k, n: impNorm(k) }; });
+      var g = function(nomes) {
+        var idx = -1;
+        for (var n = 0; n < nomes.length && idx < 0; n++) {
+          for (var j = 0; j < colKeys.length; j++) {
+            if (colKeys[j].n === nomes[n] || colKeys[j].n.indexOf(nomes[n]) === 0) { idx = j; break; }
+          }
         }
-      }
-      return -1;
-    }
-
-    function impBuildRow(i, lineNum, g) {
-      var cRaw = impNorm(g(['controleserieoulate','controleserieoulote','controle','sn']));
-      var ct = cRaw.indexOf('serie') >= 0 ? 'serie' : cRaw.indexOf('lote') >= 0 ? 'lote' : '';
+        if (idx < 0) return '';
+        return String(r[colKeys[idx].k] || '').trim();
+      };
+      var ctrlRaw = impNorm(g(['controleserieoulate','controleserieoulote','controleserielote','controle','sn']));
+      var ct = ctrlRaw.indexOf('serie') >= 0 ? 'serie' : ctrlRaw.indexOf('lote') >= 0 ? 'lote' : '';
       return {
-        _line: lineNum,
+        _linha: i + 2,
         nome:         g(['nome']),
         codigo:       g(['codigo','cod']),
         unidade:      g(['unidade','unid']) || 'un',
@@ -892,259 +979,177 @@ app.get('/', (c) => {
         stockCurrent: parseInt(g(['estoqueatual','atual'])) || 0,
         descricao:    g(['descricao','desc']),
         fornecedor:   g(['fornecedor','forn']),
-        preco:        parseFloat((g(['preco','valor','price']) || '0').replace(',','.')) || 0,
+        preco:        parseFloat((g(['preco','valor','price'])||'0').replace(',','.')) || 0,
         controlType:  ct,
-        serialControlled: !!ct,
+        serialControlled: ct !== '',
       };
-    }
-
-    function impParseCsv(text) {
-      var clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-      var lines = clean.split('\n');
-      if (lines.length < 2) return [];
-      var headers = lines[0].split(',').map(impNorm);
-      var rows = [];
-      for (var i = 1; i < lines.length; i++) {
-        var line = lines[i]; if (!line.trim()) continue;
-        var parts = []; var cur = ''; var inQ = false;
-        for (var ci = 0; ci < line.length; ci++) {
-          var ch = line[ci];
-          if (ch === '"') { inQ = !inQ; }
-          else if (ch === ',' && !inQ) { parts.push(cur.trim()); cur = ''; }
-          else { cur += ch; }
-        }
-        parts.push(cur.trim());
-        var getCSV = (function(ps, hs) {
-          return function(keys) {
-            var idx = impFindIdx(hs, keys);
-            if (idx < 0 || idx >= ps.length) return '';
-            return ps[idx].replace(/^"|"$/g, '').trim();
-          };
-        })(parts, headers);
-        rows.push(impBuildRow(i, i + 1, getCSV));
-      }
-      return rows;
-    }
-
-    function impParseXlsx(wb) {
-      var wsName = wb.SheetNames[0];
-      var ws = wb.Sheets[wsName];
-      var jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      return jsonData.map(function(r, i) {
-        var colKeys = Object.keys(r).map(function(k){ return { key: k, norm: impNorm(k) }; });
-        var getXls = function(keys) {
-          var norm = impFindIdx(colKeys.map(function(x){ return x.norm; }), keys);
-          if (norm < 0) return '';
-          return String(r[colKeys[norm].key] || '').trim();
-        };
-        return impBuildRow(i, i + 2, getXls);
-      });
-    }
-
-    function impLocalStatus(cur, min) {
-      if (min <= 0) return { label:'Normal',     color:'#16a34a', bg:'#f0fdf4' };
-      var p = (cur / min) * 100;
-      if (p < 50)  return { label:'Crítico',    color:'#dc2626', bg:'#fef2f2' };
-      if (p < 80)  return { label:'Nec.Compra', color:'#d97706', bg:'#fffbeb' };
-      if (p < 100) return { label:'Nec.Manuf.', color:'#7c3aed', bg:'#f5f3ff' };
-      return { label:'Normal', color:'#16a34a', bg:'#f0fdf4' };
-    }
-
-    function impRenderPreview(rows) {
-      var errors = []; var snCount = 0; var html = '';
-      for (var i = 0; i < rows.length; i++) {
-        var r = rows[i];
-        var bad = !r.nome || !r.codigo;
-        if (!r.nome)   errors.push('Linha ' + r._line + ': Nome vazio');
-        if (!r.codigo) errors.push('Linha ' + r._line + ': Código vazio');
-        if (r.controlType) snCount++;
-        var st = impLocalStatus(r.stockCurrent, r.stockMin);
-        var bg = bad ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb');
-        var snB = r.controlType === 'serie'
-          ? '<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
-          : r.controlType === 'lote'
-          ? '<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
-          : '<span style="color:#d1d5db;">—</span>';
-        html += '<tr style="background:' + bg + ';">'
-          + '<td style="padding:6px 10px;color:#9ca3af;">' + (i+1) + '</td>'
-          + '<td style="padding:6px 10px;font-weight:600;color:' + (bad?'#dc2626':'#374151') + ';">' + (r.nome || '<em style="color:#dc2626">⚠ vazio</em>') + '</td>'
-          + '<td style="padding:6px 10px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 6px;border-radius:4px;font-size:11px;">' + (r.codigo || '<em style="color:#dc2626">⚠</em>') + '</span></td>'
-          + '<td style="padding:6px 10px;color:#6c757d;">' + r.unidade + '</td>'
-          + '<td style="padding:6px 10px;">' + r.stockMin + '</td>'
-          + '<td style="padding:6px 10px;">' + r.stockCurrent + '</td>'
-          + '<td style="padding:6px 10px;"><span style="background:' + st.bg + ';color:' + st.color + ';padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;">' + st.label + '</span></td>'
-          + '<td style="padding:6px 10px;">' + snB + '</td>'
-          + '</tr>';
-      }
-      var tbody = $q('imp_tbody'); if (tbody) tbody.innerHTML = html;
-      var bOk = $q('imp_badge_ok'); if (bOk) bOk.textContent = rows.length + ' linha(s)';
-      var bErr = $q('imp_badge_err');
-      var erEl = $q('imp_errs');
-      if (errors.length > 0) {
-        if (bErr) { bErr.textContent = errors.length + ' erro(s)'; bErr.style.display = ''; }
-        if (erEl) { erEl.style.display = ''; erEl.innerHTML = '<strong>⚠ Erros:</strong><br>' + errors.map(function(x){ return '• ' + x; }).join('<br>'); }
-        impEnableBtn('imp_btn_confirm', false);
-      } else {
-        if (bErr) bErr.style.display = 'none';
-        if (erEl) erEl.style.display = 'none';
-        impEnableBtn('imp_btn_confirm', true);
-      }
-      var bSn = $q('imp_badge_sn');
-      if (bSn) { bSn.textContent = snCount + ' c/ Série/Lote'; bSn.style.display = snCount > 0 ? '' : 'none'; }
-      impShow(2);
-    }
-
-    function impPreview() {
-      if (!_file) return;
-      var btn = $q('imp_btn_preview');
-      if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
-      impEnableBtn('imp_btn_preview', false);
-      var ext = (_file.name.split('.').pop() || '').toLowerCase();
-      if (ext === 'csv') {
-        var reader = new FileReader();
-        reader.onerror = function() {
-          showToast('Erro ao ler o arquivo CSV', 'error');
-          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-          impEnableBtn('imp_btn_preview', true);
-        };
-        reader.onload = function(ev) {
-          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-          _rows = impParseCsv(ev.target.result);
-          if (_rows.length === 0) {
-            showToast('Nenhuma linha de dados encontrada.', 'error');
-            impEnableBtn('imp_btn_preview', true); return;
-          }
-          impRenderPreview(_rows);
-        };
-        reader.readAsText(_file, 'UTF-8');
-      } else {
-        // xlsx / xls — requer SheetJS (carregado via CDN no head)
-        if (typeof XLSX === 'undefined') {
-          showToast('Biblioteca XLSX não carregada. Recarregue a página.', 'error');
-          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-          impEnableBtn('imp_btn_preview', true); return;
-        }
-        var rdr = new FileReader();
-        rdr.onerror = function() {
-          showToast('Erro ao ler o arquivo Excel', 'error');
-          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-          impEnableBtn('imp_btn_preview', true);
-        };
-        rdr.onload = function(ev) {
-          if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
-          try {
-            var wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
-            _rows = impParseXlsx(wb);
-            if (_rows.length === 0) {
-              showToast('Nenhuma linha de dados encontrada.', 'error');
-              impEnableBtn('imp_btn_preview', true); return;
-            }
-            impRenderPreview(_rows);
-          } catch(err) {
-            showToast('Erro ao processar Excel: ' + err.message, 'error');
-            impEnableBtn('imp_btn_preview', true);
-          }
-        };
-        rdr.readAsArrayBuffer(_file);
-      }
-    }
-
-    function impConfirm() {
-      var validRows = _rows.filter(function(r){ return r.nome && r.codigo; });
-      if (validRows.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
-      impShow(3);
-      var total = validRows.length;
-      var pLabel = $q('imp_prog_label');
-      var pTotal = $q('imp_prog_total');
-      var pBar   = $q('imp_prog_bar');
-      var pPct   = $q('imp_prog_pct');
-      var pCount = $q('imp_prog_count');
-      var pSub   = $q('imp_prog_sub');
-      if (pLabel) pLabel.textContent = 'Importando ' + total + ' produto(s)...';
-      if (pTotal) pTotal.textContent = total;
-      var simPct = 0;
-      var simTimer = setInterval(function() {
-        simPct = Math.min(simPct + (90 - simPct) * 0.12, 88);
-        var p = Math.round(simPct);
-        if (pBar)   pBar.style.width = simPct.toFixed(1) + '%';
-        if (pPct)   pPct.textContent = p + '%';
-        var done = Math.round((simPct / 100) * total);
-        if (pCount) pCount.textContent = done;
-        if (pSub)   pSub.textContent = done < total
-          ? 'Processando produto ' + (done + 1) + ' de ' + total + '...'
-          : 'Finalizando...';
-      }, 120);
-      fetch('/produtos/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: validRows }),
-      })
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        clearInterval(simTimer);
-        if (pBar) { pBar.style.width = '100%'; pBar.style.background = data.ok ? '#27AE60' : '#dc2626'; }
-        if (pPct) pPct.textContent = '100%';
-        if (pCount) pCount.textContent = total;
-        if (pSub)  pSub.textContent = '';
-        if (data.ok) {
-          if (pLabel) pLabel.innerHTML = '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>Importação concluída!';
-          var msg = '✅ ' + (data.created || 0) + ' criado(s), ' + (data.updated || 0) + ' atualizado(s).';
-          if (data.pendingSerial > 0) msg += ' • ' + data.pendingSerial + ' aguardando Liberação S/N.';
-          setTimeout(function() {
-            impClose();
-            showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
-            setTimeout(function(){ location.reload(); }, 1200);
-          }, 900);
-        } else {
-          if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>' + (data.error || 'Erro na importação');
-          var bCan = $q('imp_btn_cancel'); if (bCan) bCan.style.display = '';
-          showToast(data.error || 'Erro ao importar', 'error');
-        }
-      })
-      .catch(function(e) {
-        clearInterval(simTimer);
-        if (pBar)   pBar.style.background = '#dc2626';
-        if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>Erro de conexão';
-        var bCan2 = $q('imp_btn_cancel'); if (bCan2) bCan2.style.display = '';
-        showToast('Erro de conexão: ' + e.message, 'error');
-      });
-    }
-
-    // ── Vincular todos os eventos ao DOM ──────────────────────────────────────
-    document.addEventListener('DOMContentLoaded', function() {
-      // Fechar (X e Cancelar)
-      var bX = $q('imp_btn_x');       if (bX)     bX.addEventListener('click', impClose);
-      var bCn = $q('imp_btn_cancel'); if (bCn)    bCn.addEventListener('click', impClose);
-      var bBk = $q('imp_btn_back');   if (bBk)    bBk.addEventListener('click', function(){ impShow(1); });
-      var bPv = $q('imp_btn_preview');if (bPv)    bPv.addEventListener('click', impPreview);
-      var bCf = $q('imp_btn_confirm');if (bCf)    bCf.addEventListener('click', impConfirm);
-      // Drop zone (usando id imp_zone_drop adicionado ao div)
-      var zone = $q('imp_zone_drop') || $q('imp_zone');
-      if (zone) {
-        zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.style.borderColor='#2980B9'; zone.style.background='#e8f4fd'; });
-        zone.addEventListener('dragleave', function(){
-          zone.style.borderColor = _file ? '#27AE60' : '#d1d5db';
-          zone.style.background  = _file ? '#f0fdf4' : '#f8f9fa';
-        });
-        zone.addEventListener('drop', function(e){
-          e.preventDefault();
-          zone.style.borderColor = _file ? '#27AE60' : '#d1d5db';
-          zone.style.background  = _file ? '#f0fdf4' : '#f8f9fa';
-          var f = e.dataTransfer && e.dataTransfer.files[0];
-          if (f) impSetFile(f);
-        });
-        zone.addEventListener('click', function(){ var inp = $q('imp_input'); if (inp) inp.click(); });
-      }
-      // Input file
-      var inp = $q('imp_input');
-      if (inp) inp.addEventListener('change', function(e){ var f = e.target.files[0]; if (f) impSetFile(f); });
-      // Limpar arquivo
-      var bClr = $q('imp_btn_clear');
-      if (bClr) bClr.addEventListener('click', function(e){ e.stopPropagation(); impResetUI(); });
     });
-  })();
-  // ── /Importação de planilha ───────────────────────────────────────────────
-  </script>
+  }
+
+  // Calcula status local para preview
+  function impStatus(cur, min) {
+    if (min <= 0) return { l:'Normal',    c:'#16a34a', b:'#f0fdf4' };
+    var p = (cur/min)*100;
+    if (p < 50)  return { l:'Crítico',   c:'#dc2626', b:'#fef2f2' };
+    if (p < 80)  return { l:'Nec.Compra',c:'#d97706', b:'#fffbeb' };
+    if (p < 100) return { l:'Nec.Manuf.',c:'#7c3aed', b:'#f5f3ff' };
+    return { l:'Normal', c:'#16a34a', b:'#f0fdf4' };
+  }
+
+  // Renderiza preview na tabela
+  function impRenderizarPreview(rows) {
+    var erros = []; var snQt = 0; var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var ruim = !r.nome || !r.codigo;
+      if (!r.nome)   erros.push('Linha ' + r._linha + ': Nome vazio');
+      if (!r.codigo) erros.push('Linha ' + r._linha + ': Código vazio');
+      if (r.controlType) snQt++;
+      var st = impStatus(r.stockCurrent, r.stockMin);
+      var bg = ruim ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#f9fafb');
+      var snB = r.controlType === 'serie'
+        ? '<span style="background:#ede9fe;color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Série</span>'
+        : r.controlType === 'lote'
+        ? '<span style="background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">Lote</span>'
+        : '<span style="color:#d1d5db;">—</span>';
+      html += '<tr style="background:' + bg + ';">'
+        + '<td style="padding:6px 8px;color:#9ca3af;">' + (i+1) + '</td>'
+        + '<td style="padding:6px 8px;font-weight:600;color:' + (ruim?'#dc2626':'#374151') + ';">' + (r.nome || '<em style="color:#dc2626">⚠ vazio</em>') + '</td>'
+        + '<td style="padding:6px 8px;"><span style="font-family:monospace;background:#e8f4fd;padding:1px 5px;border-radius:4px;font-size:11px;">' + (r.codigo || '<em style="color:#dc2626">⚠</em>') + '</span></td>'
+        + '<td style="padding:6px 8px;color:#6c757d;">' + r.unidade + '</td>'
+        + '<td style="padding:6px 8px;">' + r.stockMin + '</td>'
+        + '<td style="padding:6px 8px;">' + r.stockCurrent + '</td>'
+        + '<td style="padding:6px 8px;"><span style="background:' + st.b + ';color:' + st.c + ';padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;">' + st.l + '</span></td>'
+        + '<td style="padding:6px 8px;">' + snB + '</td>'
+        + '</tr>';
+    }
+    var tb = document.getElementById('imp_tbody'); if (tb) tb.innerHTML = html;
+    var bOk = document.getElementById('imp_badge_ok'); if (bOk) bOk.textContent = rows.length + ' linha(s)';
+    var bErr = document.getElementById('imp_badge_err');
+    var erEl = document.getElementById('imp_errs');
+    var bConf = document.getElementById('imp_btn_confirm');
+    if (erros.length > 0) {
+      if (bErr) { bErr.textContent = erros.length + ' erro(s)'; bErr.style.display = ''; }
+      if (erEl) { erEl.style.display = ''; erEl.innerHTML = '<strong>⚠ Erros encontrados:</strong><br>' + erros.map(function(x){ return '• '+x; }).join('<br>'); }
+      if (bConf) { bConf.setAttribute('disabled','disabled'); bConf.style.opacity='0.5'; bConf.style.cursor='not-allowed'; }
+    } else {
+      if (bErr) bErr.style.display = 'none';
+      if (erEl) erEl.style.display = 'none';
+      if (bConf) { bConf.removeAttribute('disabled'); bConf.style.opacity='1'; bConf.style.cursor='pointer'; }
+    }
+    var bSn = document.getElementById('imp_badge_sn');
+    if (bSn) { bSn.textContent = snQt + ' c/ Série/Lote'; bSn.style.display = snQt > 0 ? '' : 'none'; }
+    impTela(2);
+  }
+
+  // Clique em "Visualizar Dados"
+  function impVisualizar() {
+    if (!impArq) { showToast('Selecione um arquivo primeiro', 'error'); return; }
+    var btn = document.getElementById('imp_btn_preview');
+    if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Lendo...';
+    var ext = (impArq.name.split('.').pop() || '').toLowerCase();
+    if (ext === 'csv') {
+      var reader = new FileReader();
+      reader.onerror = function() {
+        showToast('Erro ao ler arquivo CSV', 'error');
+        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+      };
+      reader.onload = function(ev) {
+        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+        impLinhas = impParsearCSV(ev.target.result);
+        if (impLinhas.length === 0) { showToast('Nenhuma linha encontrada no arquivo', 'error'); return; }
+        impRenderizarPreview(impLinhas);
+      };
+      reader.readAsText(impArq, 'UTF-8');
+    } else {
+      if (typeof XLSX === 'undefined') {
+        showToast('SheetJS não carregado. Recarregue a página.', 'error');
+        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+        return;
+      }
+      var rdr = new FileReader();
+      rdr.onerror = function() {
+        showToast('Erro ao ler arquivo Excel', 'error');
+        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+      };
+      rdr.onload = function(ev) {
+        if (btn) btn.innerHTML = '<i class="fas fa-eye"></i> Visualizar Dados';
+        try {
+          var wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+          impLinhas = impParsearXLSX(wb);
+          if (impLinhas.length === 0) { showToast('Nenhuma linha encontrada no arquivo', 'error'); return; }
+          impRenderizarPreview(impLinhas);
+        } catch(err) {
+          showToast('Erro ao processar Excel: ' + err.message, 'error');
+        }
+      };
+      rdr.readAsArrayBuffer(impArq);
+    }
+  }
+
+  // Clique em "Confirmar Importação"
+  function impConfirmar() {
+    var validas = impLinhas.filter(function(r){ return r.nome && r.codigo; });
+    if (validas.length === 0) { showToast('Nenhum dado válido para importar', 'error'); return; }
+    impTela(3);
+    var total = validas.length;
+    var pLabel = document.getElementById('imp_prog_label');
+    var pBar   = document.getElementById('imp_prog_bar');
+    var pPct   = document.getElementById('imp_prog_pct');
+    var pCount = document.getElementById('imp_prog_count');
+    var pTotal = document.getElementById('imp_prog_total');
+    var pSub   = document.getElementById('imp_prog_sub');
+    if (pLabel) pLabel.textContent = 'Importando ' + total + ' produto(s)...';
+    if (pTotal) pTotal.textContent = total;
+    // Barra animada de 0% a ~88% enquanto aguarda resposta
+    var sim = 0;
+    var timer = setInterval(function() {
+      sim = Math.min(sim + (88 - sim) * 0.1, 87);
+      var p = Math.round(sim);
+      if (pBar)   pBar.style.width = sim.toFixed(1) + '%';
+      if (pPct)   pPct.textContent = p + '%';
+      var done = Math.round((sim / 100) * total);
+      if (pCount) pCount.textContent = done;
+      if (pSub)   pSub.textContent = done < total ? 'Processando ' + (done+1) + ' de ' + total + '...' : 'Finalizando...';
+    }, 150);
+    fetch('/produtos/api/import', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ rows: validas }),
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      clearInterval(timer);
+      if (pBar)   { pBar.style.width = '100%'; pBar.style.background = data.ok ? '#27AE60' : '#dc2626'; }
+      if (pPct)   pPct.textContent = '100%';
+      if (pCount) pCount.textContent = total;
+      if (pSub)   pSub.textContent = '';
+      if (data.ok) {
+        if (pLabel) pLabel.innerHTML = '<i class="fas fa-check-circle" style="color:#27AE60;margin-right:6px;"></i>Importação concluída!';
+        var msg = '✅ ' + (data.created||0) + ' criado(s), ' + (data.updated||0) + ' atualizado(s).';
+        if (data.pendingSerial > 0) msg += ' • ' + data.pendingSerial + ' aguardando Liberação S/N.';
+        setTimeout(function() {
+          impFechar();
+          showToast(msg, data.pendingSerial > 0 ? 'info' : 'success');
+          setTimeout(function(){ location.reload(); }, 1200);
+        }, 1000);
+      } else {
+        if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>' + (data.error || 'Erro na importação');
+        var bCan = document.getElementById('imp_btn_cancel');
+        if (bCan) bCan.style.display = '';
+        showToast(data.error || 'Erro ao importar', 'error');
+      }
+    })
+    .catch(function(e) {
+      clearInterval(timer);
+      if (pBar)   pBar.style.background = '#dc2626';
+      if (pLabel) pLabel.innerHTML = '<i class="fas fa-times-circle" style="color:#dc2626;margin-right:6px;"></i>Erro de conexão';
+      var bCan2 = document.getElementById('imp_btn_cancel');
+      if (bCan2) bCan2.style.display = '';
+      showToast('Erro de conexão: ' + e.message, 'error');
+    });
+  }
+  // ── /Importação de planilha ───────────────────────────────────────────────  </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
 })
