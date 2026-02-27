@@ -307,7 +307,7 @@ app.get('/', (c) => {
           <input type="hidden" id="sup_id" value="">
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Razão Social *</label><input class="form-control" id="sup_nome" type="text" placeholder="Nome completo da empresa"></div>
           <div class="form-group"><label class="form-label">Nome Fantasia</label><input class="form-control" id="sup_fantasia" type="text" placeholder="Nome comercial"></div>
-          <div class="form-group" id="fCnpjGroup"><label class="form-label" id="fCnpjLabel">CNPJ <span id="fCnpjRequired" style="color:#dc2626;">*</span></label><input class="form-control" id="sup_cnpj" type="text" placeholder="00.000.000/0001-00"></div>
+          <div class="form-group" id="fCnpjGroup"><label class="form-label" id="fCnpjLabel">CNPJ <span style="color:#dc2626;">*</span></label><input class="form-control" id="sup_cnpj" type="text" placeholder="00.000.000/0001-00"></div>
           <div class="form-group"><label class="form-label">E-mail *</label><input class="form-control" id="sup_email" type="email" placeholder="vendas@fornecedor.com"></div>
           <div class="form-group"><label class="form-label">Telefone</label><input class="form-control" id="sup_tel" type="text" placeholder="(11) 9999-9999"></div>
           <div class="form-group"><label class="form-label">Contato Principal</label><input class="form-control" id="sup_contato" type="text" placeholder="Nome do responsável"></div>
@@ -437,17 +437,14 @@ app.get('/', (c) => {
     var imp = document.getElementById('fType_imp');
     if (nac) nac.style.borderColor = val === 'nacional' ? '#16a34a' : '#d1d5db';
     if (imp) imp.style.borderColor = val === 'importado' ? '#2980B9' : '#d1d5db';
-    // Label e obrigatoriedade do CNPJ
+    // Label e obrigatoriedade do CNPJ — usar innerHTML para evitar problemas com firstChild
     var cnpjLabel = document.getElementById('fCnpjLabel');
-    var cnpjReq   = document.getElementById('fCnpjRequired');
     var cnpjInput = document.getElementById('sup_cnpj');
     if (val === 'importado') {
-      if (cnpjLabel) cnpjLabel.firstChild.nodeValue = 'Tax ID / Registration ';
-      if (cnpjReq)   cnpjReq.style.display = 'none';
+      if (cnpjLabel) cnpjLabel.innerHTML = 'Tax ID / Registration <span style="color:#9ca3af;font-size:11px;">(opcional)</span>';
       if (cnpjInput) cnpjInput.placeholder = 'Tax ID ou EIN (opcional)';
     } else {
-      if (cnpjLabel) cnpjLabel.firstChild.nodeValue = 'CNPJ ';
-      if (cnpjReq)   cnpjReq.style.display = 'inline';
+      if (cnpjLabel) cnpjLabel.innerHTML = 'CNPJ <span style="color:#dc2626;">*</span>';
       if (cnpjInput) cnpjInput.placeholder = '00.000.000/0001-00';
     }
     var ncmGroup = document.getElementById('fNcmGroup');
@@ -587,7 +584,8 @@ app.get('/', (c) => {
     var typeEl      = document.querySelector('input[name="fType"]:checked');
     var type        = typeEl ? typeEl.value : 'nacional';
 
-    if (!name) { showToast('Informe o nome!', 'error'); return; }
+    if (!name) { showToast('Informe o nome (Razão Social)!', 'error'); return; }
+    if (type === 'nacional' && !cnpj) { showToast('CNPJ obrigatório para fornecedor Nacional!', 'error'); return; }
 
     var payload = {
       name: name, fantasia: fantasia, cnpj: cnpj, email: email, phone: phone,

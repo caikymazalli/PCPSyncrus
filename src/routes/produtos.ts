@@ -318,7 +318,7 @@ app.get('/', (c) => {
               </div>
             </div>
           </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" rows="3" placeholder="Descrição detalhada..."></textarea></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" id="newProdDesc" rows="3" placeholder="Descrição detalhada..."></textarea></div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
@@ -453,341 +453,401 @@ app.get('/', (c) => {
 
   <script>
   // ── Edição Inline de Produtos (duplo clique) ─────────────────────────────
-  // Mapa local de edições pendentes
-  const prodEdits: Record<string, Record<string, any>> = {};
-
-  function startProdEdit(td: HTMLElement, field: string, id: string) {
-    // Cancela qualquer edição ativa na mesma coluna/campo
-    document.querySelectorAll('.prod-cell-input').forEach((el: any) => {
+  function startProdEdit(td, field, id) {
+    // Cancela qualquer edição ativa no mesmo campo
+    document.querySelectorAll('.prod-cell-input').forEach(function(el) {
       if (el.dataset.field === field && el.style.display !== 'none') cancelProdEdit(el);
     });
-    const view = td.querySelector('.prod-cell-view') as HTMLElement;
-    const input = td.querySelector('.prod-cell-input') as HTMLElement;
+    var view  = td.querySelector('.prod-cell-view');
+    var input = td.querySelector('.prod-cell-input');
     if (!view || !input) return;
-    view.style.display = 'none';
+    view.style.display  = 'none';
     input.style.display = 'inline-block';
-    (input as HTMLInputElement).focus();
-    if ((input as HTMLInputElement).select) (input as HTMLInputElement).select();
+    input.focus();
+    if (input.select) input.select();
   }
 
-  function cancelProdEdit(input: HTMLInputElement) {
-    const td = input.closest('td');
+  function cancelProdEdit(input) {
+    var td = input.closest('td');
     if (!td) return;
-    const view = td.querySelector('.prod-cell-view') as HTMLElement;
+    var view = td.querySelector('.prod-cell-view');
     if (view) view.style.display = '';
     input.style.display = 'none';
   }
 
-  async function saveProdCell(input: HTMLInputElement) {
-    const id = input.dataset.id || '';
-    const field = input.dataset.field || '';
-    const val = input.value.trim();
+  function calcStatus(current, min) {
+    if (min <= 0) return 'normal';
+    var pct = (current / min) * 100;
+    if (pct < 50)  return 'critical';
+    if (pct < 80)  return 'purchase_needed';
+    if (pct < 100) return 'manufacture_needed';
+    return 'normal';
+  }
+
+  async function saveProdCell(input) {
+    var id    = input.dataset.id || '';
+    var field = input.dataset.field || '';
+    var val   = input.value.trim();
     if (!id || !field) { cancelProdEdit(input); return; }
 
-    // Calcular novo status se campos de estoque mudaram
-    const row = input.closest('tr') as HTMLElement;
-    let payload: any = { [field]: field === 'stockMin' || field === 'stockCurrent' ? parseInt(val) || 0 : val };
+    var payload = {};
+    payload[field] = (field === 'stockMin' || field === 'stockCurrent') ? (parseInt(val) || 0) : val;
 
-    // Se mudou stockMin ou stockCurrent, recalcular status
+    // Recalcular status se campos de estoque mudaram
     if (field === 'stockMin' || field === 'stockCurrent') {
-      let min = 0, curr = 0;
+      var row = input.closest('tr');
+      var min = 0, curr = 0;
       if (field === 'stockMin') {
-        min = parseInt(val) || 0;
-        curr = parseInt((row?.querySelector('[data-field="stockCurrent"]') as HTMLInputElement)?.value || '0') || 0;
-        // buscar valor atual do view
-        const currView = row?.querySelectorAll('td')[4]?.querySelector('.prod-cell-view');
-        if (currView) curr = parseInt(currView.textContent?.trim() || '0') || 0;
+        min  = parseInt(val) || 0;
+        var currView = row ? row.querySelectorAll('td')[4].querySelector('.prod-cell-view') : null;
+        curr = currView ? (parseInt(currView.textContent.trim()) || 0) : 0;
       } else {
         curr = parseInt(val) || 0;
-        const minView = row?.querySelectorAll('td')[3]?.querySelector('.prod-cell-view');
-        if (minView) min = parseInt(minView.textContent?.trim() || '0') || 0;
+        var minView = row ? row.querySelectorAll('td')[3].querySelector('.prod-cell-view') : null;
+        min  = minView ? (parseInt(minView.textContent.trim()) || 0) : 0;
       }
-      const newStatus = calcStatus(curr, min);
-      payload.stockStatus = newStatus;
+      payload.stockStatus = calcStatus(curr, min);
     }
 
     try {
-      const res = await fetch('/produtos/api/' + id, {
+      var res  = await fetch('/produtos/api/' + id, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      var data = await res.json();
       if (data.ok) {
-        // Atualizar a célula view com o novo valor
-        const td = input.closest('td');
-        const view = td?.querySelector('.prod-cell-view') as HTMLElement;
+        // Atualizar célula view
+        var tdEl  = input.closest('td');
+        var view  = tdEl ? tdEl.querySelector('.prod-cell-view') : null;
         if (view) {
-          if (field === 'name') view.textContent = val;
-          else if (field === 'code') view.textContent = val;
-          else if (field === 'unit') view.textContent = val;
-          else if (field === 'stockMin' || field === 'stockCurrent') {
+          if (field === 'stockMin' || field === 'stockCurrent') {
             view.innerHTML = '<span style="font-weight:700;">' + val + '</span>';
-          }
-          else if (field === 'description') {
+          } else {
             view.textContent = val;
           }
           view.style.display = '';
         }
         input.style.display = 'none';
-        // Atualizar status badge se necessário
-        if (payload.stockStatus && row) {
-          const badge = row.querySelector('.prod-status-badge') as HTMLElement;
-          const statusInfo: Record<string, any> = {
-            critical: { label:'Crítico', color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
-            normal: { label:'Normal', color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
-            purchase_needed: { label:'Nec. Compra', color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
-            manufacture_needed: { label:'Nec. Manufatura', color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' },
+        // Atualizar badge de status
+        if (payload.stockStatus) {
+          var row = input.closest('tr');
+          var badge = row ? row.querySelector('.prod-status-badge') : null;
+          var statusInfo = {
+            critical:           { label:'Cr\u00edtico',          color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
+            normal:             { label:'Normal',                color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
+            purchase_needed:    { label:'Nec. Compra',           color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
+            manufacture_needed: { label:'Nec. Manufatura',       color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' }
           };
-          const si = statusInfo[payload.stockStatus] || statusInfo.normal;
+          var si = statusInfo[payload.stockStatus] || statusInfo.normal;
           if (badge) {
             badge.style.background = si.bg;
-            badge.style.color = si.color;
+            badge.style.color      = si.color;
             badge.innerHTML = '<i class="fas ' + si.icon + '" style="font-size:9px;"></i>' + si.label;
-            row.dataset.status = payload.stockStatus;
+            if (row) row.dataset.status = payload.stockStatus;
           }
         }
-        showToast('✅ ' + field + ' atualizado!', 'success');
+        showToast('\u2705 Salvo!', 'success');
       } else {
         showToast(data.error || 'Erro ao atualizar', 'error');
         cancelProdEdit(input);
       }
     } catch(e) {
-      showToast('Erro de conexão', 'error');
+      showToast('Erro de conex\u00e3o', 'error');
       cancelProdEdit(input);
     }
   }
 
-  // ── Funções gerais da página de Produtos ─────────────────────────────────
+  // ── Filtros ──────────────────────────────────────────────────────────────
   function filterProds() {
-    const search = document.getElementById('prodSearch').value.toLowerCase();
-    const status = document.getElementById('prodStatusFilter').value;
-    document.querySelectorAll('.prod-row').forEach(row => {
-      const matchSearch = !search || (row.dataset.search || '').includes(search);
-      const matchStatus = !status || row.dataset.status === status;
-      (row as HTMLElement).style.display = (matchSearch && matchStatus) ? '' : 'none';
+    var search = document.getElementById('prodSearch').value.toLowerCase();
+    var status = document.getElementById('prodStatusFilter').value;
+    document.querySelectorAll('.prod-row').forEach(function(row) {
+      var matchSearch = !search || (row.dataset.search || '').includes(search);
+      var matchStatus = !status || row.dataset.status === status;
+      row.style.display = (matchSearch && matchStatus) ? '' : 'none';
     });
   }
 
   function filterByStatus(status) {
     document.getElementById('prodStatusFilter').value = status;
     filterProds();
-    document.getElementById('prodTable')?.scrollIntoView({ behavior:'smooth' });
+    var tbl = document.getElementById('prodTable');
+    if (tbl) tbl.scrollIntoView({ behavior:'smooth' });
   }
 
   function scrollToSection(id) {
-    document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior:'smooth' });
   }
 
-  function calcStatus(current, min) {
-    if (min <= 0) return 'normal';
-    const pct = (current / min) * 100;
-    if (pct < 50) return 'critical';
-    if (pct < 80) return 'purchase_needed';
-    if (pct < 100) return 'manufacture_needed';
-    return 'normal';
-  }
-
+  // ── Preview status no modal Novo Produto ─────────────────────────────────
   function updateStatusPreview() {
-    const min = parseInt(document.getElementById('newProdStockMin').value) || 0;
-    const curr = parseInt(document.getElementById('newProdStockCurrent').value) || 0;
+    var minEl  = document.getElementById('newProdStockMin');
+    var currEl = document.getElementById('newProdStockCurrent');
+    var min  = parseInt(minEl ? minEl.value : '0')  || 0;
+    var curr = parseInt(currEl ? currEl.value : '0') || 0;
     if (min > 0) {
-      const status = calcStatus(curr, min);
-      const radio = document.querySelector('input[name="stockStatus"][value="' + status + '"]');
+      var status = calcStatus(curr, min);
+      var radio  = document.querySelector('input[name="stockStatus"][value="' + status + '"]');
       if (radio) { radio.checked = true; highlightStatus(); }
     }
   }
 
   function highlightStatus() {
-    const selected = document.querySelector('input[name="stockStatus"]:checked')?.value;
-    ['critical','normal','purchase_needed','manufacture_needed'].forEach(s => {
-      const el = document.getElementById('st_' + (s === 'purchase_needed' ? 'purchase' : s === 'manufacture_needed' ? 'manufacture' : s));
+    var selected = '';
+    var selEl = document.querySelector('input[name="stockStatus"]:checked');
+    if (selEl) selected = selEl.value;
+    ['critical','normal','purchase_needed','manufacture_needed'].forEach(function(s) {
+      var key = s === 'purchase_needed' ? 'purchase' : s === 'manufacture_needed' ? 'manufacture' : s;
+      var el  = document.getElementById('st_' + key);
       if (el) el.style.borderColor = (selected === s) ? '#2980B9' : '#d1d5db';
     });
   }
 
+  // ── Controle série/lote ──────────────────────────────────────────────────
+  function toggleSerialType(val) {
+    var hint     = document.getElementById('serialTypeHint');
+    var hintText = document.getElementById('serialTypeHintText');
+    ['slCtrl_no','slCtrl_serie','slCtrl_lote'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.style.borderColor = '#d1d5db';
+    });
+    if (val === 'serie') {
+      if (hint) hint.style.display = 'block';
+      if (hintText) hintText.textContent = 'Cada unidade ter\u00e1 um n\u00famero de s\u00e9rie \u00fanico.';
+      var el = document.getElementById('slCtrl_serie'); if (el) el.style.borderColor = '#7c3aed';
+    } else if (val === 'lote') {
+      if (hint) hint.style.display = 'block';
+      if (hintText) hintText.textContent = 'Pe\u00e7as ser\u00e3o agrupadas por lote.';
+      var el2 = document.getElementById('slCtrl_lote'); if (el2) el2.style.borderColor = '#d97706';
+    } else {
+      if (hint) hint.style.display = 'none';
+      var el3 = document.getElementById('slCtrl_no'); if (el3) el3.style.borderColor = '#16a34a';
+    }
+  }
+
+  function toggleEditSerialHint(val) {
+    ['epSlCtrl_no','epSlCtrl_serie','epSlCtrl_lote'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.style.borderColor = '#d1d5db';
+    });
+    if (val === 'serie') {
+      var e = document.getElementById('epSlCtrl_serie'); if (e) e.style.borderColor = '#7c3aed';
+    } else if (val === 'lote') {
+      var e2 = document.getElementById('epSlCtrl_lote'); if (e2) e2.style.borderColor = '#d97706';
+    } else {
+      var e3 = document.getElementById('epSlCtrl_no'); if (e3) e3.style.borderColor = '#16a34a';
+    }
+  }
+
+  // ── Tipo de Produto (interno/externo) ────────────────────────────────────
+  function onProdTypeChange(ctx, val) {
+    var isNew   = ctx === 'new';
+    var supSect = document.getElementById(isNew ? 'newProdSupplierSection' : 'editProdSupplierSection');
+    var intSect = document.getElementById(isNew ? 'newProdInternalSection' : 'editProdInternalSection');
+    if (supSect) supSect.style.display = val === 'external' ? '' : 'none';
+    if (intSect) intSect.style.display = val === 'internal' ? '' : 'none';
+    var extLabel = document.getElementById(isNew ? 'ptype_ext' : 'ep_ptype_ext');
+    var intLabel = document.getElementById(isNew ? 'ptype_int' : 'ep_ptype_int');
+    if (extLabel) extLabel.style.borderColor = val === 'external' ? '#2980B9' : '#d1d5db';
+    if (intLabel) intLabel.style.borderColor = val === 'internal' ? '#7c3aed' : '#d1d5db';
+  }
+
+  // ── Status calculado no modal Editar ────────────────────────────────────
+  function calcEditStatus() {
+    var minEl  = document.getElementById('ep_stockMin');
+    var currEl = document.getElementById('ep_stockCurrent');
+    var min  = parseInt(minEl  ? minEl.value  : '0') || 0;
+    var curr = parseInt(currEl ? currEl.value : '0') || 0;
+    var status = calcStatus(curr, min);
+    var info = {
+      critical:           { label:'Cr\u00edtico',                    color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
+      normal:             { label:'Normal',                          color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
+      purchase_needed:    { label:'Necessidade de Compra',           color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
+      manufacture_needed: { label:'Necessidade de Manufatura',       color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' }
+    };
+    var s  = info[status] || info.normal;
+    var el = document.getElementById('editStatusDisplay');
+    if (el) {
+      el.style.background = s.bg;
+      el.style.color      = s.color;
+      el.innerHTML = '<i class="fas ' + s.icon + '"></i> ' + s.label;
+    }
+  }
+
+  // ── Abrir modal Editar Produto ───────────────────────────────────────────
   function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType) {
-    document.getElementById('ep_id').value = id;
-    document.getElementById('ep_name').value = name;
-    document.getElementById('ep_code').value = code;
-    document.getElementById('ep_unit').value = unit;
-    document.getElementById('ep_stockMin').value = stockMin;
-    document.getElementById('ep_stockCurrent').value = stockCurrent;
-    // Set serial control
-    const serialVal = serialControlled === 'true' ? (controlType || 'serie') : 'none';
-    const radio = document.querySelector('input[name="editProdSerial"][value="' + serialVal + '"]');
+    var elId = document.getElementById('ep_id');           if (elId) elId.value = id;
+    var elNm = document.getElementById('ep_name');         if (elNm) elNm.value = name;
+    var elCd = document.getElementById('ep_code');         if (elCd) elCd.value = code;
+    var elUn = document.getElementById('ep_unit');         if (elUn) elUn.value = unit;
+    var elMn = document.getElementById('ep_stockMin');     if (elMn) elMn.value = stockMin;
+    var elCr = document.getElementById('ep_stockCurrent'); if (elCr) elCr.value = stockCurrent;
+    var serialVal = (serialControlled === 'true' || serialControlled === true) ? (controlType || 'serie') : 'none';
+    var radio = document.querySelector('input[name="editProdSerial"][value="' + serialVal + '"]');
     if (radio) radio.checked = true;
     toggleEditSerialHint(serialVal);
     calcEditStatus();
     openModal('editProdModal');
   }
 
-  function toggleEditSerialHint(val) {
-    ['epSlCtrl_no','epSlCtrl_serie','epSlCtrl_lote'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.borderColor = '#d1d5db';
-    });
-    if (val === 'serie') document.getElementById('epSlCtrl_serie').style.borderColor = '#7c3aed';
-    else if (val === 'lote') document.getElementById('epSlCtrl_lote').style.borderColor = '#d97706';
-    else document.getElementById('epSlCtrl_no').style.borderColor = '#16a34a';
-  }
-
-  function toggleSerialType(val) {
-    const hint = document.getElementById('serialTypeHint');
-    const hintText = document.getElementById('serialTypeHintText');
-    ['slCtrl_no','slCtrl_serie','slCtrl_lote'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.borderColor = '#d1d5db';
-    });
-    if (val === 'serie') {
-      hint.style.display = 'block';
-      hintText.textContent = 'Cada unidade terá um número de série único. O número deve ser informado nos apontamentos e ao importar via planilha.';
-      document.getElementById('slCtrl_serie').style.borderColor = '#7c3aed';
-    } else if (val === 'lote') {
-      hint.style.display = 'block';
-      hintText.textContent = 'Peças serão agrupadas por lote. O número do lote deve ser informado nos apontamentos e ao importar via planilha (quantidades somadas por lote).';
-      document.getElementById('slCtrl_lote').style.borderColor = '#d97706';
-    } else {
-      hint.style.display = 'none';
-      document.getElementById('slCtrl_no').style.borderColor = '#16a34a';
-    }
-  }
-
-  function calcEditStatus() {
-    const min = parseInt(document.getElementById('ep_stockMin').value) || 0;
-    const curr = parseInt(document.getElementById('ep_stockCurrent').value) || 0;
-    const status = calcStatus(curr, min);
-    const info = {
-      critical: { label:'Crítico', color:'#dc2626', bg:'#fef2f2', icon:'fa-exclamation-circle' },
-      normal: { label:'Normal', color:'#16a34a', bg:'#f0fdf4', icon:'fa-check-circle' },
-      purchase_needed: { label:'Necessidade de Compra', color:'#d97706', bg:'#fffbeb', icon:'fa-shopping-cart' },
-      manufacture_needed: { label:'Necessidade de Manufatura', color:'#7c3aed', bg:'#f5f3ff', icon:'fa-industry' },
-    };
-    const s = info[status] || info.normal;
-    const el = document.getElementById('editStatusDisplay');
-    el.style.background = s.bg;
-    el.style.color = s.color;
-    el.innerHTML = '<i class="fas ' + s.icon + '"></i> ' + s.label;
-  }
-
-  // ── Tipo de Produto (interno/externo) ────────────────────────────────────
-  function onProdTypeChange(ctx, val) {
-    const isNew = ctx === 'new';
-    const supSect = document.getElementById(isNew ? 'newProdSupplierSection' : 'editProdSupplierSection');
-    const intSect = document.getElementById(isNew ? 'newProdInternalSection' : 'editProdInternalSection');
-    if (supSect) supSect.style.display = val === 'external' ? '' : 'none';
-    if (intSect) intSect.style.display = val === 'internal' ? '' : 'none';
-    // Highlight border
-    const extLabel = document.getElementById(isNew ? 'ptype_ext' : 'ep_ptype_ext');
-    const intLabel = document.getElementById(isNew ? 'ptype_int' : 'ep_ptype_int');
-    if (extLabel) extLabel.style.borderColor = val === 'external' ? '#2980B9' : '#d1d5db';
-    if (intLabel) intLabel.style.borderColor = val === 'internal' ? '#7c3aed' : '#d1d5db';
-  }
-
-
   function showAutoOPPopup(prodName, stockCurrent, stockMin) {
-    document.getElementById('autoOPPopup').style.display = 'flex';
-    document.getElementById('autoOPProdName').textContent = prodName;
-    document.getElementById('autoOPQty').textContent = stockMin - stockCurrent;
+    var popup = document.getElementById('autoOPPopup');
+    if (popup) popup.style.display = 'flex';
+    var nameEl = document.getElementById('autoOPProdName'); if (nameEl) nameEl.textContent = prodName;
+    var qtyEl  = document.getElementById('autoOPQty');      if (qtyEl) qtyEl.textContent = stockMin - stockCurrent;
   }
 
-  // Auto-close popup after 8 seconds
-  setTimeout(() => {
-    const popup = document.getElementById('criticalStockPopup');
+  // Auto-close popup after 8s
+  setTimeout(function() {
+    var popup = document.getElementById('criticalStockPopup');
     if (popup) popup.style.display = 'none';
   }, 8000);
 
-
+  // ── Salvar Novo Produto ──────────────────────────────────────────────────
   async function salvarNovoProduto() {
-    const typeEl = document.querySelector('input[name="newProdType"]:checked');
-    const type = typeEl ? typeEl.value : 'external';
-    const nome = (document.getElementById('newProdName') as HTMLInputElement)?.value?.trim() || '';
-    const code = (document.getElementById('newProdCode') as HTMLInputElement)?.value?.trim() || '';
-    const unit = (document.getElementById('newProdUnit') as HTMLSelectElement)?.value || 'un';
-    if (!nome) { showToast('⚠ Informe o nome do produto!', 'error'); return; }
-    const stockMin = parseInt(document.getElementById('newProdStockMin')?.value) || 0;
-    const stockCurrent = parseInt(document.getElementById('newProdStockCurrent')?.value) || 0;
-    const critPct = parseInt(document.getElementById('newProdCritPct')?.value) || 50;
-    
+    var typeEl    = document.querySelector('input[name="newProdType"]:checked');
+    var type      = typeEl ? typeEl.value : 'external';
+    var nomeEl    = document.getElementById('newProdName');
+    var codeEl    = document.getElementById('newProdCode');
+    var unitEl    = document.getElementById('newProdUnit');
+    var minEl     = document.getElementById('newProdStockMin');
+    var currEl    = document.getElementById('newProdStockCurrent');
+    var critEl    = document.getElementById('newProdCritPct');
+    var descEl    = document.getElementById('newProdDesc');
+    var serialEl  = document.querySelector('input[name="newProdSerial"]:checked');
+    var sup1El    = document.getElementById('newProdSupplier1');
+    var sup2El    = document.getElementById('newProdSupplier2');
+
+    var nome      = nomeEl  ? nomeEl.value.trim()  : '';
+    var code      = codeEl  ? codeEl.value.trim()  : '';
+    var unit      = unitEl  ? unitEl.value         : 'un';
+    var stockMin  = parseInt(minEl  ? minEl.value  : '0') || 0;
+    var stockCurrent = parseInt(currEl ? currEl.value : '0') || 0;
+    var critPct   = parseInt(critEl ? critEl.value : '50') || 50;
+    var desc      = descEl  ? descEl.value.trim()  : '';
+    var serialVal = serialEl ? serialEl.value : 'none';
+    var serialControlled = serialVal !== 'none';
+    var controlType      = serialControlled ? serialVal : '';
+    var supplierId  = sup1El ? sup1El.value : '';
+    var supplierId2 = sup2El ? sup2El.value : '';
+
+    if (!nome) { showToast('\u26a0 Informe o nome do produto!', 'error'); return; }
+    if (!code) { showToast('\u26a0 Informe o c\u00f3digo do produto!', 'error'); return; }
+
+    var stockStatus = calcStatus(stockCurrent, stockMin);
+
     try {
-      const res = await fetch('/produtos/api/create', {
+      var res = await fetch('/produtos/api/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nome, code, unit, type, stockMin, stockCurrent, criticalPercentage: critPct })
+        body: JSON.stringify({
+          name: nome, code: code, unit: unit, type: type,
+          stockMin: stockMin, stockCurrent: stockCurrent,
+          stockStatus: stockStatus,
+          criticalPercentage: critPct,
+          description: desc,
+          serialControlled: serialControlled,
+          controlType: controlType,
+          supplierId: supplierId,
+          supplierId2: supplierId2
+        })
       });
-      const data = await res.json();
+      var data = await res.json();
       if (data.ok) {
-        showToast('✅ Produto criado com sucesso!');
-        // Limpar campos do modal
-        ['newProdName','newProdCode','newProdStockMin','newProdStockCurrent'].forEach(id => {
-          const el = document.getElementById(id) as HTMLInputElement;
-          if (el) el.value = '';
-        });
-        const unitEl = document.getElementById('newProdUnit') as HTMLSelectElement;
+        showToast('\u2705 Produto criado com sucesso!');
+        // Limpar campos
+        if (nomeEl) nomeEl.value = '';
+        if (codeEl) codeEl.value = '';
+        if (minEl)  minEl.value  = '';
+        if (currEl) currEl.value = '';
         if (unitEl) unitEl.value = 'un';
+        if (descEl) descEl.value = '';
         closeModal('novoProdModal');
-        setTimeout(() => location.reload(), 600);
+        setTimeout(function() { location.reload(); }, 600);
         if (type === 'internal' && stockMin > 0 && stockCurrent < (stockMin * critPct / 100)) {
-          setTimeout(() => showAutoOPPopup(nome, stockCurrent, stockMin), 900);
+          setTimeout(function() { showAutoOPPopup(nome, stockCurrent, stockMin); }, 900);
         }
       } else {
         showToast(data.error || 'Erro ao criar produto', 'error');
       }
     } catch(e) {
-      showToast('Erro de conexão', 'error');
+      showToast('Erro de conex\u00e3o', 'error');
     }
   }
 
+  // ── Salvar Edição Produto (modal) ────────────────────────────────────────
   async function salvarEdicaoProduto() {
-    const id = document.getElementById('ep_id')?.value || '';
-    if (!id) { showToast('ID do produto não encontrado', 'error'); return; }
-    const name = document.getElementById('ep_name')?.value || '';
-    const code = document.getElementById('ep_code')?.value || '';
-    const unit = document.getElementById('ep_unit')?.value || 'un';
-    const stockMin = parseInt(document.getElementById('ep_stockMin')?.value) || 0;
-    const stockCurrent = parseInt(document.getElementById('ep_stockCurrent')?.value) || 0;
-    const typeEl = document.querySelector('input[name="editProdType"]:checked');
-    const type = typeEl ? typeEl.value : 'external';
-    const serialEl = document.querySelector('input[name="editProdSerial"]:checked');
-    const serialVal = serialEl ? serialEl.value : 'none';
-    const serialControlled = serialVal !== 'none';
-    const controlType = serialControlled ? serialVal : '';
+    var idEl   = document.getElementById('ep_id');
+    var id     = idEl ? idEl.value : '';
+    if (!id) { showToast('ID do produto n\u00e3o encontrado', 'error'); return; }
+
+    var nameEl  = document.getElementById('ep_name');
+    var codeEl  = document.getElementById('ep_code');
+    var unitEl  = document.getElementById('ep_unit');
+    var minEl   = document.getElementById('ep_stockMin');
+    var currEl  = document.getElementById('ep_stockCurrent');
+    var typeEl  = document.querySelector('input[name="editProdType"]:checked');
+    var serEl   = document.querySelector('input[name="editProdSerial"]:checked');
+
+    var name         = nameEl  ? nameEl.value.trim()  : '';
+    var code         = codeEl  ? codeEl.value.trim()  : '';
+    var unit         = unitEl  ? unitEl.value          : 'un';
+    var stockMin     = parseInt(minEl  ? minEl.value  : '0') || 0;
+    var stockCurrent = parseInt(currEl ? currEl.value : '0') || 0;
+    var type         = typeEl  ? typeEl.value          : 'external';
+    var serialVal    = serEl   ? serEl.value           : 'none';
+    var serialControlled = serialVal !== 'none';
+    var controlType      = serialControlled ? serialVal : '';
+    var stockStatus      = calcStatus(stockCurrent, stockMin);
+
     if (!name) { showToast('Informe o nome do produto!', 'error'); return; }
+
     try {
-      const res = await fetch('/produtos/api/' + id, {
+      var res = await fetch('/produtos/api/' + id, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, code, unit, type, stockMin, stockCurrent, serialControlled, controlType })
+        body: JSON.stringify({
+          name: name, code: code, unit: unit, type: type,
+          stockMin: stockMin, stockCurrent: stockCurrent,
+          stockStatus: stockStatus,
+          serialControlled: serialControlled, controlType: controlType
+        })
       });
-      const data = await res.json();
+      var data = await res.json();
       if (data.ok) {
-        showToast('✅ Produto atualizado!');
+        showToast('\u2705 Produto atualizado!');
         closeModal('editProdModal');
-        setTimeout(() => location.reload(), 800);
+        setTimeout(function() { location.reload(); }, 800);
       } else {
         showToast(data.error || 'Erro ao atualizar', 'error');
       }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
+  // ── Excluir Produto ──────────────────────────────────────────────────────
   async function deleteProduto(id) {
     if (!confirm('Excluir este produto?')) return;
     try {
-      const res = await fetch('/produtos/api/' + id, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) { showToast('Produto excluído!'); setTimeout(() => location.reload(), 500); }
+      var res  = await fetch('/produtos/api/' + id, { method: 'DELETE' });
+      var data = await res.json();
+      if (data.ok) { showToast('Produto exclu\u00eddo!'); setTimeout(function() { location.reload(); }, 500); }
       else showToast(data.error || 'Erro ao excluir', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
-  // ── Toast notification ────────────────────────────────────────────────────
-  function showToast(msg, type = 'success') {
-    const t = document.createElement('div');
+  // ── Toast ────────────────────────────────────────────────────────────────
+  function showToast(msg, type) {
+    if (!type) type = 'success';
+    var t = document.createElement('div');
     t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
     t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
-    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
+    var icon = type === 'success' ? '<i class="fas fa-check-circle"></i>' : type === 'error' ? '<i class="fas fa-exclamation-circle"></i>' : '<i class="fas fa-info-circle"></i>';
+    t.innerHTML = icon + ' ' + msg;
     document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+    setTimeout(function() {
+      t.style.opacity = '0';
+      setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
+    }, 3500);
   }
 
   </script>
@@ -804,15 +864,31 @@ app.post('/api/create', async (c) => {
   if (!body || !body.name) return err(c, 'Nome do produto obrigatório')
 
   const id = genId('prod')
+  // Calcular stockStatus baseado nos valores informados
+  function calcStockStatusCreate(current: number, min: number): string {
+    if (min <= 0) return 'normal'
+    const pct = (current / min) * 100
+    if (pct < 50)  return 'critical'
+    if (pct < 80)  return 'purchase_needed'
+    if (pct < 100) return 'manufacture_needed'
+    return 'normal'
+  }
+  const stockMin     = parseInt(body.stockMin) || 0
+  const stockCurrent = parseInt(body.stockCurrent) || 0
+  const stockStatus  = (body.stockStatus && body.stockStatus !== 'normal')
+    ? body.stockStatus
+    : calcStockStatusCreate(stockCurrent, stockMin)
+
   const product = {
     id, name: body.name, code: body.code || id.slice(-6).toUpperCase(),
     unit: body.unit || 'un', type: body.type || 'external',
-    stockMin: parseInt(body.stockMin) || 0,
-    stockMax: parseInt(body.stockMax) || 0,
-    stockCurrent: parseInt(body.stockCurrent) || 0,
+    stockMin, stockMax: parseInt(body.stockMax) || 0, stockCurrent,
     criticalPercentage: parseInt(body.criticalPercentage) || 50,
-    stockStatus: 'normal', supplierId: body.supplierId || '',
+    stockStatus, supplierId: body.supplierId || '',
     supplierName: body.supplierName || '', price: parseFloat(body.price) || 0,
+    description: body.description || '',
+    serialControlled: !!body.serialControlled,
+    controlType: body.controlType || '',
     notes: body.notes || '', createdAt: new Date().toISOString(),
   }
 
@@ -825,6 +901,9 @@ app.post('/api/create', async (c) => {
       stock_min: product.stockMin, stock_max: product.stockMax,
       stock_current: product.stockCurrent, stock_status: product.stockStatus,
       price: product.price, notes: product.notes,
+      description: product.description,
+      serial_controlled: product.serialControlled ? 1 : 0,
+      control_type: product.controlType,
       critical_percentage: product.criticalPercentage,
     })
   }
