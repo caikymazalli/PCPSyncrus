@@ -262,17 +262,19 @@ export async function createSession(user: RegisteredUser, db?: D1Database | null
   sessions[token] = session
   user.lastLogin = createdAt
   
-  // Persist to D1 if available
-  if (db && !user.isDemo) {
+  // Persist session to D1 if available (both demo and real users need this for stateless Workers)
+  if (db) {
     try {
       await db.prepare(`
         INSERT OR REPLACE INTO sessions (token, user_id, email, nome, empresa, plano, role, is_demo, created_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(token, user.userId, user.email, session.nome, user.empresa, user.plano, user.role, 0, createdAt, expiresAt).run()
+      `).bind(token, user.userId, user.email, session.nome, user.empresa, user.plano, user.role, user.isDemo ? 1 : 0, createdAt, expiresAt).run()
       
-      // Update last_login
-      await db.prepare('UPDATE registered_users SET last_login = ? WHERE id = ?')
-        .bind(createdAt, user.userId).run()
+      // Update last_login (non-demo only)
+      if (!user.isDemo) {
+        await db.prepare('UPDATE registered_users SET last_login = ? WHERE id = ?')
+          .bind(createdAt, user.userId).run()
+      }
     } catch (e) {
       // D1 unavailable — continue with in-memory session
     }
@@ -372,7 +374,7 @@ export async function loginUser(email: string, pwd: string, db?: D1Database | nu
       trialStart: '2024-01-01',
       trialEnd: '2099-12-31',
     }
-    const token = await createSession(demoReg, null)
+    const token = await createSession(demoReg, db)  // persist demo session in D1 if available
     return { ok: true, token, session: sessions[token], isNewUser: false }
   }
 
