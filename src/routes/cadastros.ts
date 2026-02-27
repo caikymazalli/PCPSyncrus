@@ -398,6 +398,35 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Modal: Solicitar Cotação -->
+  <div class="modal-overlay" id="solicitarCotacaoModal">
+    <div class="modal" style="max-width:580px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="cotModalTitle"><i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>Solicitar Cotação</h3>
+        <button onclick="closeModal('solicitarCotacaoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;max-height:70vh;overflow-y:auto;">
+        <input type="hidden" id="cot_supplier_id">
+        <div style="background:#e8f4fd;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1B4F72;" id="cotSupplierInfo"></div>
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <label class="form-label" style="margin:0;">Produtos para Cotação</label>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="addCotItemCad()"><i class="fas fa-plus"></i> Adicionar Item</button>
+          </div>
+          <div id="cotItensCadList"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observações</label>
+          <textarea class="form-control" id="cot_obs_cad" rows="3" placeholder="Condições especiais, especificações técnicas, prazo necessário..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('solicitarCotacaoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="confirmarCotacao()" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Criar Cotação</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Detalhes Fornecedor -->
   <div class="modal-overlay" id="supplierDetailModal">
     <div class="modal" style="max-width:600px;">
@@ -652,11 +681,113 @@ app.get('/', (c) => {
   }
 
   // ── Solicitar cotação ───────────────────────────────────────────────────
+  function addCotItemCad(selectedCode) {
+    var list = document.getElementById('cotItensCadList');
+    var div = document.createElement('div');
+    div.className = 'cot-item-cad';
+    div.style.cssText = 'display:grid;grid-template-columns:2fr 80px auto;gap:8px;margin-bottom:8px;align-items:center;';
+    var sel = document.createElement('select');
+    sel.className = 'form-control';
+    sel.style.fontSize = '12px';
+    var emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = 'Selecionar item...';
+    sel.appendChild(emptyOpt);
+    allItemsData.forEach(function(i) {
+      var opt = document.createElement('option');
+      opt.value = i.code;
+      opt.textContent = (i.name || i.code) + ' (' + i.code + ')';
+      if (selectedCode && i.code === selectedCode) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    var qtyInput = document.createElement('input');
+    qtyInput.className = 'form-control';
+    qtyInput.type = 'number';
+    qtyInput.placeholder = 'Qtd';
+    qtyInput.min = '1';
+    qtyInput.value = '1';
+    qtyInput.style.fontSize = '12px';
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-danger btn-sm';
+    btn.type = 'button';
+    btn.innerHTML = '<i class="fas fa-trash"></i>';
+    btn.onclick = function() { div.parentNode && div.parentNode.removeChild(div); };
+    div.appendChild(sel);
+    div.appendChild(qtyInput);
+    div.appendChild(btn);
+    list.appendChild(div);
+  }
+
   function solicitarCotacao(id) {
     var s = suppliersData.find(function(x) { return x.id === id; });
     if (!s) return;
-    showToast('\u2709\ufe0f Abrindo cota\u00e7\u00e3o para ' + s.name + '...', 'info');
-    setTimeout(function() { window.location.href = '/suprimentos?cotacao=' + id; }, 1500);
+    document.getElementById('cot_supplier_id').value = id;
+    var infoEl = document.getElementById('cotSupplierInfo');
+    if (infoEl) {
+      infoEl.textContent = '';
+      var icon = document.createElement('i');
+      icon.className = 'fas fa-truck';
+      icon.style.marginRight = '6px';
+      infoEl.appendChild(icon);
+      var strong = document.createElement('strong');
+      strong.textContent = s.name;
+      infoEl.appendChild(strong);
+      if (s.category) infoEl.appendChild(document.createTextNode(' \u2014 ' + s.category));
+      if (s.deliveryLeadDays) infoEl.appendChild(document.createTextNode(' \u2014 Prazo: ' + s.deliveryLeadDays + 'd'));
+    }
+    var titleEl = document.getElementById('cotModalTitle');
+    if (titleEl) {
+      titleEl.textContent = '';
+      var ti = document.createElement('i');
+      ti.className = 'fas fa-file-invoice-dollar';
+      ti.style.marginRight = '8px';
+      titleEl.appendChild(ti);
+      titleEl.appendChild(document.createTextNode('Solicitar Cota\u00e7\u00e3o \u2014 ' + s.name));
+    }
+    // Pre-populate with supplier's linked products
+    var list = document.getElementById('cotItensCadList');
+    list.innerHTML = '';
+    document.getElementById('cot_obs_cad').value = '';
+    var linkedCodes = (productSuppliersData || []).filter(function(ps) { return ps.supplierId === id; }).map(function(ps) { return ps.productCode; });
+    if (linkedCodes.length > 0) {
+      linkedCodes.forEach(function(code) { addCotItemCad(code); });
+    } else {
+      addCotItemCad();
+    }
+    openModal('solicitarCotacaoModal');
+  }
+
+  async function confirmarCotacao() {
+    var supplierId = document.getElementById('cot_supplier_id').value;
+    var s = suppliersData.find(function(x) { return x.id === supplierId; });
+    var notes = document.getElementById('cot_obs_cad').value;
+    var rows = document.querySelectorAll('.cot-item-cad');
+    var items = [];
+    rows.forEach(function(row) {
+      var sel = row.querySelector('select');
+      var qty = row.querySelector('input[type="number"]');
+      if (sel && sel.value) {
+        var item = allItemsData.find(function(i) { return i.code === sel.value; });
+        items.push({ code: sel.value, name: item ? (item.name || sel.value) : sel.value, qty: parseInt(qty ? qty.value : '') || 1 });
+      }
+    });
+    if (items.length === 0) { showToast('Adicione ao menos um produto!', 'error'); return; }
+    var title = 'Cota\u00e7\u00e3o ' + (s ? s.name : supplierId) + ' \u2014 ' + new Date().toLocaleDateString('pt-BR');
+    var itemsDesc = items.map(function(i) { return i.name + ' (x' + i.qty + ')'; }).join(', ');
+    var fullNotes = (notes ? notes + '\n' : '') + 'Itens: ' + itemsDesc;
+    try {
+      var res = await fetch('/suprimentos/api/quotation/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title, notes: fullNotes })
+      });
+      var data = await res.json();
+      if (data.ok) {
+        showToast('\u2705 Cota\u00e7\u00e3o criada! Redirecionando...', 'success');
+        closeModal('solicitarCotacaoModal');
+        setTimeout(function() { window.location.href = '/suprimentos'; }, 1200);
+      } else { showToast(data.error || 'Erro ao criar cota\u00e7\u00e3o', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
   // ── Ativar / Inativar fornecedor ────────────────────────────────────────
