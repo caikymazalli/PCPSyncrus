@@ -540,6 +540,37 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
         createdAt: r.created_at || new Date().toISOString(),
       }))
     }
+    // Load plants
+    const plantsRes = await db.prepare('SELECT * FROM plants WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (plantsRes.results && plantsRes.results.length > 0) {
+      tenant.plants = (plantsRes.results as any[]).map(r => ({
+        id: r.id, name: r.name, location: r.location || '',
+        totalCapacity: r.total_capacity || 0, contact: r.contact || '',
+        status: r.status || 'active', notes: r.notes || '',
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load machines
+    const machinesRes = await db.prepare('SELECT * FROM machines WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (machinesRes.results && machinesRes.results.length > 0) {
+      tenant.machines = (machinesRes.results as any[]).map(r => ({
+        id: r.id, name: r.name, type: r.type || '',
+        capacity: r.capacity || '', plantId: r.plant_id || '',
+        plantName: r.plant_name || '', status: r.status || 'operational',
+        specs: r.specs || '',
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load workbenches
+    const wbRes = await db.prepare('SELECT * FROM workbenches WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (wbRes.results && wbRes.results.length > 0) {
+      tenant.workbenches = (wbRes.results as any[]).map(r => ({
+        id: r.id, name: r.name, function: r.function || '',
+        plantId: r.plant_id || '', plantName: r.plant_name || '',
+        status: r.status || 'available',
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
   } catch (e) {
     console.error('loadTenantFromDB error:', e)
   }

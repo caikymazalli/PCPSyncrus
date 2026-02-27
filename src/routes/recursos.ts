@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxSession } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxSession, getCtxDB, getCtxUserId } from '../sessionHelper'
 
 const app = new Hono()
 
@@ -440,6 +440,8 @@ app.get('/', (c) => {
 // ── API: Plantas ─────────────────────────────────────────────────────────────
 app.post('/plantas', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const body   = await c.req.json()
   const id = 'p_' + Date.now()
   const planta = {
@@ -448,11 +450,22 @@ app.post('/plantas', async (c) => {
     status: body.status || 'active', notes: body.notes || ''
   }
   tenant.plants.push(planta)
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `INSERT INTO plants (id, user_id, name, location, total_capacity, contact, status, notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(id, userId, planta.name, planta.location, planta.totalCapacity, planta.contact, planta.status, planta.notes).run()
+    } catch (e) { console.error('plants insert error:', e) }
+  }
   return c.json({ ok: true, id })
 })
 
 app.put('/plantas/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const id     = c.req.param('id')
   const body   = await c.req.json()
   const idx    = tenant.plants.findIndex((p: any) => p.id === id)
@@ -463,20 +476,38 @@ app.put('/plantas/:id', async (c) => {
     totalCapacity: body.cap || 0, contact: body.contact || '',
     status: body.status || 'active', notes: body.notes || ''
   }
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `UPDATE plants SET name=?, location=?, total_capacity=?, contact=?, status=?, notes=? WHERE id=? AND user_id=?`
+      ).bind(body.nome, body.loc, body.cap||0, body.contact||'', body.status||'active', body.notes||'', id, userId).run()
+    } catch (e) { console.error('plants update error:', e) }
+  }
   return c.json({ ok: true })
 })
 
-app.delete('/plantas/:id', (c) => {
+app.delete('/plantas/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const id     = c.req.param('id')
   const before = tenant.plants.length
   tenant.plants = tenant.plants.filter((p: any) => p.id !== id)
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare('DELETE FROM plants WHERE id=? AND user_id=?').bind(id, userId).run()
+    } catch (e) { console.error('plants delete error:', e) }
+  }
   return c.json({ ok: tenant.plants.length < before })
 })
 
 // ── API: Máquinas ─────────────────────────────────────────────────────────────
 app.post('/maquinas', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const body   = await c.req.json()
   const id = 'm_' + Date.now()
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
@@ -487,11 +518,22 @@ app.post('/maquinas', async (c) => {
     status: body.status || 'operational', specs: body.specs || ''
   }
   tenant.machines.push(maquina)
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `INSERT INTO machines (id, user_id, name, type, capacity, plant_id, plant_name, status, specs, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(id, userId, maquina.name, maquina.type, maquina.capacity, maquina.plantId, maquina.plantName, maquina.status, maquina.specs).run()
+    } catch (e) { console.error('machines insert error:', e) }
+  }
   return c.json({ ok: true, id })
 })
 
 app.put('/maquinas/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const id     = c.req.param('id')
   const body   = await c.req.json()
   const idx    = tenant.machines.findIndex((m: any) => m.id === id)
@@ -504,19 +546,38 @@ app.put('/maquinas/:id', async (c) => {
     plantName: planta?.name || '',
     status: body.status || 'operational', specs: body.specs || ''
   }
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const p2 = tenant.plants.find((p: any) => p.id === body.plantaId)
+      await db.prepare(
+        `UPDATE machines SET name=?, type=?, capacity=?, plant_id=?, plant_name=?, status=?, specs=? WHERE id=? AND user_id=?`
+      ).bind(body.nome, body.tipo, body.cap||'', body.plantaId||'', p2?.name||'', body.status||'operational', body.specs||'', id, userId).run()
+    } catch (e) { console.error('machines update error:', e) }
+  }
   return c.json({ ok: true })
 })
 
-app.delete('/maquinas/:id', (c) => {
+app.delete('/maquinas/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const id     = c.req.param('id')
   tenant.machines = tenant.machines.filter((m: any) => m.id !== id)
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare('DELETE FROM machines WHERE id=? AND user_id=?').bind(id, userId).run()
+    } catch (e) { console.error('machines delete error:', e) }
+  }
   return c.json({ ok: true })
 })
 
 // ── API: Bancadas ─────────────────────────────────────────────────────────────
 app.post('/bancadas', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const body   = await c.req.json()
   const id = 'wb_' + Date.now()
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
@@ -526,11 +587,22 @@ app.post('/bancadas', async (c) => {
     status: body.status || 'available'
   }
   tenant.workbenches.push(bancada)
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `INSERT INTO workbenches (id, user_id, name, function, plant_id, plant_name, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(id, userId, bancada.name, bancada.function, bancada.plantId, bancada.plantName, bancada.status).run()
+    } catch (e) { console.error('workbenches insert error:', e) }
+  }
   return c.json({ ok: true, id })
 })
 
 app.put('/bancadas/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const id     = c.req.param('id')
   const body   = await c.req.json()
   const idx    = tenant.workbenches.findIndex((wb: any) => wb.id === id)
@@ -542,13 +614,30 @@ app.put('/bancadas/:id', async (c) => {
     plantId: body.plantaId || '', plantName: planta?.name || '',
     status: body.status || 'available'
   }
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const p2 = tenant.plants.find((p: any) => p.id === body.plantaId)
+      await db.prepare(
+        `UPDATE workbenches SET name=?, function=?, plant_id=?, plant_name=?, status=? WHERE id=? AND user_id=?`
+      ).bind(body.nome, body.func||'', body.plantaId||'', p2?.name||'', body.status||'available', id, userId).run()
+    } catch (e) { console.error('workbenches update error:', e) }
+  }
   return c.json({ ok: true })
 })
 
-app.delete('/bancadas/:id', (c) => {
+app.delete('/bancadas/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const db     = getCtxDB(c)
+  const userId = getCtxUserId(c)
   const id     = c.req.param('id')
   tenant.workbenches = tenant.workbenches.filter((wb: any) => wb.id !== id)
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare('DELETE FROM workbenches WHERE id=? AND user_id=?').bind(id, userId).run()
+    } catch (e) { console.error('workbenches delete error:', e) }
+  }
   return c.json({ ok: true })
 })
 
