@@ -34,6 +34,10 @@ const SESSION_MAX_AGE = 60 * 60 * 8
 
 // Static files
 app.use('/static/*', serveStatic({ root: './public' }))
+// Favicon inline (serveStatic path-specific doesn't work well in Cloudflare Workers)
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#1B4F72"/><text x="16" y="22" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="16" fill="white">P</text></svg>`
+app.get('/favicon.svg', (c) => c.body(FAVICON_SVG, 200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' }))
+app.get('/favicon.ico', (c) => c.redirect('/favicon.svg', 301))
 
 // ── Middleware: load session from D1 if not in memory + hydrate tenant ─────────
 app.use('*', async (c, next) => {
