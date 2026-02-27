@@ -1,194 +1,101 @@
-# PCP Planner — SaaS para Programação e Controle da Produção Industrial
+# PCP Planner — Sistema de Planejamento e Controle de Produção
 
 ## Visão Geral
-Sistema SaaS multi-tenant para gestão completa de produção industrial, com isolamento total de dados por cliente e persistência via Cloudflare D1.
+Sistema SaaS multi-tenant para gestão industrial: PCP, qualidade, estoque, compras e fornecedores.
 
-## URLs de Acesso
+## URLs
 - **Produção**: https://pcpsyncrus.pages.dev
-- **Login**: https://pcpsyncrus.pages.dev/login
-- **Cadastro (novo cliente)**: https://pcpsyncrus.pages.dev/cadastro
-- **Painel Master**: https://pcpsyncrus.pages.dev/master/login
+- **Demo local**: https://3000-isf4rr7azmizxqtz6aq2n-583b4d74.sandbox.novita.ai
 
-## Funcionalidades Implementadas
+## Credenciais Demo
+| E-mail | Cargo |
+|--------|-------|
+| carlos@empresa.com | Admin |
+| ana@empresa.com | Gestor PCP |
+| joao@empresa.com | Operador |
+_(qualquer senha funciona para contas demo)_
 
-### Módulos com CRUD Completo
-| Módulo | Criar | Editar | Excluir | API | Toast |
-|--------|-------|--------|---------|-----|-------|
-| Recursos (Plantas/Máquinas/Bancadas) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Ordens de Produção | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Produtos | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Qualidade (NCs) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Estoque (Itens + Movimentação) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Suprimentos (Cotações + OCs) | ✅ | - | ✅ | ✅ | ✅ |
-| Cadastros (Fornecedores) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Engenharia (BOM) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Instruções de Trabalho | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Apontamento | ✅ | - | ✅ | ✅ | ✅ |
+## Módulos Implementados
 
-### Módulos Read-Only (dados calculados)
-- **Dashboard** — KPIs calculados em tempo real
-- **Planejamento (MRP)** — cálculo de necessidades de materiais
-- **Assinatura** — gestão de plano/trial
+### ✅ Dashboard `/`
+- KPIs de produção, gráficos de ordens/semana, qualidade e status
 
-## Arquitetura de Escalabilidade
+### ✅ Ordens de Produção `/ordens`
+- CRUD completo de ordens (criar, editar, iniciar, concluir, cancelar)
+- Apontamento de produção com quantidade produzida/rejeitada
 
-### Multi-Tenant com Cloudflare D1
-```
-Usuário A (empresa_A) → user_id: u_xxx → dados isolados em D1 com user_id = 'u_xxx'
-Usuário B (empresa_B) → user_id: u_yyy → dados isolados em D1 com user_id = 'u_yyy'
-Demo                  → user_id: 'demo-tenant' → dados em memória (read-only)
-```
+### ✅ Recursos `/recursos`
+- Gestão de plantas, máquinas e bancadas de trabalho
 
-### Banco de Dados D1 (Cloudflare)
-- **Nome**: pcpsyncrus-production
-- **Tabelas principais**: registered_users, sessions, production_orders, products, stock_items, suppliers, non_conformances, quotations, purchase_orders, boms, work_instructions, apontamentos, plants, machines, workbenches, imports, kardex
-- **Isolamento**: Todas as tabelas têm coluna `user_id` para filtragem por tenant
+### ✅ Engenharia `/engenharia`
+- BOM (Lista de Materiais), roteiros de produção, instruções de trabalho
 
-### Sessões Persistentes
-- Sessões armazenadas em D1 (tabela `sessions`)
-- Cache em memória para performance
-- Carregamento automático do D1 se sessão não estiver em memória
-- Expiração automática após 8 horas
+### ✅ Qualidade `/qualidade`
+- **NC (Não Conformidades)**: criar, analisar, encerrar, deletar
+- Filtros por status/severidade, evidências fotográficas
+- API: `POST /qualidade/api/create`, `PUT /qualidade/api/:id`, `DELETE /qualidade/api/:id`
 
-### Capacidade de Escalabilidade
-- **Cloudflare Workers**: distribuído globalmente em 300+ cidades
-- **Cloudflare D1**: banco SQLite globalmente replicado (leitura)
-- **Sem estado no worker**: dados sempre persistidos em D1
-- **Isolamento total**: nenhum dado de cliente A vaza para cliente B
-- **Concorrência**: Cloudflare Workers suporta 100.000+ requisições/segundo
+### ✅ Estoque `/estoque`
+- Itens de estoque com controle de série/lote
+- **Separação de Pedidos**: `POST /estoque/api/separation/create`
+- **Baixas de Estoque**: `POST /estoque/api/exit/create`
+- **4 Almoxarifados**: Principal, Matérias-Primas, Produtos Acabados, Filial Sul
+- Kardex de rastreabilidade, transferências entre almoxarifados
+- Liberação de S/N por estoque atual
 
-## APIs CRUD Disponíveis
+### ✅ Cadastros/Fornecedores `/cadastros`
+- CRUD de fornecedores (nacionais e importados)
+- Vinculação fornecedor ↔ produto
+- API: `POST /cadastros/api/supplier/create`, `PUT /cadastros/api/supplier/:id`, `DELETE /cadastros/api/supplier/:id`
+- Botões: Visualizar, Editar, Solicitar Cotação, Inativar/Ativar
 
-### Ordens de Produção
-```
-POST   /ordens/api/create       — Criar ordem
-PUT    /ordens/api/:id          — Editar ordem
-DELETE /ordens/api/:id          — Excluir ordem
-GET    /ordens/api/list         — Listar ordens
-```
+### ✅ Suprimentos `/suprimentos`
+- Cotações, pedidos de compra, importações com landed cost
 
-### Produtos
-```
-POST   /produtos/api/create     — Criar produto
-PUT    /produtos/api/:id        — Editar produto
-DELETE /produtos/api/:id        — Excluir produto
-GET    /produtos/api/list       — Listar produtos
-```
+### ✅ Planejamento `/planejamento`
+- MRP, capacidade de produção, análise de demanda
 
-### Qualidade (NCs)
-```
-POST   /qualidade/api/create    — Registrar NC
-PUT    /qualidade/api/:id       — Atualizar NC
-DELETE /qualidade/api/:id       — Excluir NC
-GET    /qualidade/api/list      — Listar NCs
-```
+### ✅ Apontamento `/apontamento`
+- Registro de produção por operador/máquina
 
-### Estoque
-```
-POST   /estoque/api/item/create — Cadastrar item
-PUT    /estoque/api/item/:id    — Editar item
-DELETE /estoque/api/item/:id    — Excluir item
-POST   /estoque/api/movement    — Registrar movimentação (entrada/saída)
-GET    /estoque/api/items       — Listar itens
-```
+## Arquitetura de Dados
+- **Banco**: Cloudflare D1 (SQLite) — `pcpsyncrus-production`
+- **Sessões**: Persistidas no D1 para funcionar em Workers stateless
+- **Demo**: Dados em memória via `data.ts`, sessão salva no D1
+- **Multi-tenant**: Todos os dados isolados por `user_id`
 
-### Fornecedores
-```
-POST   /cadastros/api/supplier/create  — Cadastrar fornecedor
-PUT    /cadastros/api/supplier/:id     — Editar fornecedor
-DELETE /cadastros/api/supplier/:id     — Excluir fornecedor
-GET    /cadastros/api/suppliers        — Listar fornecedores
-```
+## Migrations (6 aplicadas)
+| Arquivo | Conteúdo |
+|---------|----------|
+| 0001 | Schema inicial completo |
+| 0002 | Usuários registrados + sessões |
+| 0003 | Convites por e-mail + resets de senha |
+| 0004 | Suporte a owner_id (contas convidadas) |
+| 0005 | Colunas adicionais em products/suppliers |
+| 0006 | Tabelas separation_orders e stock_exits |
 
-### Suprimentos
-```
-POST   /suprimentos/api/quotation/create — Criar cotação
-DELETE /suprimentos/api/quotation/:id    — Excluir cotação
-POST   /suprimentos/api/order/create     — Criar pedido de compra
-DELETE /suprimentos/api/order/:id        — Excluir pedido
-GET    /suprimentos/api/list             — Listar todos
-```
-
-### Engenharia (BOM)
-```
-POST   /engenharia/api/bom/create — Adicionar componente
-PUT    /engenharia/api/bom/:id    — Editar componente
-DELETE /engenharia/api/bom/:id    — Remover componente
-GET    /engenharia/api/boms       — Listar BOM
-```
-
-### Instruções de Trabalho
-```
-POST   /instrucoes/api/create   — Criar instrução
-PUT    /instrucoes/api/:id      — Atualizar instrução
-DELETE /instrucoes/api/:id      — Excluir instrução
-GET    /instrucoes/api/list     — Listar instruções
-```
-
-### Apontamento
-```
-POST   /apontamento/api/create  — Registrar apontamento
-DELETE /apontamento/api/:id     — Excluir apontamento
-GET    /apontamento/api/list    — Listar apontamentos
-```
-
-### Recursos
-```
-POST   /recursos/plantas           — Criar planta
-PUT    /recursos/plantas/:id       — Editar planta
-DELETE /recursos/plantas/:id       — Excluir planta
-POST   /recursos/maquinas          — Criar máquina
-PUT    /recursos/maquinas/:id      — Editar máquina
-DELETE /recursos/maquinas/:id      — Excluir máquina
-POST   /recursos/bancadas          — Criar bancada
-PUT    /recursos/bancadas/:id      — Editar bancada
-DELETE /recursos/bancadas/:id      — Excluir bancada
-```
-
-## Fluxo de Onboarding de Novo Cliente
-
-1. **Acesse**: https://pcpsyncrus.pages.dev/cadastro
-2. **Step 1**: Nome, sobrenome, e-mail, telefone, senha
-3. **Step 2**: Razão social, CNPJ, setor, porte da empresa
-4. **Step 3**: Escolha do plano (Starter / Professional / Enterprise)
-5. **Após cadastro**: Redirecionado para `/novo` — **dashboard 100% vazio**
-6. **Começar**: Cadastrar recursos → produtos → ordens → apontamentos
-
-## Guia de Uso
-
-### Para Administradores de Empresa
-1. Faça login em `/login`
-2. Acesse **Admin** → configure grupo, empresa e usuários
-3. Acesse **Recursos** → cadastre plantas, máquinas e bancadas
-4. Acesse **Cadastros** → cadastre fornecedores
-5. Acesse **Produtos** → cadastre produtos e defina BOM em Engenharia
-6. Acesse **Ordens** → crie ordens de produção
-7. Acesse **Apontamento** → registre produção realizada
-8. Acompanhe KPIs no **Dashboard**
-
-### Para Operadores
-1. Faça login com credenciais fornecidas pelo admin
-2. Registre apontamentos de produção
-3. Registre não conformidades em Qualidade
-
-## Stack Tecnológica
-- **Runtime**: Cloudflare Workers (edge computing global)
-- **Framework**: Hono v4 (TypeScript)
-- **Banco de Dados**: Cloudflare D1 (SQLite distribuído)
-- **Sessões**: Cloudflare D1 (persistente) + memória (cache)
-- **Frontend**: HTML + TailwindCSS + Chart.js (via CDN)
+## Stack Técnica
+- **Runtime**: Cloudflare Workers (edge)
+- **Framework**: Hono v4
+- **Frontend**: TailwindCSS CDN + FontAwesome + vanilla JS
 - **Build**: Vite + @hono/vite-cloudflare-pages
-- **Deploy**: Cloudflare Pages
+- **DB**: Cloudflare D1 (SQLite)
 
-## Status de Implantação
-- **Plataforma**: Cloudflare Pages ✅
-- **Banco D1**: pcpsyncrus-production ✅
-- **Migrations**: 2 migrations aplicadas ✅
-- **Última atualização**: 2026-02-24
+## Deploy
+```bash
+npm run build
+npx wrangler pages deploy dist --project-name pcpsyncrus
+npx wrangler d1 migrations apply pcpsyncrus-production --remote
+```
 
-## Notas de Segurança
-- Senhas com hash SHA-256 + salt
-- Sessões com TTL de 8 horas
-- Isolamento total por `user_id` em todas as tabelas D1
-- HttpOnly cookies para sessão
-- Dados de demo nunca são expostos para usuários reais
+## Desenvolvimento Local
+```bash
+npm run build
+pm2 start ecosystem.config.cjs
+# Acesse: http://localhost:3000
+```
+
+## Status
+- **Produção**: ✅ Ativa em https://pcpsyncrus.pages.dev
+- **Última atualização**: 27/02/2026
+- **Versão**: 1.6.0
