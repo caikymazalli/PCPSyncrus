@@ -6,6 +6,7 @@ import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 const app = new Hono()
 
 app.get('/', (c) => {
+  try {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
@@ -52,7 +53,7 @@ app.get('/', (c) => {
             <label class="form-label">Ordem de Produção</label>
             <select class="form-control" id="nc_ordem">
               <option value="">Selecionar...</option>
-              ${mockData.productionOrders.map(o => `<option>${o.code}</option>`).join('')}
+              ${((mockData as any).productionOrders || []).map((o: any) => `<option>${o.code}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -77,7 +78,7 @@ app.get('/', (c) => {
           <div class="form-group">
             <label class="form-label">Responsável Análise</label>
             <select class="form-control" id="nc_responsavel">
-              ${mockData.users.filter(u => u.role === 'qualidade' || u.role === 'admin').map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
+              ${((mockData as any).users || []).filter((u: any) => u.role === 'qualidade' || u.role === 'admin').map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -203,10 +204,10 @@ app.get('/', (c) => {
         <tbody>
           ${nonConformances.map(nc => `
           <tr>
-            <td style="font-weight:700;color:#E74C3C;">${nc.code}</td>
-            <td style="font-weight:600;color:#1B4F72;">${nc.orderCode}</td>
-            <td>${nc.stepName}</td>
-            <td style="font-weight:600;color:#E74C3C;">${nc.quantityRejected} un</td>
+            <td style="font-weight:700;color:#E74C3C;">${nc.code || '—'}</td>
+            <td style="font-weight:600;color:#1B4F72;">${nc.orderCode || '—'}</td>
+            <td>${nc.stepName || nc.product || '—'}</td>
+            <td style="font-weight:600;color:#E74C3C;">${nc.quantityRejected || 0} un</td>
             <td>
               <span class="badge" style="background:${sevBg[nc.severity]};color:${sevColor[nc.severity]};">
                 <i class="fas fa-circle" style="font-size:7px;"></i> ${sevLabel[nc.severity]}
@@ -351,8 +352,8 @@ app.get('/', (c) => {
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-secondary" onclick="closeModal('ncDetailModal')">Fechar</button>
-        <button class="btn btn-warning" onclick="salvarNcDetalhe('${nc.id}')"><i class="fas fa-save"></i> Salvar Alterações</button>
-        <button class="btn btn-success" onclick="encerrarNC('${nc.id}');closeModal('ncDetailModal')"><i class="fas fa-check"></i> Encerrar NC</button>
+        <button class="btn btn-warning" onclick="salvarNcDetalhe('\${nc.id}')"><i class="fas fa-save"></i> Salvar Alterações</button>
+        <button class="btn btn-success" onclick="encerrarNC('\${nc.id}');closeModal('ncDetailModal')"><i class="fas fa-check"></i> Encerrar NC</button>
       </div>
     \`;
     openModal('ncDetailModal');
@@ -478,6 +479,10 @@ app.get('/', (c) => {
   `
 
   return c.html(layout('Qualidade — NCs', content, 'qualidade', userInfo))
+  } catch(err: any) {
+    console.error('[qualidade] render error:', err?.message, err?.stack)
+    return c.html(`<div style="padding:20px;font-family:sans-serif;"><h2>Erro ao carregar Qualidade</h2><pre style="background:#f8f9fa;padding:14px;border-radius:6px;">${err?.message || 'Unknown error'}</pre></div>`, 500)
+  }
 })
 
 // ── API: POST /qualidade/api/create ─────────────────────────────────────────
@@ -497,8 +502,12 @@ app.post('/api/create', async (c) => {
     description: body.description || '', rootCause: body.rootCause || '',
     correctiveAction: body.correctiveAction || '', responsible: body.responsible || '',
     dueDate: body.dueDate || '', openedAt: new Date().toISOString().split('T')[0],
-    images: [], createdAt: new Date().toISOString(),
+    images: [], createdAt: new Date().toISOString().split('T')[0],
+    // Fields needed for UI rendering
+    orderCode: body.orderCode || '—', stepName: body.stepName || body.product || '—',
+    quantityRejected: body.quantityRejected || 0, operator: body.operator || body.responsible || '—',
   }
+  if (!Array.isArray(tenant.nonConformances)) tenant.nonConformances = []
   tenant.nonConformances.push(nc)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'non_conformances', {

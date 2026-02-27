@@ -53,6 +53,9 @@ export interface TenantData {
   routes: any[]
   serialNumbers: any[]       // Números de série/lote já registrados
   serialPendingItems: any[]  // Fila de liberação: importados aguardando identificação
+  warehouses: any[]          // Almoxarifados cadastrados
+  separationOrders: any[]    // Ordens de separação
+  stockExits: any[]          // Baixas de estoque
 }
 
 export interface RegisteredUser {
@@ -119,6 +122,9 @@ tenants[demoUserId] = {
   routes:            JSON.parse(JSON.stringify(_md.routes            || [])),
   serialNumbers:     JSON.parse(JSON.stringify(_md.serialNumbers     || [])),
   serialPendingItems: JSON.parse(JSON.stringify(_md.serialPendingItems || [])),
+  warehouses:        JSON.parse(JSON.stringify(_md.warehouses         || [])),
+  separationOrders:  JSON.parse(JSON.stringify(_md.separationOrders   || [])),
+  stockExits:        JSON.parse(JSON.stringify(_md.stockExits         || [])),
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -220,6 +226,7 @@ export function getTenantData(userId: string): TenantData {
       chartData: { labels:[], planned:[], produced:[], rejected:[], stockStatus: { critical:0, normal:0, purchase_needed:0, manufacture_needed:0 } },
       bomItems: [], productSuppliers: [], workOrders: [], routes: [],
       serialNumbers: [], serialPendingItems: [],
+      warehouses: [], separationOrders: [], stockExits: [],
     }
   }
   return tenants[userId]
@@ -495,6 +502,39 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
         category: r.category || '', type: r.type || 'nacional',
         paymentTerms: r.payment_terms || '', deliveryLeadDays: r.lead_days || 0,
         notes: r.notes || '', active: r.active !== 0, rating: r.rating || 0,
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load stock items
+    const items = await db.prepare('SELECT * FROM stock_items WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (items.results && items.results.length > 0) {
+      tenant.stockItems = (items.results as any[]).map(r => ({
+        id: r.id, name: r.name, code: r.code || r.id, unit: r.unit || 'un',
+        category: r.category || '', quantity: r.quantity || 0, minQuantity: r.min_qty || 0,
+        location: r.location || '', notes: r.notes || '',
+        serialControlled: r.serial_controlled === 1,
+        controlType: r.control_type || 'serie',
+        stockStatus: r.stock_status || 'normal',
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load separation orders
+    const seps = await db.prepare('SELECT * FROM separation_orders WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (seps.results && seps.results.length > 0) {
+      tenant.separationOrders = (seps.results as any[]).map(r => ({
+        id: r.id, code: r.code, pedido: r.pedido || '', cliente: r.cliente || '',
+        dataSeparacao: r.data_separacao || '', responsavel: r.responsavel || '',
+        status: r.status || 'pending', items: [],
+        createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load stock exits
+    const exits = await db.prepare('SELECT * FROM stock_exits WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    if (exits.results && exits.results.length > 0) {
+      tenant.stockExits = (exits.results as any[]).map(r => ({
+        id: r.id, code: r.code, type: r.type || 'requisicao',
+        pedido: r.pedido || '', nf: r.nf || '', date: r.date || '',
+        responsavel: r.responsavel || '', notes: r.notes || '', items: [],
         createdAt: r.created_at || new Date().toISOString(),
       }))
     }

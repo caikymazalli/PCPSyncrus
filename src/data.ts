@@ -105,6 +105,12 @@ export const mockData = {
     { id: 'kx12', serialNumber: 'LT-ANL-2024-001', itemCode: 'ANL-001', itemName: 'Anel de Retenção', movType: 'entrada', description: 'Importado via planilha', orderCode: null, pedido: null, nf: null, quantity: 180, date: '2024-02-13T08:00:00', user: 'Ana Souza' },
     { id: 'kx13', serialNumber: 'LT-PIN-2024-007', itemCode: 'PIN-PE12', itemName: 'Pino Elástico PE-12', movType: 'entrada', description: 'Criado via apontamento OP-2024-006', orderCode: 'OP-2024-006', pedido: null, nf: null, quantity: 5, date: '2024-02-08T11:20:00', user: 'João Ferreira' },
   ],
+  // Almoxarifados
+  warehouses: [
+    { id: 'alm2', name: 'Almoxarifado Matérias-Primas', code: 'ALM-002', responsible: 'João Ferreira', custodian: 'Ana Souza', city: 'São Paulo', state: 'SP', status: 'active', active: true },
+    { id: 'alm3', name: 'Almoxarifado Produtos Acabados', code: 'ALM-003', responsible: 'Carlos Silva', custodian: 'Carlos Silva', city: 'São Paulo', state: 'SP', status: 'active', active: true },
+    { id: 'alm4', name: 'Almoxarifado Filial Sul', code: 'ALM-004', responsible: 'Roberto Lima', custodian: 'Roberto Lima', city: 'Curitiba', state: 'PR', status: 'manutencao', active: false },
+  ],
   // Separation orders (picking for finished products)
   separationOrders: [
     { id: 'sep1', code: 'OS-2024-001', pedido: 'PV-2024-0045', cliente: 'Metalúrgica Omega Ltda', items: [{ productCode: 'TAM-A200', productName: 'Tampa de Alumínio A200', quantity: 200, serialNumber: 'SN-TAM-0012' }], dataSeparacao: '2024-02-12', status: 'completed', responsavel: 'Carlos Silva' },

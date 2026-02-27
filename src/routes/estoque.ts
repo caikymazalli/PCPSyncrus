@@ -17,6 +17,7 @@ app.get('/', (c) => {
   const kardexMovements  = (mockData as any).kardexMovements   || []
   const transferencias   = (mockData as any).transferencias    || []
   const serialPendingItems = (mockData as any).serialPendingItems || []
+  const warehouses    = (mockData as any).warehouses || []
 
   // Badge de liberação pendente
   const pendingSerialCount = serialPendingItems.filter((p: any) => p.status === 'pending' || p.status === 'partial').length
@@ -62,6 +63,39 @@ app.get('/', (c) => {
   const serialItemCodes = [...new Set(serialNumbers.map((sn: any) => sn.itemCode))]
 
   const content = `
+  <!-- Modal: Novo Item de Estoque -->
+  <div class="modal-overlay" id="novoItemModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-plus" style="margin-right:8px;"></i>Novo Item de Estoque</h3>
+        <button onclick="closeModal('novoItemModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Item *</label><input class="form-control" id="item_nome" type="text" placeholder="Ex: Barra Aço SAE 1045"></div>
+          <div class="form-group"><label class="form-label">Código</label><input class="form-control" id="item_codigo" type="text" placeholder="Ex: MAT-001"></div>
+          <div class="form-group"><label class="form-label">Unidade</label>
+            <select class="form-control" id="item_unidade">
+              <option value="un">un (unidade)</option><option value="kg">kg</option><option value="m">m (metro)</option><option value="l">l (litro)</option><option value="pç">pç (peça)</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Categoria</label>
+            <select class="form-control" id="item_categoria">
+              <option value="Matéria-Prima">Matéria-Prima</option><option value="Componente">Componente</option><option value="Fixador">Fixador</option><option value="Embalagem">Embalagem</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Qtd Atual</label><input class="form-control" id="item_qty_atual" type="number" min="0" placeholder="0"></div>
+          <div class="form-group"><label class="form-label">Qtd Mínima</label><input class="form-control" id="item_qty_min" type="number" min="0" placeholder="0"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Localização</label><input class="form-control" id="item_localizacao" type="text" placeholder="Ex: Armazém A - Prateleira 3"></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novoItemModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarItemEstoque()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Item</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Lista de Números de Série/Lote -->
   <div class="modal-overlay" id="serialListModal">
     <div class="modal" style="max-width:700px;">
@@ -518,18 +552,25 @@ app.get('/', (c) => {
 
     <!-- ALMOXARIFADOS TAB -->
     <div class="tab-content" id="tabAlmoxarifados">
+      ${(() => {
+        // Build dynamic list: always include the default + any user-created
+        const defaultAlm = { id: 'alm1', name: 'Almoxarifado Principal', code: 'ALM-001', empresa: userInfo.empresa, city: '', state: '', responsible: userInfo.nome, custodian: userInfo.nome, active: true }
+        const allAlm = [defaultAlm, ...warehouses]
+        const activeCount = allAlm.filter(a => a.active !== false).length
+        const maintCount = allAlm.filter((a: any) => a.status === 'manutencao').length
+        return `
       <!-- KPIs Almoxarifados -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
         <div class="kpi-card" style="border-left:3px solid #1B4F72;">
-          <div style="font-size:24px;font-weight:800;color:#1B4F72;">3</div>
+          <div style="font-size:24px;font-weight:800;color:#1B4F72;">${allAlm.length}</div>
           <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-warehouse" style="color:#1B4F72;"></i> Almoxarifados</div>
         </div>
         <div class="kpi-card" style="border-left:3px solid #27AE60;">
-          <div style="font-size:24px;font-weight:800;color:#27AE60;">2</div>
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">${activeCount}</div>
           <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-check-circle" style="color:#27AE60;"></i> Ativos</div>
         </div>
         <div class="kpi-card" style="border-left:3px solid #E67E22;">
-          <div style="font-size:24px;font-weight:800;color:#E67E22;">1</div>
+          <div style="font-size:24px;font-weight:800;color:#E67E22;">${maintCount}</div>
           <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-tools" style="color:#E67E22;"></i> Em Manutenção</div>
         </div>
         <div class="kpi-card" style="border-left:3px solid #7c3aed;">
@@ -543,44 +584,49 @@ app.get('/', (c) => {
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
-        ${[
-          { id: 'alm1', name: 'Almoxarifado Principal', code: 'ALM-001', empresa: userInfo.empresa, city: '', state: '', responsavel: userInfo.nome, custodio: userInfo.nome, items: stockItems ? stockItems.length : 0, status: 'ativo', color: '#27AE60' },
-        ].map(alm => `
-        <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${alm.color};">
+        ${allAlm.map((alm: any) => {
+          const color = alm.status === 'manutencao' ? '#E67E22' : '#27AE60'
+          const statusLabel = alm.status === 'manutencao' ? 'Manutenção' : 'Ativo'
+          const statusBg = alm.status === 'manutencao' ? '#fffbeb' : '#f0fdf4'
+          const itemCount = alm.id === 'alm1' ? stockItems.length : 0
+          return `
+        <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${color};">
           <div style="padding:16px 20px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
               <div style="display:flex;align-items:center;gap:12px;">
-                <div style="width:44px;height:44px;border-radius:10px;background:${alm.status==='ativo'?'#f0fdf4':'#fffbeb'};display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-warehouse" style="color:${alm.color};font-size:18px;"></i>
+                <div style="width:44px;height:44px;border-radius:10px;background:${statusBg};display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-warehouse" style="color:${color};font-size:18px;"></i>
                 </div>
                 <div>
                   <div style="font-size:14px;font-weight:800;color:#1B4F72;">${alm.name}</div>
-                  <div style="font-size:11px;color:#9ca3af;">${alm.code} · ${alm.city}/${alm.state}</div>
+                  <div style="font-size:11px;color:#9ca3af;">${alm.code || '—'} · ${alm.city || ''}${alm.state ? '/'+alm.state : ''}</div>
                 </div>
               </div>
-              <span class="badge" style="background:${alm.status==='ativo'?'#f0fdf4':'#fffbeb'};color:${alm.color};">${alm.status==='ativo'?'Ativo':'Manutenção'}</span>
+              <span class="badge" style="background:${statusBg};color:${color};">${statusLabel}</span>
             </div>
-            <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-building" style="margin-right:4px;"></i>${alm.empresa}</div>
+            <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-building" style="margin-right:4px;"></i>${alm.empresa || userInfo.empresa}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
               <div style="background:#f8f9fa;border-radius:8px;padding:8px;">
                 <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Responsável</div>
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.responsavel}</div>
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.responsible || alm.responsavel || '—'}</div>
               </div>
               <div style="background:#f8f9fa;border-radius:8px;padding:8px;">
                 <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Custodiante</div>
-                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.custodio}</div>
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.custodian || alm.custodio || '—'}</div>
               </div>
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${alm.items} itens</span>
+              <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${itemCount} itens</span>
               <div style="display:flex;gap:6px;">
-                <button class="btn btn-secondary btn-sm" onclick="alert('Ver estoque de ${alm.name}')"><i class="fas fa-eye"></i> Estoque</button>
-                <button class="btn btn-secondary btn-sm" onclick="openModal('editAlmoxarifadoModal')"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-secondary btn-sm" onclick="viewAlmoxarifadoEstoque('${alm.id}','${alm.name.replace(/'/g,"\\'")}')" title="Ver estoque"><i class="fas fa-eye"></i> Estoque</button>
+                <button class="btn btn-secondary btn-sm" onclick="editarAlmoxarifado('${alm.id}')"><i class="fas fa-edit"></i></button>
               </div>
             </div>
           </div>
-        </div>`).join('')}
-      </div>
+        </div>`
+        }).join('')}
+      </div>`
+      })()}
     </div>
 
     <!-- TRANSFERÊNCIAS TAB -->
@@ -668,6 +714,9 @@ app.get('/', (c) => {
         <a href="/produtos" class="btn btn-secondary btn-sm">
           <i class="fas fa-file-upload"></i> Importar mais produtos
         </a>
+        <button class="btn btn-primary btn-sm" onclick="openSerialReleaseByStock()">
+          <i class="fas fa-plus-circle"></i> Liberar por Estoque
+        </button>
       </div>
 
       ${(serialPendingItems as any[]).length === 0 ? `
@@ -1147,22 +1196,66 @@ app.get('/', (c) => {
     container.appendChild(div);
   }
 
-  function saveSeparacao() {
-    const pedido = document.getElementById('sep_pedido').value;
-    const cliente = document.getElementById('sep_cliente').value;
-    if (!pedido || !cliente) { alert('Preencha o Pedido de Venda e o Cliente!'); return; }
-    alert('✅ Ordem de Separação OS-2024-003 criada!\\n\\nPedido: ' + pedido + '\\nCliente: ' + cliente + '\\n\\nA movimentação será registrada no Kardex automaticamente.');
-    closeModal('novaSeparacaoModal');
+  async function saveSeparacao() {
+    const pedido = document.getElementById('sep_pedido').value.trim();
+    const cliente = document.getElementById('sep_cliente').value.trim();
+    const data_sep = document.getElementById('sep_data').value;
+    const responsavel = document.getElementById('sep_responsavel')?.value || '';
+    if (!pedido || !cliente) { showEstoqueToast('Preencha o Pedido de Venda e o Cliente!', 'error'); return; }
+
+    const rows = document.querySelectorAll('#sepItemsList .sep-item');
+    const items = [];
+    rows.forEach(row => {
+      const sels = row.querySelectorAll('select, input[type="number"], input[type="text"]');
+      const prodCode = sels[0]?.value || '';
+      const qty = parseInt(sels[1]?.value || '0') || 0;
+      const serial = sels[2]?.value || '';
+      if (prodCode && qty > 0) items.push({ productCode: prodCode, quantity: qty, serialNumber: serial });
+    });
+    if (items.length === 0) { showEstoqueToast('Adicione ao menos um produto!', 'error'); return; }
+
+    try {
+      const res = await fetch('/estoque/api/separation/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido, cliente, dataSeparacao: data_sep, responsavel, items })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        showEstoqueToast('✅ Ordem de Separação ' + d.separation.code + ' criada!');
+        closeModal('novaSeparacaoModal');
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(d.error || 'Erro ao criar separação', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
 
-  function saveBaixa() {
+  async function saveBaixa() {
     const item = document.getElementById('baixa_item').value;
-    const qty = document.getElementById('baixa_qty').value;
-    if (!item || !qty) { alert('Selecione o item e informe a quantidade!'); return; }
+    const qty = parseInt(document.getElementById('baixa_qty').value) || 0;
+    if (!item || qty <= 0) { showEstoqueToast('Selecione o item e informe a quantidade!', 'error'); return; }
     const tipo = document.getElementById('baixa_tipo').value;
-    const tipoLabel = { faturamento:'Faturamento', requisicao:'Requisição', descarte:'Descarte' }[tipo] || tipo;
-    alert('✅ Baixa registrada!\\n\\nTipo: ' + tipoLabel + '\\nItem: ' + item + '\\nQuantidade: ' + qty);
-    closeModal('novaBaixaModal');
+    const pedido = document.getElementById('baixa_pedido').value;
+    const nf = document.getElementById('baixa_nf').value;
+    const data_b = document.getElementById('baixa_data').value;
+    const responsavel = document.getElementById('baixa_responsavel')?.value || '';
+    const notes = document.getElementById('baixa_obs').value;
+    try {
+      const res = await fetch('/estoque/api/exit/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: tipo, pedido, nf, dataBaixa: data_b, responsavel, notes, items: [{ code: item, quantity: qty }] })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        showEstoqueToast('✅ Baixa ' + d.exit.code + ' registrada!');
+        closeModal('novaBaixaModal');
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(d.error || 'Erro ao registrar baixa', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
 
   function handlePlanilhaDrop(event) {
@@ -1359,6 +1452,88 @@ app.get('/', (c) => {
     }
   }
 
+  function viewAlmoxarifadoEstoque(almId, almName) {
+    // Switch to Estoque Geral tab and show info
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 0));
+    showEstoqueToast('Exibindo estoque de: ' + almName, 'info');
+  }
+
+  function editarAlmoxarifado(almId) {
+    openModal('editAlmoxarifadoModal');
+  }
+
+  // Abrir liberação S/N baseado no estoque atual — para produtos com controle de série/lote
+  const _allSerialItems = ${JSON.stringify([
+    ...stockItems.filter((s: any) => s.serialControlled).map((s: any) => ({ code: s.code, name: s.name, qty: s.quantity, unit: s.unit, controlType: s.controlType })),
+    ...products.filter((p: any) => p.serialControlled).map((p: any) => ({ code: p.code, name: p.name, qty: p.stockCurrent, unit: p.unit, controlType: p.controlType }))
+  ])};
+
+  function openSerialReleaseByStock() {
+    if (_allSerialItems.length === 0) {
+      showEstoqueToast('Nenhum item com controle de série/lote encontrado.', 'info');
+      return;
+    }
+    // Build a quick modal or use the existing pending modal
+    const opts = _allSerialItems.map(i => '<option value="' + i.code + '">' + i.name + ' (' + i.code + ') — ' + i.qty + ' ' + i.unit + '</option>').join('');
+    // Create a simple prompt-like modal
+    const existing = document.getElementById('_snByStockModal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = '_snByStockModal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:500px;">' +
+      '<div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">' +
+        '<h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Liberar S/N por Estoque</h3>' +
+        '<button onclick="document.getElementById(\'_snByStockModal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>' +
+      '</div>' +
+      '<div style="padding:24px;">' +
+        '<div class="form-group"><label class="form-label">Produto *</label>' +
+          '<select class="form-control" id="_snByStockProd">' +
+            '<option value="">Selecionar produto...</option>' + opts +
+          '</select>' +
+        '</div>' +
+        '<div style="background:#f5f3ff;border-radius:8px;padding:12px;font-size:12px;color:#6d28d9;">' +
+          '<i class="fas fa-info-circle" style="margin-right:4px;"></i>' +
+          'Serão geradas linhas para cada unidade em estoque do produto selecionado.' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">' +
+        '<button onclick="document.getElementById(\'_snByStockModal\').remove()" class="btn btn-secondary">Cancelar</button>' +
+        '<button onclick="criarPendingPorEstoque()" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Criar Fila de Liberação</button>' +
+      '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  }
+
+  async function criarPendingPorEstoque() {
+    const sel = document.getElementById('_snByStockProd');
+    const code = sel?.value;
+    if (!code) { showEstoqueToast('Selecione um produto!', 'error'); return; }
+    const item = _allSerialItems.find(i => i.code === code);
+    if (!item || item.qty <= 0) { showEstoqueToast('Produto sem estoque!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/pending-serial/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productCode: item.code, productName: item.name, totalQty: item.qty, unit: item.unit, controlType: item.controlType || 'serie' })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        document.getElementById('_snByStockModal')?.remove();
+        showEstoqueToast('✅ Fila criada para ' + item.name + ' (' + item.qty + ' itens)!');
+        // Switch to liberation tab
+        document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 8));
+        document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 8));
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(d.error || 'Erro ao criar fila', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
   function showEstoqueToast(msg, type = 'success') {
     const t = document.createElement('div');
     t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);display:flex;align-items:center;gap:8px;max-width:380px;transition:opacity 0.3s;';
@@ -1504,36 +1679,29 @@ app.get('/', (c) => {
     const currentQty = document.getElementById('item_qty_atual')?.value || 0;
     const minQty = document.getElementById('item_qty_min')?.value || 0;
     const location = document.getElementById('item_localizacao')?.value || '';
-    if (!name) { showToast('Informe o nome!', 'error'); return; }
+    if (!name) { showEstoqueToast('Informe o nome!', 'error'); return; }
     try {
       const res = await fetch('/estoque/api/item/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, code, unit, category, currentQty, minQty, location })
       });
       const data = await res.json();
-      if (data.ok) { showToast('✅ Item cadastrado!'); closeModal('novoItemModal'); setTimeout(() => location.reload(), 800); }
-      else showToast(data.error || 'Erro ao cadastrar', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+      if (data.ok) { showEstoqueToast('✅ Item cadastrado!'); closeModal('novoItemModal'); setTimeout(() => location.reload(), 800); }
+      else showEstoqueToast(data.error || 'Erro ao cadastrar', 'error');
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
   async function deleteItemEstoque(id) {
     if (!confirm('Excluir este item do estoque?')) return;
     try {
       const res = await fetch('/estoque/api/item/' + id, { method: 'DELETE' });
       const data = await res.json();
-      if (data.ok) { showToast('Item excluído!'); setTimeout(() => location.reload(), 500); }
-      else showToast(data.error || 'Erro ao excluir', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+      if (data.ok) { showEstoqueToast('Item excluído!'); setTimeout(() => location.reload(), 500); }
+      else showEstoqueToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
 
-  // ── Toast notification ────────────────────────────────────────────────────
-  function showToast(msg, type = 'success') {
-    const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
-    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
-    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
-  }
+  // ── Toast alias ───────────────────────────────────────────────────────────
+  function showToast(msg, type) { showEstoqueToast(msg, type || 'success'); }
 
   async function salvarAlmoxarifado() {
     const name = document.getElementById('alm_nome')?.value?.trim() || '';
@@ -1543,8 +1711,8 @@ app.get('/', (c) => {
     const responsible = document.getElementById('alm_responsavel')?.value || '';
     const custodian = document.getElementById('alm_custodiante')?.value || '';
     const notes = document.getElementById('alm_obs')?.value?.trim() || '';
-    if (!name) { showToast('Informe o nome do almoxarifado!', 'error'); return; }
-    if (!code) { showToast('Informe o código do almoxarifado!', 'error'); return; }
+    if (!name) { showEstoqueToast('Informe o nome do almoxarifado!', 'error'); return; }
+    if (!code) { showEstoqueToast('Informe o código do almoxarifado!', 'error'); return; }
     try {
       const res = await fetch('/estoque/api/warehouse/create', {
         method: 'POST',
@@ -1553,13 +1721,13 @@ app.get('/', (c) => {
       });
       const data = await res.json();
       if (data.ok) {
-        showToast('✅ Almoxarifado criado com sucesso!');
+        showEstoqueToast('✅ Almoxarifado criado com sucesso!');
         closeModal('novoAlmoxarifadoModal');
         setTimeout(() => location.reload(), 800);
       } else {
-        showToast(data.error || 'Erro ao criar almoxarifado', 'error');
+        showEstoqueToast(data.error || 'Erro ao criar almoxarifado', 'error');
       }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
   </script>
   `
@@ -1728,6 +1896,96 @@ app.post('/api/warehouse/create', async (c) => {
     } catch { /* D1 table may not exist yet */ }
   }
   return ok(c, { warehouse })
+})
+
+// ── API: POST /estoque/api/separation/create ────────────────────────────────
+app.post('/api/separation/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.pedido || !body.cliente) return err(c, 'Pedido e cliente obrigatórios')
+  if (!Array.isArray(body.items) || body.items.length === 0) return err(c, 'Adicione ao menos um produto')
+
+  if (!Array.isArray(tenant.separationOrders)) tenant.separationOrders = []
+  const seqNum = tenant.separationOrders.length + 1
+  const code = 'OS-' + new Date().getFullYear() + '-' + String(seqNum).padStart(3, '0')
+  const id = genId('sep')
+  const separation = {
+    id, code, pedido: body.pedido, cliente: body.cliente,
+    dataSeparacao: body.dataSeparacao || new Date().toISOString().split('T')[0],
+    responsavel: body.responsavel || '', status: 'pending',
+    items: body.items.map((it: any) => ({
+      productCode: it.productCode, productName: it.productName || it.productCode,
+      quantity: parseInt(it.quantity) || 1, serialNumber: it.serialNumber || null,
+    })),
+    createdAt: new Date().toISOString(),
+  }
+  tenant.separationOrders.push(separation)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'separation_orders', {
+      id, user_id: userId, code: separation.code, pedido: separation.pedido,
+      cliente: separation.cliente, data_separacao: separation.dataSeparacao,
+      responsavel: separation.responsavel, status: separation.status,
+    })
+  }
+  return ok(c, { separation })
+})
+
+// ── API: POST /estoque/api/exit/create ──────────────────────────────────────
+app.post('/api/exit/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !Array.isArray(body.items) || body.items.length === 0) return err(c, 'Dados inválidos')
+
+  if (!Array.isArray(tenant.stockExits)) tenant.stockExits = []
+  const seqNum = tenant.stockExits.length + 1
+  const code = 'BX-' + new Date().getFullYear() + '-' + String(seqNum).padStart(3, '0')
+  const id = genId('bx')
+  const exit = {
+    id, code, type: body.type || 'requisicao',
+    pedido: body.pedido || '', nf: body.nf || '',
+    date: body.dataBaixa || new Date().toISOString().split('T')[0],
+    responsavel: body.responsavel || '', notes: body.notes || '',
+    items: body.items.map((it: any) => ({ code: it.code, name: it.name || it.code, quantity: parseInt(it.quantity) || 1 })),
+    createdAt: new Date().toISOString(),
+  }
+  tenant.stockExits.push(exit)
+  // Decrease stock quantities
+  for (const it of exit.items) {
+    const stockItem = tenant.stockItems?.find((s: any) => s.code === it.code)
+    if (stockItem) stockItem.quantity = Math.max(0, (stockItem.quantity || 0) - (parseInt(it.quantity) || 1))
+    const product = tenant.products?.find((p: any) => p.code === it.code)
+    if (product) product.stockCurrent = Math.max(0, (product.stockCurrent || 0) - (parseInt(it.quantity) || 1))
+  }
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'stock_exits', {
+      id, user_id: userId, code: exit.code, type: exit.type,
+      pedido: exit.pedido, nf: exit.nf, date: exit.date,
+      responsavel: exit.responsavel, notes: exit.notes,
+    })
+  }
+  return ok(c, { exit })
+})
+
+// ── API: POST /estoque/api/pending-serial/create ─────────────────────────────
+// Cria uma fila de liberação de S/N baseada no estoque atual de um produto
+app.post('/api/pending-serial/create', async (c) => {
+  const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.productCode || !body.totalQty) return err(c, 'Dados inválidos')
+
+  if (!Array.isArray((tenant as any).serialPendingItems)) (tenant as any).serialPendingItems = []
+  // Remove pending anterior do mesmo produto, se houver
+  ;(tenant as any).serialPendingItems = (tenant as any).serialPendingItems.filter((p: any) => p.productCode !== body.productCode)
+  const id = genId('spi')
+  const pi = {
+    id, productCode: body.productCode, productName: body.productName || body.productCode,
+    totalQty: parseInt(body.totalQty) || 1, identifiedQty: 0,
+    unit: body.unit || 'un', controlType: body.controlType || 'serie',
+    status: 'pending', entries: [],
+    importedAt: new Date().toISOString(),
+  }
+  ;(tenant as any).serialPendingItems.push(pi)
+  return ok(c, { item: pi })
 })
 
 export default app
