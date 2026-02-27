@@ -8,11 +8,10 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const suppliers = (mockData as any).suppliers || []
-  const productSuppliers = (mockData as any).productSuppliers || []
-  const stockItems = (mockData as any).stockItems || []
-  const products = (mockData as any).products || []
+  const suppliers = tenant.suppliers || []
+  const productSuppliers = tenant.productSuppliers || []
+  const stockItems = tenant.stockItems || []
+  const products = tenant.products || []
 
   const typeInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
     nacional:  { label: 'Nacional',  color: '#16a34a', bg: '#f0fdf4', icon: 'fa-flag' },

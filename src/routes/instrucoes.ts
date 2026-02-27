@@ -8,9 +8,8 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const workInstructions = (mockData as any).workInstructions || (mockData as any).instructions || []
-  const products = (mockData as any).products || []
+  const workInstructions = tenant.workInstructions || []
+  const products = tenant.products || []
 
   const statusBadge = (s: string) => {
     const map: Record<string, string> = { published: 'badge-success', approved: 'badge-info', review: 'badge-warning', draft: 'badge-secondary' }
@@ -137,10 +136,10 @@ app.get('/', (c) => {
             <select class="form-control" id="it_status"><option value="draft">Rascunho</option><option value="review">Em Revisão</option></select>
           </div>
           <div class="form-group"><label class="form-label">Criado por *</label>
-            <select class="form-control" id="it_criador">${mockData.users.map(u => `<option>${u.name}</option>`).join('')}</select>
+            <select class="form-control" id="it_criador">${tenant.users.map(u => `<option>${u.name}</option>`).join('')}</select>
           </div>
           <div class="form-group"><label class="form-label">Aprovado por</label>
-            <select class="form-control" id="it_aprovador"><option value="">— Pendente —</option>${mockData.users.filter(u => u.role === 'admin' || u.role === 'gestor_pcp').map(u => `<option>${u.name}</option>`).join('')}</select>
+            <select class="form-control" id="it_aprovador"><option value="">— Pendente —</option>${tenant.users.filter(u => u.role === 'admin' || u.role === 'gestor_pcp').map(u => `<option>${u.name}</option>`).join('')}</select>
           </div>
         </div>
 
@@ -389,7 +388,7 @@ app.post('/api/create', async (c) => {
     steps: body.steps || [], tools: body.tools || [], epi: body.epi || [],
     approvedBy: body.approvedBy || '', createdAt: new Date().toISOString(),
   }
-  tenant.instructions.push(instruction)
+  tenant.workInstructions.push(instruction)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instructions', {
       id, user_id: userId, title: instruction.title, code: instruction.code,
@@ -406,28 +405,28 @@ app.put('/api/:id', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
-  const idx = tenant.instructions.findIndex((i: any) => i.id === id)
+  const idx = tenant.workInstructions.findIndex((i: any) => i.id === id)
   if (idx === -1) return err(c, 'Instrução não encontrada', 404)
-  Object.assign(tenant.instructions[idx], body)
+  Object.assign(tenant.workInstructions[idx], body)
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'work_instructions', id, userId, {
       title: body.title, status: body.status, version: body.version,
       steps: JSON.stringify(body.steps || []),
     })
   }
-  return ok(c, { instruction: tenant.instructions[idx] })
+  return ok(c, { instruction: tenant.workInstructions[idx] })
 })
 
 app.delete('/api/:id', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
-  const idx = tenant.instructions.findIndex((i: any) => i.id === id)
+  const idx = tenant.workInstructions.findIndex((i: any) => i.id === id)
   if (idx === -1) return err(c, 'Instrução não encontrada', 404)
-  tenant.instructions.splice(idx, 1)
+  tenant.workInstructions.splice(idx, 1)
   if (db && userId !== 'demo-tenant') await dbDelete(db, 'work_instructions', id, userId)
   return ok(c)
 })
 
-app.get('/api/list', (c) => ok(c, { instructions: getCtxTenant(c).instructions }))
+app.get('/api/list', (c) => ok(c, { instructions: getCtxTenant(c).workInstructions }))
 
 export default app

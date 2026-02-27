@@ -8,16 +8,15 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const stockItems       = (mockData as any).stockItems        || []
-  const separationOrders = (mockData as any).separationOrders  || []
-  const stockExits       = (mockData as any).stockExits        || []
-  const products         = (mockData as any).products          || []
-  const serialNumbers    = (mockData as any).serialNumbers     || []
-  const kardexMovements  = (mockData as any).kardexMovements   || []
-  const transferencias   = (mockData as any).transferencias    || []
-  const serialPendingItems = (mockData as any).serialPendingItems || []
-  const warehouses    = (mockData as any).warehouses || []
+  const stockItems       = tenant.stockItems        || []
+  const separationOrders = tenant.separationOrders  || []
+  const stockExits       = tenant.stockExits        || []
+  const products         = tenant.products          || []
+  const serialNumbers    = tenant.serialNumbers     || []
+  const kardexMovements  = (tenant as any).kardexMovements   || []
+  const transferencias   = (tenant as any).transferencias    || []
+  const serialPendingItems = tenant.serialPendingItems || []
+  const warehouses    = tenant.warehouses || []
 
   // Badge de liberação pendente
   const pendingSerialCount = serialPendingItems.filter((p: any) => p.status === 'pending' || p.status === 'partial').length
@@ -860,12 +859,12 @@ app.get('/', (c) => {
           <div class="form-group"><label class="form-label">Estado</label><input class="form-control" id="alm_estado" type="text" placeholder="Ex: PR"></div>
           <div class="form-group"><label class="form-label">Responsável *</label>
             <select class="form-control" id="alm_responsavel">
-              ${mockData.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
+              ${tenant.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Custodiante *</label>
             <select class="form-control" id="alm_custodiante">
-              ${mockData.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
+              ${tenant.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" id="alm_obs" rows="2" placeholder="Instruções especiais, localização física, etc."></textarea></div>
@@ -905,17 +904,17 @@ app.get('/', (c) => {
           </div>
           <div class="form-group"><label class="form-label">Solicitante *</label>
             <select class="form-control" id="trfSolicitante">
-              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+              ${tenant.users.map((u: any) => `<option>${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Separador *</label>
             <select class="form-control" id="trfSeparador">
-              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+              ${tenant.users.map((u: any) => `<option>${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Custodiante (Destino) *</label>
             <select class="form-control" id="trfCustodio">
-              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+              ${tenant.users.map((u: any) => `<option>${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Data Prevista</label>
@@ -934,7 +933,7 @@ app.get('/', (c) => {
             <div class="trf-item" style="display:grid;grid-template-columns:3fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;">
               <select class="form-control" style="font-size:12px;">
                 <option value="">Selecionar item...</option>
-                ${mockData.stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Qtd: ${s.quantity} ${s.unit}</option>`).join('')}
+                ${tenant.stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Qtd: ${s.quantity} ${s.unit}</option>`).join('')}
               </select>
               <input class="form-control" type="number" placeholder="Qtd" min="1">
               <input class="form-control" type="text" placeholder="Nº Série / Lote">
@@ -960,10 +959,10 @@ app.get('/', (c) => {
       <div style="padding:24px;">
         <div class="form-group"><label class="form-label">Nome</label><input class="form-control" type="text" value="Almoxarifado Central"></div>
         <div class="form-group"><label class="form-label">Responsável</label>
-          <select class="form-control">${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
+          <select class="form-control">${tenant.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label class="form-label">Custodiante</label>
-          <select class="form-control">${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
+          <select class="form-control">${tenant.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label class="form-label">Status</label>
           <select class="form-control"><option>Ativo</option><option>Manutenção</option><option>Inativo</option></select>
@@ -1028,7 +1027,7 @@ app.get('/', (c) => {
           <div class="form-group">
             <label class="form-label">Responsável pela Separação</label>
             <select class="form-control" id="sep_responsavel">
-              ${mockData.users.map(u => `<option>${u.name}</option>`).join('')}
+              ${tenant.users.map(u => `<option>${u.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -1108,7 +1107,7 @@ app.get('/', (c) => {
         <div class="form-group">
           <label class="form-label">Responsável</label>
           <select class="form-control" id="baixa_responsavel">
-            ${mockData.users.map(u => `<option>${u.name}</option>`).join('')}
+            ${tenant.users.map(u => `<option>${u.name}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">

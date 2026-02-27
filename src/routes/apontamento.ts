@@ -10,10 +10,9 @@ const NC_LIMIT = 3 // Limite padrão de unidades rejeitadas para gerar NC
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const productionEntries = (mockData as any).productionEntries || []
-  const productionOrders = (mockData as any).productionOrders || []
-  const nonConformances = (mockData as any).nonConformances || []
+  const productionEntries = tenant.productionEntries || []
+  const productionOrders = tenant.productionOrders || []
+  const nonConformances = tenant.nonConformances || []
   const activeOrders = productionOrders.filter(o => o.status === 'in_progress' || o.status === 'planned')
 
   const content = `
@@ -69,7 +68,7 @@ app.get('/', (c) => {
           <div class="form-group">
             <label class="form-label">Operador *</label>
             <select class="form-control" id="apt_operador">
-              ${mockData.users.map(u => `<option value="${u.name}">${u.name} (${u.role})</option>`).join('')}
+              ${tenant.users.map(u => `<option value="${u.name}">${u.name} (${u.role})</option>`).join('')}
             </select>
           </div>
         </div>
@@ -165,7 +164,7 @@ app.get('/', (c) => {
           <div class="form-group">
             <label class="form-label">Responsável pela Análise</label>
             <select class="form-control" id="nc_responsavel">
-              ${mockData.users.filter(u => u.role === 'qualidade' || u.role === 'admin').map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
+              ${tenant.users.filter(u => u.role === 'qualidade' || u.role === 'admin').map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -212,7 +211,7 @@ app.get('/', (c) => {
       <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;">
         <span class="badge badge-info"><i class="fas fa-circle" style="font-size:8px;"></i> ${activeOrders.length} Ordens Ativas</span>
         <span class="badge badge-secondary"><i class="fas fa-list" style="font-size:8px;"></i> ${productionEntries.length} Apontamentos</span>
-        <span class="badge badge-danger"><i class="fas fa-exclamation-triangle" style="font-size:8px;"></i> ${mockData.nonConformances.filter(n => n.status === 'open').length} NCs Abertas</span>
+        <span class="badge badge-danger"><i class="fas fa-exclamation-triangle" style="font-size:8px;"></i> ${tenant.nonConformances.filter(n => n.status === 'open').length} NCs Abertas</span>
       </div>
     </div>
     <div style="display:flex;gap:8px;">
@@ -282,7 +281,7 @@ app.get('/', (c) => {
       <div style="display:flex;gap:8px;">
         <select class="form-control" style="width:auto;font-size:12px;">
           <option>Todos os operadores</option>
-          ${mockData.users.filter(u => u.role === 'operador').map(u => `<option>${u.name}</option>`).join('')}
+          ${tenant.users.filter(u => u.role === 'operador').map(u => `<option>${u.name}</option>`).join('')}
         </select>
         <button class="btn btn-secondary btn-sm" onclick="alert('Exportando CSV...')" title="Exportar histórico">
           <i class="fas fa-download"></i>
@@ -348,7 +347,7 @@ app.get('/', (c) => {
   <div class="card" style="margin-top:16px;padding:20px;">
     <h4 style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-clipboard-check" style="margin-right:8px;color:#E74C3C;"></i>Não Conformidades Recentes</h4>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
-      ${mockData.nonConformances.map(nc => {
+      ${tenant.nonConformances.map(nc => {
         const sevColor: Record<string, string> = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' }
         const sevLabel: Record<string, string> = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' }
         const stColor: Record<string, string> = { open: '#E74C3C', in_analysis: '#F39C12', closed: '#27AE60' }
@@ -385,7 +384,7 @@ app.get('/', (c) => {
   const NC_LIMIT = parseInt(document.getElementById('ncLimitInput').value) || 3;
 
   // Products data with serial control info
-  const productsSerialData = ${JSON.stringify(mockData.products.map(p => ({
+  const productsSerialData = ${JSON.stringify(tenant.products.map(p => ({
     code: p.code,
     name: p.productName || p.name,
     serialControlled: (p as any).serialControlled || false,
