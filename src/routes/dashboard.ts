@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-// mockData replaced by per-session data
+// per-session data
 import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
 
 const app = new Hono()
@@ -8,15 +8,14 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const kpis = (mockData as any).kpis || { totalOrders:0,activeOrders:0,plannedOrders:0,completedOrders:0,cancelledOrders:0,totalProduced:0,totalRejected:0,totalProducts:0,totalMachines:0,totalPlants:0,completionRate:0,qualityRate:100 }
-  const productionOrders = (mockData as any).productionOrders || []
-  const chartData = (mockData as any).chartData || {}
-  const machines = (mockData as any).machines || []
-  const products = (mockData as any).products || []
-  const stockItems = (mockData as any).stockItems || []
-  // Import data from mock
-  const imports = (mockData as any).imports || []
+  const kpis = tenant.kpis || { totalOrders:0,activeOrders:0,plannedOrders:0,completedOrders:0,cancelledOrders:0,totalProduced:0,totalRejected:0,totalProducts:0,totalMachines:0,totalPlants:0,completionRate:0,qualityRate:100 }
+  const productionOrders = tenant.productionOrders || []
+  const chartData = tenant.chartData || {}
+  const machines = tenant.machines || []
+  const products = tenant.products || []
+  const stockItems = tenant.stockItems || []
+  // Get import records from tenant data
+  const imports = tenant.imports || []
   const inTransit = imports.filter((imp: any) => ['waiting_ship','in_transit','customs'].includes(imp.status)).length
   const pendingCustoms = imports.filter((imp: any) => imp.status === 'customs').length
   const deliveredThisMonth = imports.filter((imp: any) => imp.status === 'delivered').length

@@ -9,11 +9,10 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const products = (mockData as any).products || []
-  const bomItems = (mockData as any).bomItems || []
-  const suppliers = (mockData as any).suppliers || []
-  const productSuppliers = (mockData as any).productSuppliers || []
+  const products = tenant.products || []
+  const bomItems = tenant.bomItems || []
+  const suppliers = tenant.suppliers || []
+  const productSuppliers = tenant.productSuppliers || []
 
   // Count stock status
   const criticalCount = products.filter(p => p.stockStatus === 'critical').length

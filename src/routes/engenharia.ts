@@ -8,10 +8,9 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const products = (mockData as any).products || []
-  const bomItems = (mockData as any).bomItems || []
-  const routes = (mockData as any).routes || []
+  const products = tenant.products || []
+  const bomItems = tenant.bomItems || []
+  const routes = tenant.routes || []
 
   const content = `
   <!-- Header -->

@@ -8,8 +8,7 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const productionOrders = (mockData as any).productionOrders || []
+  const productionOrders = tenant.productionOrders || []
 
   const priorityColors: Record<string, string> = {
     urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#65a30d'
@@ -169,7 +168,7 @@ app.get('/', (c) => {
             <label class="form-label">Produto *</label>
             <input class="form-control" id="novaOrdemProduct" type="text" placeholder="Nome do produto" list="productsList">
             <datalist id="productsList">
-              ${mockData.products.map(p => `<option value="${p.name}">${p.name} (${p.code || ''})</option>`).join('')}
+              ${tenant.products.map(p => `<option value="${p.name}">${p.name} (${p.code || ''})</option>`).join('')}
             </datalist>
           </div>
           <div class="form-group">
@@ -201,7 +200,7 @@ app.get('/', (c) => {
             <label class="form-label">Planta</label>
             <select class="form-control" id="novaOrdemPlant">
               <option value="">Selecione...</option>
-              ${mockData.plants.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              ${tenant.plants.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">

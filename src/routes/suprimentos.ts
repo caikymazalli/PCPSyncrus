@@ -9,13 +9,12 @@ const app = new Hono()
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const quotations = (mockData as any).quotations || []
-  const purchaseOrders = (mockData as any).purchaseOrders || []
-  const suppliers = (mockData as any).suppliers || []
-  const stockItems = (mockData as any).stockItems || []
-  const products = (mockData as any).products || []
-  const imports = (mockData as any).imports || []
+  const quotations = tenant.quotations || []
+  const purchaseOrders = tenant.purchaseOrders || []
+  const suppliers = tenant.suppliers || []
+  const stockItems = tenant.stockItems || []
+  const products = tenant.products || []
+  const imports = tenant.imports || []
 
   const statusInfo: Record<string, { label: string, color: string, bg: string }> = {
     sent:               { label: 'Enviada',            color: '#3498DB', bg: '#d1ecf1' },
@@ -1962,10 +1961,11 @@ app.get('/', (c) => {
 
 // ── Interface pública para fornecedor responder cotação ─────────────────────
 app.get('/cotacao/:id/responder', (c) => {
+  const tenant = getCtxTenant(c)
   const quotId = c.req.param('id')
-  const quotations = (mockData as any).quotations || []
-  const suppliers = (mockData as any).suppliers || []
-  const productSuppliers = (mockData as any).productSuppliers || []
+  const quotations = tenant.quotations || []
+  const suppliers = tenant.suppliers || []
+  const productSuppliers = tenant.productSuppliers || []
   const q = quotations.find((x: any) => x.id === quotId)
 
   if (!q) {

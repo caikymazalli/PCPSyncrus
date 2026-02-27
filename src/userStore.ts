@@ -12,6 +12,13 @@
  */
 
 import { mockData } from './data'
+import type {
+  Plant, Machine, Workbench, Product, BomItem, ProductionRoute,
+  WorkInstruction, ProductionOrder, ProductionEntry, WorkOrder,
+  NonConformance, QualityCheck, StockItem, SerialNumber, SerialPendingItem,
+  Warehouse, SeparationOrder, StockExit, Supplier, ProductSupplier,
+  Quotation, PurchaseOrder, Import, TenantUser, KpiData, ChartData,
+} from './types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 export interface UserSession {
@@ -29,33 +36,33 @@ export interface UserSession {
 }
 
 export interface TenantData {
-  plants: any[]
-  machines: any[]
-  workbenches: any[]
-  products: any[]
-  productionOrders: any[]
-  productionEntries: any[]
-  stockItems: any[]
-  nonConformances: any[]
-  suppliers: any[]
-  quotations: any[]
-  purchaseOrders: any[]
-  imports: any[]
-  boms: any[]
-  instructions: any[]
-  qualityChecks: any[]
-  users: any[]
-  kpis: any
-  chartData: any
-  bomItems: any[]
-  productSuppliers: any[]
-  workOrders: any[]
-  routes: any[]
-  serialNumbers: any[]       // Números de série/lote já registrados
-  serialPendingItems: any[]  // Fila de liberação: importados aguardando identificação
-  warehouses: any[]          // Almoxarifados cadastrados
-  separationOrders: any[]    // Ordens de separação
-  stockExits: any[]          // Baixas de estoque
+  plants: Plant[]
+  machines: Machine[]
+  workbenches: Workbench[]
+  products: Product[]
+  productionOrders: ProductionOrder[]
+  productionEntries: ProductionEntry[]
+  stockItems: StockItem[]
+  nonConformances: NonConformance[]
+  suppliers: Supplier[]
+  quotations: Quotation[]
+  purchaseOrders: PurchaseOrder[]
+  imports: Import[]
+  boms: BomItem[]
+  workInstructions: WorkInstruction[]
+  qualityChecks: QualityCheck[]
+  users: TenantUser[]
+  kpis: KpiData
+  chartData: ChartData
+  bomItems: BomItem[]
+  productSuppliers: ProductSupplier[]
+  workOrders: WorkOrder[]
+  routes: ProductionRoute[]
+  serialNumbers: SerialNumber[]       // Números de série/lote já registrados
+  serialPendingItems: SerialPendingItem[]  // Fila de liberação: importados aguardando identificação
+  warehouses: Warehouse[]             // Almoxarifados cadastrados
+  separationOrders: SeparationOrder[] // Ordens de separação
+  stockExits: StockExit[]             // Baixas de estoque
 }
 
 export interface RegisteredUser {
@@ -111,7 +118,7 @@ tenants[demoUserId] = {
   purchaseOrders:    JSON.parse(JSON.stringify(_md.purchaseOrders    || [])),
   imports:           JSON.parse(JSON.stringify(_md.imports           || [])),
   boms:              JSON.parse(JSON.stringify(_md.boms              || [])),
-  instructions:      JSON.parse(JSON.stringify(_md.instructions      || [])),
+  workInstructions:  JSON.parse(JSON.stringify(_md.workInstructions  || [])),
   qualityChecks:     JSON.parse(JSON.stringify(_md.qualityChecks     || [])),
   users:             [],
   kpis:              JSON.parse(JSON.stringify(_md.kpis              || {})),
@@ -219,7 +226,7 @@ export function getTenantData(userId: string): TenantData {
       products: [], productionOrders: [], productionEntries: [],
       stockItems: [], nonConformances: [], suppliers: [],
       quotations: [], purchaseOrders: [], imports: [],
-      boms: [], instructions: [], qualityChecks: [], users: [],
+      boms: [], workInstructions: [], qualityChecks: [], users: [],
       kpis: { totalOrders:0, activeOrders:0, plannedOrders:0, completedOrders:0,
                cancelledOrders:0, totalProduced:0, totalRejected:0, totalProducts:0,
                totalMachines:0, totalPlants:0, completionRate:0, qualityRate:100 },
@@ -499,7 +506,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
     if (sups.results && sups.results.length > 0) {
       tenant.suppliers = (sups.results as any[]).map(r => ({
         id: r.id, name: r.name, fantasia: r.trade_name || '', tradeName: r.trade_name || '',
-        cnpj: r.cnpj || '', email: r.email || '', phone: r.phone || '', tel: r.phone || '',
+        cnpj: r.cnpj || '', email: r.email || '', phone: r.phone || '',
         contact: r.contact || '', city: r.city || '', state: r.state || '',
         category: r.category || '', type: r.type || 'nacional',
         paymentTerms: r.payment_terms || '', deliveryLeadDays: r.lead_days || 0,

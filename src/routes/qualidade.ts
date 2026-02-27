@@ -9,8 +9,7 @@ app.get('/', (c) => {
   try {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const mockData = tenant  // per-session data
-  const nonConformances = (mockData as any).nonConformances || []
+  const nonConformances = tenant.nonConformances || []
 
   const sevColor: Record<string, string> = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' }
   const sevBg: Record<string, string> = { low: '#f0fdf4', medium: '#fffbeb', high: '#fff7ed', critical: '#fef2f2' }
@@ -53,7 +52,7 @@ app.get('/', (c) => {
             <label class="form-label">Ordem de Produção</label>
             <select class="form-control" id="nc_ordem">
               <option value="">Selecionar...</option>
-              ${((mockData as any).productionOrders || []).map((o: any) => `<option>${o.code}</option>`).join('')}
+              ${(tenant.productionOrders || []).map((o: any) => `<option>${o.code}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -78,7 +77,7 @@ app.get('/', (c) => {
           <div class="form-group">
             <label class="form-label">Responsável Análise</label>
             <select class="form-control" id="nc_responsavel">
-              ${((mockData as any).users || []).filter((u: any) => u.role === 'qualidade' || u.role === 'admin').map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
+              ${(tenant.users || []).filter((u: any) => u.role === 'qualidade' || u.role === 'admin').map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
             </select>
           </div>
         </div>
