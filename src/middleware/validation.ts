@@ -1,21 +1,17 @@
 import { z } from 'zod';
 
-// Define your Zod schema here
-const mySchema = z.object({
-  // Example of a string field
-  name: z.string().min(1, 'Name is required'),
-  // Example of a number field
-  age: z.number().positive('Age must be a positive number'),
+// Example validation schema for a user object
+const userSchema = z.object({
+  id: z.number(),
+  name: z.string().min(1),
+  email: z.string().email(),
 });
 
-const schemaValidationMiddleware = (req, res, next) => {
-  try {
-    // Validate incoming request data
-    mySchema.parse(req.body);
-    next(); // Continue to the next middleware
-  } catch (error) {
-    res.status(400).json({ error: error.errors }); // Handle validation errors
-  }
-};
+// Example validation schema for a product object
+const productSchema = z.object({
+  id: z.number(),
+  name: z.string().min(1),
+  price: z.number().positive(),
+});
 
-export default schemaValidationMiddleware;
+export { userSchema, productSchema };
