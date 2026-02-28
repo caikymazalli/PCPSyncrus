@@ -624,6 +624,8 @@ app.get('/', (c) => {
 
     if (!name) { showToast('Informe o nome (Razão Social)!', 'error'); return; }
     if (type === 'nacional' && !cnpj) { showToast('CNPJ obrigatório para fornecedor Nacional!', 'error'); return; }
+    if (!email) { showToast('E-mail obrigatório!', 'error'); return; }
+    if (!deliveryLeadDays || parseInt(String(deliveryLeadDays)) < 1) { showToast('Informe o prazo mínimo de entrega (dias)!', 'error'); return; }
 
     var payload = {
       name: name, fantasia: fantasia, cnpj: cnpj, email: email, phone: phone,
