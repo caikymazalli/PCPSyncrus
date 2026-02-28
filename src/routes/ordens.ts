@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
@@ -392,6 +392,7 @@ app.get('/', (c) => {
 app.post('/api/create', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
@@ -422,7 +423,7 @@ app.post('/api/create', async (c) => {
   // Persist to D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'production_orders', {
-      id, user_id: userId,
+      id, user_id: userId, empresa_id: empresaId,
       code: order.code, product_name: order.productName,
       quantity: order.quantity, completed_quantity: 0,
       status: order.status, priority: order.priority,

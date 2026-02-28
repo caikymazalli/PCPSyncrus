@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { markTenantModified } from '../userStore'
 
@@ -819,7 +819,7 @@ app.get('/', (c) => {
 
 // ── API: POST /cadastros/api/supplier/create ─────────────────────────────────
 app.post('/api/supplier/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name) return err(c, 'Nome obrigatório')
   const id = genId('sup')
@@ -837,7 +837,7 @@ app.post('/api/supplier/create', async (c) => {
   if (db && userId !== 'demo-tenant') {
     console.log(`[PERSIST] Persistindo fornecedor ${id} em D1...`)
     const persistResult = await dbInsertWithRetry(db, 'suppliers', {
-      id, user_id: userId, name: supplier.name, cnpj: supplier.cnpj,
+      id, user_id: userId, empresa_id: empresaId, name: supplier.name, cnpj: supplier.cnpj,
       email: supplier.email, phone: supplier.phone, contact: supplier.contact,
       city: supplier.city, state: supplier.state, active: 1,
       type: supplier.type, category: supplier.category,

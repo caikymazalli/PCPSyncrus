@@ -51,7 +51,7 @@ app.use('*', async (c, next) => {
     // Hydrate tenant data from D1 (cached 30s per worker instance)
     if (session && !session.isDemo) {
       const tenantId = getEffectiveTenantId(session)
-      await loadTenantFromDB(tenantId, c.env.DB)
+      await loadTenantFromDB(tenantId, c.env.DB, session.empresaId)
     }
   }
   await next()

@@ -26,6 +26,8 @@ export interface UserSession {
   createdAt: string
   expiresAt: number
   ownerId?: string | null   // null/undefined = conta principal; preenchido = usuário convidado
+  empresaId?: string | null  // ID da empresa ativa na sessão
+  grupoId?: string | null    // ID do grupo da empresa
 }
 
 export interface TenantData {
@@ -197,6 +199,8 @@ export async function getSessionAsync(token: string | undefined, db: D1Database 
       isDemo: row.is_demo === 1,
       createdAt: row.created_at,
       expiresAt: row.expires_at,
+      empresaId: row.empresa_id || null,
+      grupoId: row.grupo_id || null,
     }
 
     // Carregar owner_id do usuário para suportar conta de convidado
@@ -242,7 +246,7 @@ export function getEffectiveTenantId(session: UserSession | null): string {
 
 const SESSION_DURATION = 60 * 60 * 8 * 1000 // 8h in ms
 
-export async function createSession(user: RegisteredUser, db?: D1Database | null): Promise<string> {
+export async function createSession(user: RegisteredUser, db?: D1Database | null, empresaId?: string | null, grupoId?: string | null): Promise<string> {
   const token = await makeToken(user.email)
   const expiresAt = Date.now() + SESSION_DURATION
   const createdAt = new Date().toISOString()
@@ -259,6 +263,8 @@ export async function createSession(user: RegisteredUser, db?: D1Database | null
     createdAt,
     expiresAt,
     ownerId:   user.ownerId || null,   // ← propaga owner_id na sessão
+    empresaId: empresaId || null,
+    grupoId:   grupoId || null,
   }
   
   // Store in memory
@@ -269,9 +275,9 @@ export async function createSession(user: RegisteredUser, db?: D1Database | null
   if (db) {
     try {
       await db.prepare(`
-        INSERT OR REPLACE INTO sessions (token, user_id, email, nome, empresa, plano, role, is_demo, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(token, user.userId, user.email, session.nome, user.empresa, user.plano, user.role, user.isDemo ? 1 : 0, createdAt, expiresAt).run()
+        INSERT OR REPLACE INTO sessions (token, user_id, email, nome, empresa, plano, role, is_demo, created_at, expires_at, empresa_id, grupo_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(token, user.userId, user.email, session.nome, user.empresa, user.plano, user.role, user.isDemo ? 1 : 0, createdAt, expiresAt, empresaId || null, grupoId || null).run()
       
       // Update last_login (non-demo only)
       if (!user.isDemo) {
@@ -426,7 +432,22 @@ export async function loginUser(email: string, pwd: string, db?: D1Database | nu
   // Capture lastLogin BEFORE createSession updates it
   const hadPreviousLogin = !!user.lastLogin
 
-  const token = await createSession(user, db)
+  // Look up empresa and grupo from user_empresa table
+  let empresaId: string | null = null
+  let grupoId: string | null = null
+  if (db && !user.isDemo) {
+    try {
+      const ue = await db.prepare(
+        'SELECT ue.empresa_id, e.grupo_id FROM user_empresa ue JOIN empresas e ON ue.empresa_id = e.id WHERE ue.user_id = ? LIMIT 1'
+      ).bind(user.userId).first() as any
+      if (ue) {
+        empresaId = ue.empresa_id || null
+        grupoId = ue.grupo_id || null
+      }
+    } catch {}
+  }
+
+  const token = await createSession(user, db, empresaId, grupoId)
   return { ok: true, token, session: sessions[token], isNewUser: !hadPreviousLogin }
 }
 
@@ -483,7 +504,7 @@ export function markTenantModified(userId: string): void {
 }
 
 /** Load a tenant's data from D1 into memory. Cached for 30s per worker instance. */
-export async function loadTenantFromDB(userId: string, db: D1Database): Promise<void> {
+export async function loadTenantFromDB(userId: string, db: D1Database, empresaId?: string | null): Promise<void> {
   if (!userId || userId === 'demo-tenant') return
   const now = Date.now()
   if (tenantHydratedAt[userId] && now - tenantHydratedAt[userId] < HYDRATION_TTL) return
@@ -501,11 +522,16 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
 
   tenantHydratedAt[userId] = now
 
+  // Build empresa_id filter clause for tables that support it
+  const byEmpresa = empresaId ? ' AND empresa_id = ?' : ''
+  const bindEmpresa = (base: any[]) => empresaId ? [...base, empresaId] : base
+
   const tenant = getTenantData(userId)
   console.log(`[HYDRATION] Loading tenant ${userId} from D1`)
   try {
     // Load products
-    const prods = await db.prepare('SELECT * FROM products WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const prods = await db.prepare(`SELECT * FROM products WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+      .bind(...bindEmpresa([userId])).all()
     if (prods.results && prods.results.length > 0) {
       tenant.products = (prods.results as any[]).map(r => ({
         id: r.id, name: r.name, code: r.code, unit: r.unit || 'un',
@@ -520,7 +546,8 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
       }))
     }
     // Load suppliers
-    const sups = await db.prepare('SELECT * FROM suppliers WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const sups = await db.prepare(`SELECT * FROM suppliers WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+      .bind(...bindEmpresa([userId])).all()
     if (sups.results && sups.results.length > 0) {
       tenant.suppliers = (sups.results as any[]).map(r => ({
         id: r.id, name: r.name, fantasia: r.trade_name || '', tradeName: r.trade_name || '',
@@ -533,7 +560,8 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
       }))
     }
     // Load stock items
-    const items = await db.prepare('SELECT * FROM stock_items WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const items = await db.prepare(`SELECT * FROM stock_items WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+      .bind(...bindEmpresa([userId])).all()
     if (items.results && items.results.length > 0) {
       tenant.stockItems = (items.results as any[]).map(r => ({
         id: r.id, name: r.name, code: r.code || r.id, unit: r.unit || 'un',
@@ -566,7 +594,8 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
       }))
     }
     // Load plants
-    const plantsRes = await db.prepare('SELECT * FROM plants WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const plantsRes = await db.prepare(`SELECT * FROM plants WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+      .bind(...bindEmpresa([userId])).all()
     if (plantsRes.results && plantsRes.results.length > 0) {
       tenant.plants = (plantsRes.results as any[]).map(r => ({
         id: r.id, name: r.name, location: r.location || '',
