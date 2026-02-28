@@ -475,12 +475,14 @@ app.get('/', (c) => {
     input.style.display = 'none';
   }
 
-  function calcStatus(current, min) {
+  function calcStatus(current, min, max, criticalPct) {
     if (min <= 0) return 'normal';
-    var pct = (current / min) * 100;
-    if (pct < 50)  return 'critical';
-    if (pct < 80)  return 'purchase_needed';
-    if (pct < 100) return 'manufacture_needed';
+    var critPct = criticalPct || 50;
+    var criticalThreshold = (min * critPct) / 100;
+    if (current <= criticalThreshold) return 'critical';
+    if (current < min) return 'purchase_needed';
+    var maxVal = max || 0;
+    if (maxVal > min && current < min + (maxVal - min) * 0.5) return 'manufacture_needed';
     return 'normal';
   }
 
@@ -872,25 +874,27 @@ app.post('/api/create', async (c) => {
 
   const id = genId('prod')
   // Calcular stockStatus baseado nos valores informados
-  function calcStockStatusCreate(current: number, min: number): string {
+  function calcStockStatusCreate(current: number, min: number, max: number = 0, criticalPct: number = 50): string {
     if (min <= 0) return 'normal'
-    const pct = (current / min) * 100
-    if (pct < 50)  return 'critical'
-    if (pct < 80)  return 'purchase_needed'
-    if (pct < 100) return 'manufacture_needed'
+    const criticalThreshold = (min * criticalPct) / 100
+    if (current <= criticalThreshold) return 'critical'
+    if (current < min) return 'purchase_needed'
+    if (max > min && current < min + (max - min) * 0.5) return 'manufacture_needed'
     return 'normal'
   }
   const stockMin     = parseInt(body.stockMin) || 0
+  const stockMax     = parseInt(body.stockMax) || 0
   const stockCurrent = parseInt(body.stockCurrent) || 0
+  const criticalPct  = parseInt(body.criticalPercentage) || 50
   const stockStatus  = (body.stockStatus && body.stockStatus !== 'normal')
     ? body.stockStatus
-    : calcStockStatusCreate(stockCurrent, stockMin)
+    : calcStockStatusCreate(stockCurrent, stockMin, stockMax, criticalPct)
 
   const product = {
     id, name: body.name, code: body.code || id.slice(-6).toUpperCase(),
     unit: body.unit || 'un', type: body.type || 'external',
-    stockMin, stockMax: parseInt(body.stockMax) || 0, stockCurrent,
-    criticalPercentage: parseInt(body.criticalPercentage) || 50,
+    stockMin, stockMax, stockCurrent,
+    criticalPercentage: criticalPct,
     stockStatus, supplierId: body.supplierId || '',
     supplierName: body.supplierName || '', price: parseFloat(body.price) || 0,
     description: body.description || '',
@@ -1031,12 +1035,12 @@ app.post('/api/import', async (c) => {
   let pendingSerial = 0
   const importedAt = new Date().toISOString()
 
-  function calcStockStatus(current: number, min: number): string {
+  function calcStockStatus(current: number, min: number, max: number = 0, criticalPct: number = 50): string {
     if (min <= 0) return 'normal'
-    const pct = (current / min) * 100
-    if (pct < 50)  return 'critical'
-    if (pct < 80)  return 'purchase_needed'
-    if (pct < 100) return 'manufacture_needed'
+    const criticalThreshold = (min * criticalPct) / 100
+    if (current <= criticalThreshold) return 'critical'
+    if (current < min) return 'purchase_needed'
+    if (max > min && current < min + (max - min) * 0.5) return 'manufacture_needed'
     return 'normal'
   }
 
