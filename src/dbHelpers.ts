@@ -42,6 +42,35 @@ export async function dbInsert(db: D1Database, table: string, data: Record<strin
   }
 }
 
+/** Insert a record into D1 with automatic retry */
+export async function dbInsertWithRetry(
+  db: D1Database,
+  table: string,
+  data: Record<string, any>,
+  maxRetries = 3
+): Promise<{ success: boolean; attempts: number; error?: string }> {
+  const keys = Object.keys(data)
+  const vals = Object.values(data)
+  const placeholders = keys.map(() => '?').join(', ')
+  let lastError: Error | undefined
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[D1][INSERT][RETRY] Attempt ${attempt}/${maxRetries} for ${table} id=${data.id || '?'}`)
+      await db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`)
+        .bind(...vals).run()
+      console.log(`[D1][INSERT][SUCCESS] ${table} id=${data.id || '?'} on attempt ${attempt}`)
+      return { success: true, attempts: attempt }
+    } catch (e) {
+      lastError = e as Error
+      console.error(`[D1][INSERT][FAIL] ${table} id=${data.id || '?'} attempt ${attempt}:`, e)
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  }
+  return { success: false, attempts: maxRetries, error: lastError?.message }
+}
+
 /** Update a record in D1 */
 export async function dbUpdate(db: D1Database, table: string, id: string, userId: string, data: Record<string, any>): Promise<boolean> {
   try {
