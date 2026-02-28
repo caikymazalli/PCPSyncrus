@@ -378,6 +378,38 @@ app.post('/api/toggle-master-user', async (c) => {
   return c.json({ ok: true, active: u?.active })
 })
 
+// ── API: GET /api/backup ───────────────────────────────────────────────────────
+// Exports all tenant data from D1 (protected: master admin only).
+app.get('/api/backup', async (c) => {
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const db = c.env?.DB || null
+  if (!db) return c.json({ error: 'Database not available' }, 503)
+
+  // Explicitly allowlisted table names — never sourced from user input
+  const ALLOWED_TABLES = [
+    'registered_users', 'sessions', 'products', 'suppliers', 'stock_items',
+    'plants', 'machines', 'workbenches', 'supplier_categories',
+    'separation_orders', 'stock_exits',
+  ] as const
+
+  const backup: Record<string, any[]> = {}
+  for (const table of ALLOWED_TABLES) {
+    try {
+      const res = await db.prepare(`SELECT * FROM ${table}`).all()
+      backup[table] = res.results || []
+    } catch (e) {
+      console.error(`[BACKUP] Failed to export table ${table}:`, e)
+      backup[table] = []
+    }
+  }
+
+  return c.json({
+    ok: true,
+    exportedAt: new Date().toISOString(),
+    tables: backup,
+  })
+})
+
 // ── Rota principal: GET / ──────────────────────────────────────────────────────
 app.get('/', async (c) => {
   await ensureInit()

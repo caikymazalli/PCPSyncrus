@@ -471,16 +471,38 @@ export async function cleanExpiredSessions(db: D1Database): Promise<void> {
 // ── Tenant hydration tracking ──────────────────────────────────────────────────
 // Track which tenants have been loaded from D1 to avoid repeated loads
 const tenantHydratedAt: Record<string, number> = {}
+// Track when in-memory data was last written (to avoid re-hydration overwriting newer data)
+export const tenantLastWriteAt: Record<string, number> = {}
 const HYDRATION_TTL = 30 * 1000 // 30 seconds TTL
+
+/** Mark tenant in-memory data as modified (call after any write to memory) */
+export function markTenantModified(userId: string): void {
+  if (userId && userId !== 'demo-tenant') {
+    tenantLastWriteAt[userId] = Date.now()
+  }
+}
 
 /** Load a tenant's data from D1 into memory. Cached for 30s per worker instance. */
 export async function loadTenantFromDB(userId: string, db: D1Database): Promise<void> {
   if (!userId || userId === 'demo-tenant') return
   const now = Date.now()
   if (tenantHydratedAt[userId] && now - tenantHydratedAt[userId] < HYDRATION_TTL) return
+
+  // Skip re-hydration if in-memory data was modified after the last hydration.
+  // This prevents D1 (which may lack a recent failed insert) from overwriting
+  // newer in-memory data within the same worker instance.
+  const lastWrite = tenantLastWriteAt[userId] || 0
+  const lastHydration = tenantHydratedAt[userId] || 0
+  if (lastWrite > lastHydration) {
+  console.log(`[HYDRATION] Skipping re-hydration for ${userId}: in-memory data is more recent (written ${Math.round((lastWrite - lastHydration) / 1000)}s after last hydration)`)
+    tenantHydratedAt[userId] = now
+    return
+  }
+
   tenantHydratedAt[userId] = now
 
   const tenant = getTenantData(userId)
+  console.log(`[HYDRATION] Loading tenant ${userId} from D1`)
   try {
     // Load products
     const prods = await db.prepare('SELECT * FROM products WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
@@ -582,6 +604,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
       }))
     }
   } catch (e) {
-    console.error('loadTenantFromDB error:', e)
+    console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
+    // Reset the hydration timestamp so the next request retries loading from D1.
+    // Crucially, we do NOT overwrite in-memory data — whatever is in memory is kept.
+    tenantHydratedAt[userId] = 0
   }
 }

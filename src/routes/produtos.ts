@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
@@ -892,9 +893,11 @@ app.post('/api/create', async (c) => {
   }
 
   tenant.products.push(product)
+  console.log(`[SAVE] Produto ${id} salvo em memória`)
 
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'products', {
+    console.log(`[PERSIST] Persistindo produto ${id} em D1...`)
+    const persisted = await dbInsert(db, 'products', {
       id, user_id: userId, name: product.name, code: product.code,
       unit: product.unit, type: product.type,
       stock_min: product.stockMin, stock_max: product.stockMax,
@@ -905,8 +908,15 @@ app.post('/api/create', async (c) => {
       control_type: product.controlType,
       critical_percentage: product.criticalPercentage,
     })
+    if (persisted) {
+      console.log(`[SUCCESS] Produto ${id} persistido em D1`)
+    } else {
+      console.error(`[ERROR] Falha ao persistir produto ${id} em D1`)
+      return err(c, 'Falha ao persistir produto no banco de dados. Os dados serão perdidos na próxima reinicialização. Tente novamente.', 500)
+    }
   }
 
+  markTenantModified(userId)
   return ok(c, { product })
 })
 
@@ -925,7 +935,7 @@ app.put('/api/:id', async (c) => {
 
   if (db && userId !== 'demo-tenant') {
     const p = tenant.products[idx] as any
-    await dbUpdate(db, 'products', id, userId, {
+    const updated = await dbUpdate(db, 'products', id, userId, {
       name: p.name, code: p.code, unit: p.unit, type: p.type,
       stock_min: p.stockMin, stock_max: p.stockMax,
       stock_current: p.stockCurrent, stock_status: p.stockStatus,
@@ -934,8 +944,13 @@ app.put('/api/:id', async (c) => {
       serial_controlled: p.serialControlled ? 1 : 0,
       control_type: p.controlType || '',
     })
+    if (!updated) {
+      console.error(`[ERROR] Falha ao atualizar produto ${id} em D1`)
+      return err(c, 'Falha ao persistir produto no banco de dados. Os dados serão perdidos na próxima reinicialização. Tente novamente.', 500)
+    }
   }
 
+  markTenantModified(userId)
   return ok(c, { product: tenant.products[idx] })
 })
 

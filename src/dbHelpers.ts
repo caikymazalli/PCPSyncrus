@@ -34,9 +34,10 @@ export async function dbInsert(db: D1Database, table: string, data: Record<strin
     const placeholders = keys.map(() => '?').join(', ')
     await db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`)
       .bind(...vals).run()
+    console.log(`[D1][INSERT] ${table} id=${data.id || '?'}`)
     return true
   } catch (e) {
-    console.error('dbInsert error:', e)
+    console.error(`[D1][INSERT][ERROR] ${table} id=${data.id || '?'}:`, e)
     return false
   }
 }
@@ -49,8 +50,10 @@ export async function dbUpdate(db: D1Database, table: string, id: string, userId
     const setClause = keys.map(k => `${k} = ?`).join(', ')
     await db.prepare(`UPDATE ${table} SET ${setClause} WHERE id = ? AND user_id = ?`)
       .bind(...vals, id, userId).run()
+    console.log(`[D1][UPDATE] ${table} id=${id}`)
     return true
-  } catch {
+  } catch (e) {
+    console.error(`[D1][UPDATE][ERROR] ${table} id=${id}:`, e)
     return false
   }
 }
@@ -59,8 +62,10 @@ export async function dbUpdate(db: D1Database, table: string, id: string, userId
 export async function dbDelete(db: D1Database, table: string, id: string, userId: string): Promise<boolean> {
   try {
     await db.prepare(`DELETE FROM ${table} WHERE id = ? AND user_id = ?`).bind(id, userId).run()
+    console.log(`[D1][DELETE] ${table} id=${id}`)
     return true
-  } catch {
+  } catch (e) {
+    console.error(`[D1][DELETE][ERROR] ${table} id=${id}:`, e)
     return false
   }
 }
