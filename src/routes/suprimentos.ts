@@ -694,8 +694,8 @@ app.get('/', (c) => {
           </div>
         </div>
         <div class="form-group" style="margin-top:12px;">
-          <label class="form-label">Validade da Cotação (dias)</label>
-          <input class="form-control" type="number" id="cotValidade" value="7" min="1" max="90">
+          <label class="form-label">Data Limite *</label>
+          <input class="form-control" type="date" id="cotDataLimite">
         </div>
         <div class="form-group">
           <label class="form-label">Observações</label>
@@ -1171,7 +1171,8 @@ app.get('/', (c) => {
   async function salvarCotacao() {
     const tipo = document.getElementById('cotTipo').value;
     const descricao = document.getElementById('cotDescricao')?.value?.trim() || 'Cotação de suprimentos';
-    const validade = document.getElementById('cotValidade')?.value?.trim() || '';
+    const deadline = document.getElementById('cotDataLimite')?.value || '';
+    const obs = document.getElementById('cotObs')?.value?.trim() || '';
     const items = [];
     document.querySelectorAll('.cot-item').forEach(row => {
       const sel = row.querySelector('select');
@@ -1183,12 +1184,12 @@ app.get('/', (c) => {
     const missing = [];
     if (items.length === 0 && tipo !== 'critico') missing.push('pelo menos 1 produto');
     if (supplierIds.length === 0) missing.push('pelo menos 1 fornecedor');
-    if (!validade) missing.push('validade (dias)');
+    if (!deadline) missing.push('data limite');
     if (missing.length > 0) { showToastSup('Preencha: ' + missing.join(', '), 'error'); return; }
     try {
       const res = await fetch('/suprimentos/api/quotations/create', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ tipo, descricao, items, supplierIds, validade })
+        body: JSON.stringify({ tipo, descricao, items, supplierIds, deadline, observations: obs })
       });
       const data = await res.json();
       if (data.ok) {
@@ -2265,6 +2266,9 @@ app.post('/api/quotations/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
+  if (!body.deadline) return err(c, 'Data limite obrigatória')
+  if (!body.supplierIds || body.supplierIds.length === 0) return err(c, 'Selecione pelo menos um fornecedor')
+  if (body.tipo !== 'critico' && (!body.items || body.items.length === 0)) return err(c, 'Adicione pelo menos um produto')
   const id = genId('cot')
   const code = `COT-${new Date().getFullYear()}-${String(tenant.quotations.length + 1).padStart(3,'0')}`
   const quotation = {
@@ -2273,6 +2277,8 @@ app.post('/api/quotations/create', async (c) => {
     tipo: body.tipo || 'manual',
     items: body.items || [],
     supplierIds: body.supplierIds || [],
+    deadline: body.deadline,
+    observations: body.observations || '',
     status: 'sent',
     createdBy: 'Admin',
     createdAt: new Date().toISOString(),
@@ -2282,7 +2288,7 @@ app.post('/api/quotations/create', async (c) => {
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'quotations', {
       id, user_id: userId, title: quotation.descricao, status: 'sent',
-      deadline: '', notes: JSON.stringify({ items: quotation.items }),
+      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
     })
   }
   return ok(c, { quotation, code })

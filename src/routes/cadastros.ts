@@ -117,6 +117,11 @@ app.get('/', (c) => {
             <option value="">Todas as categorias</option>
             ${allCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
           </select>
+          <select class="form-control" id="supStatusFilter" style="width:auto;" onchange="filterSuppliers()">
+            <option value="">Todos os status</option>
+            <option value="1">Ativo</option>
+            <option value="0">Inativo</option>
+          </select>
         </div>
       </div>
 
@@ -127,7 +132,7 @@ app.get('/', (c) => {
           const stars = Math.round(s.rating)
           const starsHtml = Array.from({length:5}, (_,i) => `<i class="fas fa-star" style="font-size:11px;color:${i<stars?'#F39C12':'#e9ecef'};"></i>`).join('')
           return `
-          <div class="card sup-card" data-type="${s.type}" data-cat="${s.category}" data-search="${s.name.toLowerCase()} ${(s.cnpj||'').toLowerCase()} ${s.contact.toLowerCase()} ${s.category.toLowerCase()}" style="padding:0;overflow:hidden;border-top:3px solid ${ti.color};">
+          <div class="card sup-card" data-type="${s.type}" data-cat="${s.category}" data-active="${s.active !== false ? '1' : '0'}" data-search="${s.name.toLowerCase()} ${(s.cnpj||'').toLowerCase()} ${s.contact.toLowerCase()} ${s.category.toLowerCase()}" style="padding:0;overflow:hidden;border-top:3px solid ${ti.color};">
             <div style="padding:16px;">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
                 <div style="flex:1;min-width:0;padding-right:8px;">
@@ -450,11 +455,13 @@ app.get('/', (c) => {
     var search = document.getElementById('supSearch').value.toLowerCase();
     var type = document.getElementById('supTypeFilter').value;
     var cat = document.getElementById('supCatFilter').value;
+    var status = document.getElementById('supStatusFilter').value;
     document.querySelectorAll('.sup-card').forEach(function(card) {
       var matchSearch = !search || (card.dataset.search || '').includes(search);
       var matchType = !type || card.dataset.type === type;
       var matchCat = !cat || card.dataset.cat === cat;
-      card.style.display = (matchSearch && matchType && matchCat) ? '' : 'none';
+      var matchStatus = !status || card.dataset.active === status;
+      card.style.display = (matchSearch && matchType && matchCat && matchStatus) ? '' : 'none';
     });
   }
 
