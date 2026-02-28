@@ -1181,11 +1181,9 @@ app.get('/', (c) => {
     });
     const supplierIds = [];
     document.querySelectorAll('.cot-sup select').forEach(sel => { if (sel.value) supplierIds.push(sel.value); });
-    const missing = [];
-    if (items.length === 0 && tipo !== 'critico') missing.push('pelo menos 1 produto');
-    if (supplierIds.length === 0) missing.push('pelo menos 1 fornecedor');
-    if (!deadline) missing.push('data limite');
-    if (missing.length > 0) { showToastSup('Preencha: ' + missing.join(', '), 'error'); return; }
+    if (items.length === 0 && tipo !== 'critico') { showToastSup('⚠️ Adicione pelo menos 1 item à cotação!', 'error'); return; }
+    if (supplierIds.length === 0) { showToastSup('⚠️ Selecione pelo menos 1 fornecedor!', 'error'); return; }
+    if (!deadline) { showToastSup('⚠️ Informe a data limite para respostas!', 'error'); return; }
     try {
       const res = await fetch('/suprimentos/api/quotations/create', {
         method: 'POST', headers: {'Content-Type':'application/json'},
