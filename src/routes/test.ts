@@ -124,7 +124,6 @@ async function testRecursos(db: D1Database | null, userId: string): Promise<Test
   let plantInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO plants (id, user_id, name, location, total_capacity, contact, status, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`).bind(pId, userId, 'Planta Teste', 'São Paulo', 100, 'test@test.com', 'active', 'Teste').run()
       plantInD1 = await verifyD1(db, 'plants', pId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -164,7 +163,6 @@ async function testRecursos(db: D1Database | null, userId: string): Promise<Test
   let machineInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO machines (id, user_id, name, type, capacity, plant_id, plant_name, status, specs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`).bind(mId, userId, 'Máquina Teste', 'CNC', '100/h', '', '', 'operational', '').run()
       machineInD1 = await verifyD1(db, 'machines', mId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -204,7 +202,6 @@ async function testRecursos(db: D1Database | null, userId: string): Promise<Test
   let workbenchInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO workbenches (id, user_id, name, function, plant_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`).bind(wbId, userId, 'Bancada Teste', 'Montagem', '', 'available').run()
       workbenchInD1 = await verifyD1(db, 'workbenches', wbId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -257,8 +254,6 @@ async function testProdutos(db: D1Database | null, userId: string): Promise<Test
   let prodInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO products (id, user_id, name, code, unit, type, stock_min, stock_max, stock_current, stock_status, price, description, serial_controlled, control_type, critical_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(prodId, userId, 'Produto Teste', 'PROD-TEST-001', 'un', 'external', 10, 100, 5, 'critical', 9.99, 'Produto para teste', 0, '', 50).run()
       prodInD1 = await verifyD1(db, 'products', prodId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -336,8 +331,6 @@ async function testEngenharia(db: D1Database | null, userId: string): Promise<Te
   let bomInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO boms (id, user_id, product_id, component_id, component_name, component_code, quantity, unit, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(bomId, userId, 'prod_test', '', 'Componente A', 'COMP-001', 2, 'un', '').run()
       bomInD1 = await verifyD1(db, 'boms', bomId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -430,8 +423,6 @@ async function testCadastros(db: D1Database | null, userId: string): Promise<Tes
   let supInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO suppliers (id, user_id, name, cnpj, email, phone, contact, city, state, active, type, category, trade_name, payment_terms, lead_days, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(supId, userId, 'Fornecedor Teste', '12.345.678/0001-99', 'fornecedor@teste.com', '(11) 9999-0000', 'João', 'São Paulo', 'SP', 1, 'nacional', 'Matéria-Prima', '', '30/60', 15, '').run()
       supInD1 = await verifyD1(db, 'suppliers', supId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -528,8 +519,6 @@ async function testOrdens(db: D1Database | null, userId: string): Promise<TestRe
   let orderInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO production_orders (id, user_id, code, product_name, quantity, completed_quantity, status, priority, start_date, end_date, plant_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(ordId, userId, 'OP-TEST-001', 'Produto Teste', 50, 0, 'planned', 'medium', new Date().toISOString().split('T')[0], '', '', '').run()
       orderInD1 = await verifyD1(db, 'production_orders', ordId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -603,8 +592,6 @@ async function testApontamento(db: D1Database | null, userId: string): Promise<T
   let aptInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO apontamentos (id, user_id, order_id, order_code, product_name, operator, machine, start_time, end_time, produced, rejected, shift, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(aptId, userId, 'op_test', 'OP-001', 'Produto Teste', 'Operador 1', 'CNC-01', '08:00', '12:00', 100, 5, 'manha', '').run()
       aptInD1 = await verifyD1(db, 'apontamentos', aptId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -799,8 +786,6 @@ async function testSuprimentos(db: D1Database | null, userId: string): Promise<T
   let cotInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO quotations (id, user_id, title, status, deadline, notes) VALUES (?, ?, ?, ?, ?, ?)`)
-        .bind(cotId, userId, 'Cotação Teste', 'draft', new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0], '').run()
       cotInD1 = await verifyD1(db, 'quotations', cotId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -863,8 +848,6 @@ async function testSuprimentos(db: D1Database | null, userId: string): Promise<T
   let pcInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO purchase_orders (id, user_id, supplier_id, status, total_value, expected_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .bind(pcId, userId, 'sup_test', 'draft', 0, '', '').run()
       pcInD1 = await verifyD1(db, 'purchase_orders', pcId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -899,8 +882,6 @@ async function testSuprimentos(db: D1Database | null, userId: string): Promise<T
   let impInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO imports (id, user_id, code, invoice_number, supplier_id, status) VALUES (?, ?, ?, ?, ?, ?)`)
-        .bind(impId, userId, 'IMP-TEST-001', 'INV-12345', '', 'waiting_ship').run()
       impInD1 = await verifyD1(db, 'imports', impId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -943,8 +924,6 @@ async function testEstoque(db: D1Database | null, userId: string): Promise<TestR
   let stkInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO stock_items (id, user_id, name, code, unit, category, current_qty, min_qty, max_qty, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(stkId, userId, 'Item Estoque Teste', 'STK-TEST-001', 'un', 'Matéria-Prima', 50, 10, 200, 'Prateleira A-01').run()
       stkInD1 = await verifyD1(db, 'stock_items', stkId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -990,8 +969,6 @@ async function testEstoque(db: D1Database | null, userId: string): Promise<TestR
   let almInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO warehouses (id, user_id, name, code, city, state, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .bind(almId, userId, 'Almoxarifado Central', 'ALM-01', 'São Paulo', 'SP', '').run()
       almInD1 = await verifyD1(db, 'warehouses', almId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -1028,8 +1005,6 @@ async function testEstoque(db: D1Database | null, userId: string): Promise<TestR
   let sepInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO separation_orders (id, user_id, code, pedido, cliente, data_separacao, responsavel, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(sepId, userId, 'OS-2025-001', 'PED-001', 'Cliente Teste', new Date().toISOString().split('T')[0], 'Operador 1', 'pending').run()
       sepInD1 = await verifyD1(db, 'separation_orders', sepId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -1077,8 +1052,6 @@ async function testEstoque(db: D1Database | null, userId: string): Promise<TestR
   let bxInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO stock_exits (id, user_id, code, type, pedido, nf, date, responsavel, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(bxId, userId, 'BX-2025-001', 'requisicao', '', '', new Date().toISOString().split('T')[0], 'Operador 1', '').run()
       bxInD1 = await verifyD1(db, 'stock_exits', bxId, userId)
     } catch { /* D1 unavailable */ }
   }
@@ -1125,8 +1098,6 @@ async function testQualidade(db: D1Database | null, userId: string): Promise<Tes
   let ncInD1 = false
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`INSERT INTO non_conformances (id, user_id, title, type, severity, status, product, description, responsible, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(ncId, userId, 'NC Teste', 'processo', 'medium', 'open', 'Produto Teste', 'Descrição da não conformidade', 'Operador 1', new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]).run()
       ncInD1 = await verifyD1(db, 'non_conformances', ncId, userId)
     } catch { /* D1 unavailable */ }
   }
