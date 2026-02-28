@@ -14,6 +14,13 @@ export function genId(prefix = 'rec'): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 }
 
+/** Ensure empresa_id has a value, defaulting to '1' if not provided */
+function ensureEmpresaId(data: Record<string, any>): void {
+  if (!data.empresa_id) {
+    data.empresa_id = '1'
+  }
+}
+
 /** Fetch all records for a tenant from a D1 table */
 export async function dbGetAll(db: D1Database, table: string, userId: string, extraWhere = ''): Promise<any[]> {
   try {
@@ -29,6 +36,9 @@ export async function dbGetAll(db: D1Database, table: string, userId: string, ex
 /** Insert a record into D1 */
 export async function dbInsert(db: D1Database, table: string, data: Record<string, any>): Promise<boolean> {
   try {
+    // Ensure empresa_id has a value before inserting
+    ensureEmpresaId(data)
+
     const keys = Object.keys(data)
     const vals = Object.values(data)
     const placeholders = keys.map(() => '?').join(', ')
@@ -63,6 +73,9 @@ export async function dbInsertWithRetry(
   data: Record<string, any>,
   maxRetries = 3
 ): Promise<{ success: boolean; attempts: number; error?: string }> {
+  // Ensure empresa_id has a value before inserting
+  ensureEmpresaId(data)
+
   const keys = Object.keys(data)
   const vals = Object.values(data)
   const placeholders = keys.map(() => '?').join(', ')

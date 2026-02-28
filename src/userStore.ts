@@ -605,7 +605,8 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }))
     }
     // Load machines
-    const machinesRes = await db.prepare('SELECT * FROM machines WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const machinesRes = await db.prepare(`SELECT * FROM machines WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+      .bind(...bindEmpresa([userId])).all()
     if (machinesRes.results && machinesRes.results.length > 0) {
       tenant.machines = (machinesRes.results as any[]).map(r => ({
         id: r.id, name: r.name, type: r.type || '',
@@ -616,7 +617,8 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }))
     }
     // Load workbenches
-    const wbRes = await db.prepare('SELECT * FROM workbenches WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all()
+    const wbRes = await db.prepare(`SELECT * FROM workbenches WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+      .bind(...bindEmpresa([userId])).all()
     if (wbRes.results && wbRes.results.length > 0) {
       tenant.workbenches = (wbRes.results as any[]).map(r => ({
         id: r.id, name: r.name, function: r.function || '',

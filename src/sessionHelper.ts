@@ -83,7 +83,7 @@ export function getCtxUserId(c: Context): string {
 /** Retorna o empresaId da sessão ativa */
 export function getCtxEmpresaId(c: Context): string {
   const session = getCtxSession(c)
-  return session?.empresaId || ''
+  return session?.empresaId || '1'
 }
 
 /** Retorna o grupoId da sessão ativa */
