@@ -465,6 +465,15 @@ app.get('/', (c) => {
     });
   }
 
+  // filterFornecedores: filtra por nome e/ou categoria (busca combinada)
+  function filterFornecedores(nome, categoria) {
+    document.querySelectorAll('.sup-card').forEach(function(card) {
+      var matchNome = !nome || (card.dataset.search || '').includes((nome || '').toLowerCase());
+      var matchCat = !categoria || card.dataset.cat === categoria;
+      card.style.display = (matchNome && matchCat) ? '' : 'none';
+    });
+  }
+
   // ── Tipo de fornecedor (nacional/importado) ─────────────────────────────
   function toggleFornType(val) {
     var nac = document.getElementById('fType_nac');
@@ -624,6 +633,10 @@ app.get('/', (c) => {
 
     if (!name) { showToast('Informe o nome (Razão Social)!', 'error'); return; }
     if (type === 'nacional' && !cnpj) { showToast('CNPJ obrigatório para fornecedor Nacional!', 'error'); return; }
+    if (type === 'nacional' && cnpj) {
+      var cnpjDigits = cnpj.replace(/\D/g, '');
+      if (cnpjDigits.length !== 14) { showToast('CNPJ inválido! Informe no formato XX.XXX.XXX/XXXX-XX (14 dígitos)', 'error'); return; }
+    }
     if (!email) { showToast('E-mail obrigatório!', 'error'); return; }
     if (!deliveryLeadDays || parseInt(String(deliveryLeadDays)) < 1) { showToast('Informe o prazo mínimo de entrega (dias)!', 'error'); return; }
 
@@ -644,6 +657,12 @@ app.get('/', (c) => {
       });
       var data = await res.json();
       if (data.ok) {
+        if (editId) {
+          var sIdx = suppliersData.findIndex(function(s) { return s.id === editId; });
+          if (sIdx !== -1 && data.supplier) { suppliersData[sIdx] = Object.assign(suppliersData[sIdx], data.supplier); }
+        } else if (data.supplier) {
+          suppliersData.push(data.supplier);
+        }
         showToast(editId ? '\u2705 Fornecedor atualizado!' : '\u2705 Fornecedor cadastrado!');
         var elId = document.getElementById('sup_id'); if (elId) elId.value = '';
         var elTit = document.getElementById('fornModalTitle');
