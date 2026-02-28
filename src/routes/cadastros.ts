@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
@@ -826,8 +827,10 @@ app.post('/api/supplier/create', async (c) => {
     notes: body.notes || '', createdAt: new Date().toISOString(),
   }
   tenant.suppliers.push(supplier)
+  console.log(`[SAVE] Fornecedor ${id} salvo em memória`)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'suppliers', {
+    console.log(`[PERSIST] Persistindo fornecedor ${id} em D1...`)
+    const persisted = await dbInsert(db, 'suppliers', {
       id, user_id: userId, name: supplier.name, cnpj: supplier.cnpj,
       email: supplier.email, phone: supplier.phone, contact: supplier.contact,
       city: supplier.city, state: supplier.state, active: 1,
@@ -837,7 +840,14 @@ app.post('/api/supplier/create', async (c) => {
       lead_days: supplier.deliveryLeadDays,
       notes: supplier.notes,
     })
+    if (persisted) {
+      console.log(`[SUCCESS] Fornecedor ${id} persistido em D1`)
+    } else {
+      console.error(`[ERROR] Falha ao persistir fornecedor ${id} em D1`)
+      return err(c, 'Falha ao persistir fornecedor no banco de dados. Os dados serão perdidos na próxima reinicialização. Tente novamente.', 500)
+    }
   }
+  markTenantModified(userId)
   return ok(c, { supplier })
 })
 
