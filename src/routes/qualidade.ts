@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
@@ -489,6 +489,7 @@ app.get('/', (c) => {
 app.post('/api/create', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.title) return err(c, 'Título obrigatório')
@@ -511,7 +512,7 @@ app.post('/api/create', async (c) => {
   tenant.nonConformances.push(nc)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'non_conformances', {
-      id, user_id: userId, title: nc.title, type: nc.type,
+      id, user_id: userId, empresa_id: empresaId, title: nc.title, type: nc.type,
       severity: nc.severity, status: nc.status, product: nc.product,
       description: nc.description, responsible: nc.responsible, due_date: nc.dueDate,
     })

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
@@ -2156,7 +2156,7 @@ app.get('/cotacao/:id/responder', (c) => {
 
 // ── API: POST /suprimentos/api/quotation/create ──────────────────────────────
 app.post('/api/quotation/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.title) return err(c, 'Título obrigatório')
   const id = genId('cot')
@@ -2169,7 +2169,7 @@ app.post('/api/quotation/create', async (c) => {
   tenant.quotations.push(quotation)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'quotations', {
-      id, user_id: userId, title: quotation.title, status: 'draft',
+      id, user_id: userId, empresa_id: empresaId, title: quotation.title, status: 'draft',
       deadline: quotation.deadline, notes: quotation.notes,
     })
   }
@@ -2188,7 +2188,7 @@ app.delete('/api/quotation/:id', async (c) => {
 
 // Purchase Orders
 app.post('/api/order/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.supplierId) return err(c, 'Fornecedor obrigatório')
   const id = genId('oc')
@@ -2202,7 +2202,7 @@ app.post('/api/order/create', async (c) => {
   tenant.purchaseOrders.push(order)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'purchase_orders', {
-      id, user_id: userId, supplier_id: order.supplierId,
+      id, user_id: userId, empresa_id: empresaId, supplier_id: order.supplierId,
       status: 'draft', total_value: 0,
       expected_date: order.expectedDate, notes: order.notes,
     })
@@ -2227,7 +2227,7 @@ app.get('/api/list', (c) => {
 
 // ── API: POST /suprimentos/api/quotations/create (new format) ─────────────────
 app.post('/api/quotations/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
   if (!body.deadline) return err(c, 'Data limite obrigatória')
@@ -2251,7 +2251,7 @@ app.post('/api/quotations/create', async (c) => {
   tenant.quotations.push(quotation)
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'quotations', {
-      id, user_id: userId, title: quotation.descricao, status: 'sent',
+      id, user_id: userId, empresa_id: empresaId, title: quotation.descricao, status: 'sent',
       deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
     })
     if (!persistResult.success) {
@@ -2267,7 +2267,7 @@ app.post('/api/quotations/create', async (c) => {
 
 // ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
 app.post('/api/quotations/:id/approve', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   const idx = tenant.quotations.findIndex((q: any) => q.id === id)
@@ -2281,7 +2281,7 @@ app.post('/api/quotations/:id/approve', async (c) => {
   const pc = { id: pcId, code: pcCode, quotationId: id, supplierId: body.supplierName || '', supplierName: body.supplierName || 'Fornecedor', status: 'pending', totalValue: 0, currency: 'BRL', createdAt: new Date().toISOString() }
   tenant.purchaseOrders.push(pc)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'purchase_orders', { id: pcId, user_id: userId, supplier_id: pc.supplierId, status: 'pending', total_value: 0, expected_date: '', notes: `Gerado da cotação ${tenant.quotations[idx].code || id}` })
+    await dbInsert(db, 'purchase_orders', { id: pcId, user_id: userId, empresa_id: empresaId, supplier_id: pc.supplierId, status: 'pending', total_value: 0, expected_date: '', notes: `Gerado da cotação ${tenant.quotations[idx].code || id}` })
   }
   return ok(c, { pcCode })
 })
@@ -2300,7 +2300,7 @@ app.post('/api/quotations/:id/reject', async (c) => {
 
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
 app.post('/api/purchase-orders/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.supplierId) return err(c, 'Fornecedor obrigatório')
   const id = genId('pc')
@@ -2314,7 +2314,7 @@ app.post('/api/purchase-orders/create', async (c) => {
   tenant.purchaseOrders.push(order)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'purchase_orders', {
-      id, user_id: userId, supplier_id: order.supplierId,
+      id, user_id: userId, empresa_id: empresaId, supplier_id: order.supplierId,
       status: 'pending', total_value: 0,
       expected_date: order.expectedDelivery, notes: order.notes,
     })
@@ -2324,7 +2324,7 @@ app.post('/api/purchase-orders/create', async (c) => {
 
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
 app.post('/api/imports/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.invoiceNumber) return err(c, 'Número da Invoice obrigatório')
   const id = genId('imp')
@@ -2339,7 +2339,7 @@ app.post('/api/imports/create', async (c) => {
   tenant.imports.push(imp)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'imports', {
-      id, user_id: userId, code, invoice_number: imp.invoiceNumber,
+      id, user_id: userId, empresa_id: empresaId, code, invoice_number: imp.invoiceNumber,
       supplier_id: imp.supplierId, status: 'waiting_ship',
     })
   }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { markTenantModified } from '../userStore'
 
@@ -868,6 +868,7 @@ app.get('/', (c) => {
 app.post('/api/create', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name) return err(c, 'Nome do produto obrigatório')
@@ -909,7 +910,7 @@ app.post('/api/create', async (c) => {
   if (db && userId !== 'demo-tenant') {
     console.log(`[PERSIST] Persistindo produto ${id} em D1...`)
     const persistResult = await dbInsertWithRetry(db, 'products', {
-      id, user_id: userId, name: product.name, code: product.code,
+      id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code,
       unit: product.unit, type: product.type,
       stock_min: product.stockMin, stock_max: product.stockMax,
       stock_current: product.stockCurrent, stock_status: product.stockStatus,
@@ -1022,6 +1023,7 @@ app.get('/api/list', async (c) => {
 app.post('/api/import', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !Array.isArray(body.rows)) return err(c, 'Dados inválidos')
@@ -1102,7 +1104,7 @@ app.post('/api/import', async (c) => {
 
       if (db && userId !== 'demo-tenant') {
         await dbInsert(db, 'products', {
-          id: productId, user_id: userId, name: nome, code: codigo, unit, type,
+          id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
           stock_min: stockMin, stock_max: 0, stock_current: stockCurrent,
           price, notes,
         }).catch(() => {})

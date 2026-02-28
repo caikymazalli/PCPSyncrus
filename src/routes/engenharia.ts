@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
@@ -677,7 +677,7 @@ app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
 // ── API: POST /engenharia/api/product/create ────────────────────────────────
 // Cria produto (na lista geral de produtos do tenant) via engenharia
 app.post('/api/product/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name || !body.code) return err(c, 'Nome e código obrigatórios')
   const id = genId('prod')
@@ -690,7 +690,7 @@ app.post('/api/product/create', async (c) => {
   tenant.products.push(product)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'products', {
-      id, user_id: userId, name: product.name, code: product.code, unit: product.unit,
+      id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code, unit: product.unit,
       type: product.type, stock_min: 0, stock_current: 0, description: product.description,
     })
   }

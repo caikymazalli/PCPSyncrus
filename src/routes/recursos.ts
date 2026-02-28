@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxSession, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxSession, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
@@ -443,6 +443,7 @@ app.post('/plantas', async (c) => {
   const tenant = getCtxTenant(c)
   const db     = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const body   = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
   if (!body.nome) return err(c, 'Nome é obrigatório')
@@ -458,7 +459,7 @@ app.post('/plantas', async (c) => {
 
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'plants', {
-      id, user_id: userId,
+      id, user_id: userId, empresa_id: empresaId,
       name: planta.name, location: planta.location,
       total_capacity: planta.totalCapacity, contact: planta.contact,
       status: planta.status, notes: planta.notes,

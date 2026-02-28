@@ -79,3 +79,27 @@ export function getCtxUserId(c: Context): string {
   if (!session || session.isDemo) return 'demo-tenant'
   return session.userId
 }
+
+/** Retorna o empresaId da sessão ativa */
+export function getCtxEmpresaId(c: Context): string {
+  const session = getCtxSession(c)
+  return session?.empresaId || ''
+}
+
+/** Retorna o grupoId da sessão ativa */
+export function getCtxGrupoId(c: Context): string {
+  const session = getCtxSession(c)
+  return session?.grupoId || ''
+}
+
+/** Retorna o nome da empresa da sessão ativa */
+export function getCtxEmpresa(c: Context): any {
+  const session = getCtxSession(c)
+  return session?.empresa || null
+}
+
+/** Retorna o grupoId da sessão ativa */
+export function getCtxGrupo(c: Context): any {
+  const session = getCtxSession(c)
+  return session?.grupoId || null
+}

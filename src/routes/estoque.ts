@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
@@ -1737,7 +1737,7 @@ app.get('/', (c) => {
 
 // ── API: POST /estoque/api/item/create ───────────────────────────────────────
 app.post('/api/item/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name) return err(c, 'Nome obrigatório')
   const id = genId('stk')
@@ -1754,7 +1754,7 @@ app.post('/api/item/create', async (c) => {
   tenant.stockItems.push(item)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'stock_items', {
-      id, user_id: userId, name: item.name, code: item.code,
+      id, user_id: userId, empresa_id: empresaId, name: item.name, code: item.code,
       unit: item.unit, category: item.category,
       current_qty: item.currentQty, min_qty: item.minQty, max_qty: item.maxQty,
       location: item.location,
