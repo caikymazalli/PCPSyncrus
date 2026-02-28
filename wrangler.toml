@@ -1,0 +1,9 @@
+name = "pcpsyncrus"
+compatibility_date = "2026-02-21"
+pages_build_output_dir = "./dist"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pcpsyncrus-production"
+database_id = "449d62b1-b4f4-4a6f-93c8-ac4954a2d03f"
