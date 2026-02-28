@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
-import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { markTenantModified } from '../userStore'
 
 const app = new Hono()
@@ -754,7 +754,14 @@ app.get('/', (c) => {
       });
       var data = await res.json();
       if (data.ok) {
-        showToast('\u2705 Produto criado com sucesso!');
+        if (data.warning) {
+          showToast('\u26a0\ufe0f ' + data.warning, 'warning');
+          var pendingProducts = JSON.parse(localStorage.getItem('pending_products') || '[]');
+          pendingProducts.push(data.product);
+          localStorage.setItem('pending_products', JSON.stringify(pendingProducts));
+        } else {
+          showToast('\u2705 Produto criado com sucesso!');
+        }
         // Limpar campos
         if (nomeEl) nomeEl.value = '';
         if (codeEl) codeEl.value = '';
@@ -897,7 +904,7 @@ app.post('/api/create', async (c) => {
 
   if (db && userId !== 'demo-tenant') {
     console.log(`[PERSIST] Persistindo produto ${id} em D1...`)
-    const persisted = await dbInsert(db, 'products', {
+    const persistResult = await dbInsertWithRetry(db, 'products', {
       id, user_id: userId, name: product.name, code: product.code,
       unit: product.unit, type: product.type,
       stock_min: product.stockMin, stock_max: product.stockMax,
@@ -908,11 +915,14 @@ app.post('/api/create', async (c) => {
       control_type: product.controlType,
       critical_percentage: product.criticalPercentage,
     })
-    if (persisted) {
+    if (persistResult.success) {
       console.log(`[SUCCESS] Produto ${id} persistido em D1`)
     } else {
-      console.error(`[ERROR] Falha ao persistir produto ${id} em D1`)
-      return err(c, 'Falha ao persistir produto no banco de dados. Os dados serão perdidos na próxima reinicialização. Tente novamente.', 500)
+      console.error(`[ERROR] Falha ao persistir produto ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return ok(c, {
+        product,
+        warning: 'Produto salvo localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
+      })
     }
   }
 

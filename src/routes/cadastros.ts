@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
-import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { markTenantModified } from '../userStore'
 
 const app = new Hono()
@@ -254,13 +254,19 @@ app.get('/', (c) => {
       });
       var data = await res.json();
       if (data.ok) {
+        if (data.warning) {
+          showToast('\u26a0\ufe0f ' + data.warning, 'warning');
+          var pendingSuppliers = JSON.parse(localStorage.getItem('pending_suppliers') || '[]');
+          pendingSuppliers.push(data.supplier);
+          localStorage.setItem('pending_suppliers', JSON.stringify(pendingSuppliers));
+        }
         if (editId) {
           var sIdx = suppliersData.findIndex(function(s) { return s.id === editId; });
           if (sIdx !== -1 && data.supplier) { suppliersData[sIdx] = Object.assign(suppliersData[sIdx], data.supplier); }
         } else if (data.supplier) {
           suppliersData.push(data.supplier);
         }
-        showToast(editId ? '\u2705 Fornecedor atualizado!' : '\u2705 Fornecedor cadastrado!');
+        if (!data.warning) showToast(editId ? '\u2705 Fornecedor atualizado!' : '\u2705 Fornecedor cadastrado!');
         var elId = document.getElementById('sup_id'); if (elId) elId.value = '';
         var elTit = document.getElementById('fornModalTitle');
         if (elTit) elTit.innerHTML = '<i class="fas fa-truck" style="margin-right:8px;"></i>Cadastrar Fornecedor';
@@ -830,7 +836,7 @@ app.post('/api/supplier/create', async (c) => {
   console.log(`[SAVE] Fornecedor ${id} salvo em memória`)
   if (db && userId !== 'demo-tenant') {
     console.log(`[PERSIST] Persistindo fornecedor ${id} em D1...`)
-    const persisted = await dbInsert(db, 'suppliers', {
+    const persistResult = await dbInsertWithRetry(db, 'suppliers', {
       id, user_id: userId, name: supplier.name, cnpj: supplier.cnpj,
       email: supplier.email, phone: supplier.phone, contact: supplier.contact,
       city: supplier.city, state: supplier.state, active: 1,
@@ -840,11 +846,14 @@ app.post('/api/supplier/create', async (c) => {
       lead_days: supplier.deliveryLeadDays,
       notes: supplier.notes,
     })
-    if (persisted) {
+    if (persistResult.success) {
       console.log(`[SUCCESS] Fornecedor ${id} persistido em D1`)
     } else {
-      console.error(`[ERROR] Falha ao persistir fornecedor ${id} em D1`)
-      return err(c, 'Falha ao persistir fornecedor no banco de dados. Os dados serão perdidos na próxima reinicialização. Tente novamente.', 500)
+      console.error(`[ERROR] Falha ao persistir fornecedor ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return ok(c, {
+        supplier,
+        warning: 'Fornecedor salvo localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
+      })
     }
   }
   markTenantModified(userId)

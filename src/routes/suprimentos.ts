@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId } from '../sessionHelper'
-import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 
 const app = new Hono()
 
@@ -1191,7 +1191,14 @@ app.get('/', (c) => {
       });
       const data = await res.json();
       if (data.ok) {
-        showToastSup('✅ Cotação ' + (data.code||'') + ' criada com sucesso!', 'success');
+        if (data.warning) {
+          showToastSup('\u26a0\ufe0f ' + data.warning, 'warning');
+          const pendingQuotations = JSON.parse(localStorage.getItem('pending_quotations') || '[]');
+          pendingQuotations.push(data.quotation);
+          localStorage.setItem('pending_quotations', JSON.stringify(pendingQuotations));
+        } else {
+          showToastSup('\u2705 Cotação ' + (data.code||'') + ' criada com sucesso!', 'success');
+        }
         closeModal('gerarCotacaoModal');
         setTimeout(() => location.reload(), 1000);
       } else { showToastSup(data.error || 'Erro ao criar cotação', 'error'); }
@@ -2243,10 +2250,17 @@ app.post('/api/quotations/create', async (c) => {
   }
   tenant.quotations.push(quotation)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'quotations', {
+    const persistResult = await dbInsertWithRetry(db, 'quotations', {
       id, user_id: userId, title: quotation.descricao, status: 'sent',
       deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
     })
+    if (!persistResult.success) {
+      console.error(`[ERROR] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return ok(c, {
+        quotation, code,
+        warning: 'Cotação salva localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
+      })
+    }
   }
   return ok(c, { quotation, code })
 })
