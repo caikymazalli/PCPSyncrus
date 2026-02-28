@@ -13,6 +13,11 @@ app.get('/', (c) => {
   const productSuppliers = (mockData as any).productSuppliers || []
   const stockItems = (mockData as any).stockItems || []
   const products = (mockData as any).products || []
+  const supplierCategories: any[] = (mockData as any).supplierCategories || []
+
+  const DEFAULT_CATEGORIES = ['Matéria-Prima', 'Componente', 'Fixador', 'Embalagem', 'Serviço']
+  const customCategoryNames = supplierCategories.map((c: any) => c.name)
+  const allCategories = [...new Set([...DEFAULT_CATEGORIES, ...customCategoryNames])]
 
   const typeInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
     nacional:  { label: 'Nacional',  color: '#16a34a', bg: '#f0fdf4', icon: 'fa-flag' },
@@ -110,9 +115,7 @@ app.get('/', (c) => {
           </select>
           <select class="form-control" id="supCatFilter" style="width:auto;" onchange="filterSuppliers()">
             <option value="">Todas as categorias</option>
-            <option value="Matéria-Prima">Matéria-Prima</option>
-            <option value="Componente">Componente</option>
-            <option value="Fixador">Fixador</option>
+            ${allCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -312,9 +315,12 @@ app.get('/', (c) => {
           <div class="form-group"><label class="form-label">Telefone</label><input class="form-control" id="sup_tel" type="text" placeholder="(11) 9999-9999"></div>
           <div class="form-group"><label class="form-label">Contato Principal</label><input class="form-control" id="sup_contato" type="text" placeholder="Nome do responsável"></div>
           <div class="form-group"><label class="form-label">Categoria</label>
-            <select class="form-control" id="sup_categoria">
-              <option value="materia_prima">Matéria-Prima</option><option value="componente">Componente</option><option value="fixador">Fixador</option><option value="embalagem">Embalagem</option><option value="servico">Serviço</option>
-            </select>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select class="form-control" id="sup_categoria" style="flex:1;">
+                ${allCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="openModal('novaCategoriaModal')" title="Nova categoria" style="padding:6px 10px;flex-shrink:0;"><i class="fas fa-plus"></i></button>
+            </div>
           </div>
           <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" id="sup_cidade" type="text" placeholder="Cidade"></div>
           <div class="form-group"><label class="form-label">Estado / País</label><input class="form-control" id="sup_estado" type="text" placeholder="SP / Brasil"></div>
@@ -412,11 +418,32 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Modal: Nova Categoria -->
+  <div class="modal-overlay" id="novaCategoriaModal">
+    <div class="modal" style="max-width:400px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#1B4F72;"><i class="fas fa-tag" style="margin-right:8px;"></i>Nova Categoria</h3>
+        <button onclick="closeModal('novaCategoriaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div class="form-group">
+          <label class="form-label">Nome da Categoria *</label>
+          <input class="form-control" id="nova_categoria_nome" type="text" placeholder="Ex: Lubrificantes">
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaCategoriaModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarNovaCategoria()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
   var suppliersData = ${JSON.stringify(suppliers)};
   var productSuppliersData = ${JSON.stringify(productSuppliers)};
   var allItemsData = ${JSON.stringify(allItems)};
   var supplierProductMapData = ${JSON.stringify(supplierProductMap)};
+  var allCategoriesData = ${JSON.stringify(allCategories)};
 
   // ── Filtro de fornecedores ──────────────────────────────────────────────
   function filterSuppliers() {
@@ -427,7 +454,7 @@ app.get('/', (c) => {
       var matchSearch = !search || (card.dataset.search || '').includes(search);
       var matchType = !type || card.dataset.type === type;
       var matchCat = !cat || card.dataset.cat === cat;
-      card.parentElement.style.display = (matchSearch && matchType && matchCat) ? '' : 'none';
+      card.style.display = (matchSearch && matchType && matchCat) ? '' : 'none';
     });
   }
 
@@ -551,9 +578,13 @@ app.get('/', (c) => {
     setField('sup_pagamento',s.paymentTerms);
     setField('sup_prazo',    s.deliveryLeadDays);
     setField('sup_obs',      s.notes || s.obs);
-    // Categoria
+    // Categoria — mapear formato legado (snake_case) para display format
     var catEl = document.getElementById('sup_categoria');
-    if (catEl) catEl.value = s.category || 'materia_prima';
+    if (catEl) {
+      var catLegacyMap = { materia_prima: 'Matéria-Prima', componente: 'Componente', fixador: 'Fixador', embalagem: 'Embalagem', servico: 'Serviço' };
+      var cat = s.category || '';
+      catEl.value = catLegacyMap[cat] || cat || 'Matéria-Prima';
+    }
     // Tipo
     var tipo = s.type || 'nacional';
     document.querySelectorAll('input[name="fType"]').forEach(function(r) { r.checked = (r.value === tipo); });
@@ -656,7 +687,46 @@ app.get('/', (c) => {
     var s = suppliersData.find(function(x) { return x.id === id; });
     if (!s) return;
     showToast('\u2709\ufe0f Abrindo cota\u00e7\u00e3o para ' + s.name + '...', 'info');
-    setTimeout(function() { window.location.href = '/suprimentos?cotacao=' + id; }, 1500);
+    setTimeout(function() {
+      window.location.href = '/suprimentos?mode=nova_cotacao&supplier_id=' + encodeURIComponent(id) + '&supplier_name=' + encodeURIComponent(s.name);
+    }, 800);
+  }
+
+  // ── Nova categoria ──────────────────────────────────────────────────────
+  async function salvarNovaCategoria() {
+    var nome = document.getElementById('nova_categoria_nome').value.trim();
+    if (!nome) { showToast('Informe o nome da categoria!', 'error'); return; }
+    try {
+      var res = await fetch('/cadastros/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome })
+      });
+      var data = await res.json();
+      if (data.ok) {
+        // Adicionar ao select dinamicamente
+        var catSel = document.getElementById('sup_categoria');
+        if (catSel) {
+          var opt = document.createElement('option');
+          opt.value = nome;
+          opt.textContent = nome;
+          catSel.appendChild(opt);
+          catSel.value = nome;
+        }
+        // Adicionar ao filtro
+        var filterSel = document.getElementById('supCatFilter');
+        if (filterSel) {
+          var fOpt = document.createElement('option');
+          fOpt.value = nome;
+          fOpt.textContent = nome;
+          filterSel.appendChild(fOpt);
+        }
+        allCategoriesData.push(nome);
+        document.getElementById('nova_categoria_nome').value = '';
+        closeModal('novaCategoriaModal');
+        showToast('\u2705 Categoria "' + nome + '" criada!');
+      } else { showToast(data.error || 'Erro ao criar categoria', 'error'); }
+    } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
   }
 
   // ── Ativar / Inativar fornecedor ────────────────────────────────────────
@@ -791,6 +861,38 @@ app.delete('/api/supplier/:id', async (c) => {
 })
 
 app.get('/api/suppliers', (c) => ok(c, { suppliers: getCtxTenant(c).suppliers }))
+
+// ── API: GET /cadastros/api/categories ───────────────────────────────────────
+app.get('/api/categories', (c) => {
+  const tenant = getCtxTenant(c)
+  const DEFAULT_CATEGORIES = ['Matéria-Prima', 'Componente', 'Fixador', 'Embalagem', 'Serviço']
+  const customNames = (tenant.supplierCategories || []).map((c: any) => c.name)
+  const all = [...new Set([...DEFAULT_CATEGORIES, ...customNames])]
+  return ok(c, { categories: all, custom: tenant.supplierCategories || [] })
+})
+
+// ── API: POST /cadastros/api/categories ──────────────────────────────────────
+app.post('/api/categories', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.name.trim()) return err(c, 'Nome obrigatório')
+  const name = body.name.trim()
+  if (!tenant.supplierCategories) tenant.supplierCategories = []
+  // Prevent duplicates (case-insensitive)
+  const DEFAULT_CATEGORIES = ['Matéria-Prima', 'Componente', 'Fixador', 'Embalagem', 'Serviço']
+  const existing = [...DEFAULT_CATEGORIES, ...tenant.supplierCategories.map((c: any) => c.name)]
+  const lowerExisting = new Set(existing.map((n: string) => n.toLowerCase()))
+  if (lowerExisting.has(name.toLowerCase())) {
+    return err(c, 'Categoria já existe')
+  }
+  const id = genId('cat')
+  const category = { id, name, createdAt: new Date().toISOString() }
+  tenant.supplierCategories.push(category)
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'supplier_categories', { id, user_id: userId, name })
+  }
+  return ok(c, { category })
+})
 
 // ── API: POST /cadastros/api/supplier/vinc ───────────────────────────────────
 app.post('/api/supplier/vinc', async (c) => {

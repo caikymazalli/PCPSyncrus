@@ -1171,6 +1171,7 @@ app.get('/', (c) => {
   async function salvarCotacao() {
     const tipo = document.getElementById('cotTipo').value;
     const descricao = document.getElementById('cotDescricao')?.value?.trim() || 'Cotação de suprimentos';
+    const validade = document.getElementById('cotValidade')?.value?.trim() || '';
     const items = [];
     document.querySelectorAll('.cot-item').forEach(row => {
       const sel = row.querySelector('select');
@@ -1179,11 +1180,15 @@ app.get('/', (c) => {
     });
     const supplierIds = [];
     document.querySelectorAll('.cot-sup select').forEach(sel => { if (sel.value) supplierIds.push(sel.value); });
-    if (items.length === 0 && tipo !== 'critico') { showToastSup('Adicione pelo menos 1 item!', 'error'); return; }
+    const missing = [];
+    if (items.length === 0 && tipo !== 'critico') missing.push('pelo menos 1 produto');
+    if (supplierIds.length === 0) missing.push('pelo menos 1 fornecedor');
+    if (!validade) missing.push('validade (dias)');
+    if (missing.length > 0) { showToastSup('Preencha: ' + missing.join(', '), 'error'); return; }
     try {
       const res = await fetch('/suprimentos/api/quotations/create', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ tipo, descricao, items, supplierIds })
+        body: JSON.stringify({ tipo, descricao, items, supplierIds, validade })
       });
       const data = await res.json();
       if (data.ok) {
@@ -1954,6 +1959,37 @@ app.get('/', (c) => {
   setTimeout(() => {
     ['pendingApprovalPopup','criticalQuotPopup'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
   }, 12000);
+
+  // ── URL params: abrir modal de cotação pré-preenchido ─────────────────────
+  (function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'nova_cotacao') {
+      const supId = params.get('supplier_id') || '';
+      const supName = params.get('supplier_name') || '';
+      openModal('gerarCotacaoModal');
+      if (supId) {
+        // Selecionar o fornecedor no primeiro select de fornecedor da cotação
+        setTimeout(function() {
+          const firstSupSel = document.querySelector('#cotSupplierList .cot-sup select');
+          if (firstSupSel) {
+            firstSupSel.value = supId;
+          } else {
+            // Adicionar linha de fornecedor se não houver
+            addCotSupplier();
+            setTimeout(function() {
+              const sel = document.querySelector('#cotSupplierList .cot-sup select');
+              if (sel) sel.value = supId;
+            }, 50);
+          }
+        }, 100);
+      }
+      if (supName) {
+        showToastSup('\u2709\ufe0f Cotação para: ' + supName, 'info');
+      }
+      // Limpar params da URL sem recarregar
+      history.replaceState({}, '', window.location.pathname);
+    }
+  })();
   </script>
   `
 
