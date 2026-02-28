@@ -873,6 +873,8 @@ app.post('/api/create', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name) return err(c, 'Nome do produto obrigatório')
 
+  console.log('[PRODUTOS][POST /api/create]', { userId, empresaId, hasDB: !!db, body })
+
   const id = genId('prod')
   // Calcular stockStatus baseado nos valores informados
   function calcStockStatusCreate(current: number, min: number, max: number = 0, criticalPct: number = 50): string {

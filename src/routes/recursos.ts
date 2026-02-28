@@ -449,6 +449,8 @@ app.post('/plantas', async (c) => {
   if (!body.nome) return err(c, 'Nome é obrigatório')
   if (!body.loc) return err(c, 'Localização é obrigatória')
 
+  console.log('[RECURSOS][POST /plantas]', { userId, empresaId, hasDB: !!db, body })
+
   const id = genId('p')
   const planta = {
     id, name: body.nome, location: body.loc,
@@ -458,6 +460,7 @@ app.post('/plantas', async (c) => {
   tenant.plants.push(planta)
 
   if (db && userId !== 'demo-tenant') {
+    console.log('[RECURSOS] Inserindo planta em D1:', { id, empresaId, name: planta.name })
     await dbInsert(db, 'plants', {
       id, user_id: userId, empresa_id: empresaId,
       name: planta.name, location: planta.location,
@@ -518,9 +521,12 @@ app.post('/maquinas', async (c) => {
   const tenant = getCtxTenant(c)
   const db     = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const body   = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
   if (!body.nome) return err(c, 'Nome é obrigatório')
+
+  console.log('[RECURSOS][POST /maquinas]', { userId, empresaId, hasDB: !!db, body })
 
   const id = genId('m')
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
@@ -533,6 +539,7 @@ app.post('/maquinas', async (c) => {
   tenant.machines.push(maquina)
 
   if (db && userId !== 'demo-tenant') {
+    console.log('[RECURSOS] Inserindo maquina em D1:', { id, empresaId, name: maquina.name })
     await dbInsert(db, 'machines', {
       id, user_id: userId,
       name: maquina.name, type: maquina.type,
@@ -596,9 +603,12 @@ app.post('/bancadas', async (c) => {
   const tenant = getCtxTenant(c)
   const db     = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const body   = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
   if (!body.nome) return err(c, 'Nome é obrigatório')
+
+  console.log('[RECURSOS][POST /bancadas]', { userId, empresaId, hasDB: !!db, body })
 
   const id = genId('wb')
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
@@ -610,6 +620,7 @@ app.post('/bancadas', async (c) => {
   tenant.workbenches.push(bancada)
 
   if (db && userId !== 'demo-tenant') {
+    console.log('[RECURSOS] Inserindo bancada em D1:', { id, empresaId, name: bancada.name })
     await dbInsert(db, 'workbenches', {
       id, user_id: userId,
       name: bancada.name, function: bancada.function,

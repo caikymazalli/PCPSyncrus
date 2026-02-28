@@ -32,12 +32,26 @@ export async function dbInsert(db: D1Database, table: string, data: Record<strin
     const keys = Object.keys(data)
     const vals = Object.values(data)
     const placeholders = keys.map(() => '?').join(', ')
-    await db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`)
-      .bind(...vals).run()
-    console.log(`[D1][INSERT] ${table} id=${data.id || '?'}`)
+
+    console.log(`[D1][INSERT] ${table}:`, { keys, values: vals, data })
+
+    const sql = `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`
+
+    console.log(`[D1][SQL] ${sql}`)
+
+    const result = await db.prepare(sql).bind(...vals).run()
+
+    console.log(`[D1][SUCCESS] ${table} id=${data.id || '?'}:`, { success: true, result })
+
     return true
   } catch (e) {
-    console.error(`[D1][INSERT][ERROR] ${table} id=${data.id || '?'}:`, e)
+    console.error(`[D1][INSERT][ERROR] ${table}:`, {
+      error: e,
+      message: (e as any)?.message,
+      cause: (e as any)?.cause,
+      stack: (e as any)?.stack,
+      data
+    })
     return false
   }
 }
@@ -76,13 +90,25 @@ export async function dbUpdate(db: D1Database, table: string, id: string, userId
   try {
     const keys = Object.keys(data)
     const vals = Object.values(data)
+
+    console.log(`[D1][UPDATE] ${table} id=${id}:`, { keys, data })
+
     const setClause = keys.map(k => `${k} = ?`).join(', ')
-    await db.prepare(`UPDATE ${table} SET ${setClause} WHERE id = ? AND user_id = ?`)
-      .bind(...vals, id, userId).run()
-    console.log(`[D1][UPDATE] ${table} id=${id}`)
+    const sql = `UPDATE ${table} SET ${setClause} WHERE id = ? AND user_id = ?`
+
+    console.log(`[D1][SQL] ${sql}`)
+
+    const result = await db.prepare(sql).bind(...vals, id, userId).run()
+
+    console.log(`[D1][SUCCESS] ${table} id=${id}`, { result })
+
     return true
   } catch (e) {
-    console.error(`[D1][UPDATE][ERROR] ${table} id=${id}:`, e)
+    console.error(`[D1][UPDATE][ERROR] ${table} id=${id}:`, {
+      error: e,
+      message: (e as any)?.message,
+      data
+    })
     return false
   }
 }
@@ -90,11 +116,22 @@ export async function dbUpdate(db: D1Database, table: string, id: string, userId
 /** Delete a record from D1 */
 export async function dbDelete(db: D1Database, table: string, id: string, userId: string): Promise<boolean> {
   try {
-    await db.prepare(`DELETE FROM ${table} WHERE id = ? AND user_id = ?`).bind(id, userId).run()
     console.log(`[D1][DELETE] ${table} id=${id}`)
+
+    const sql = `DELETE FROM ${table} WHERE id = ? AND user_id = ?`
+
+    console.log(`[D1][SQL] ${sql}`)
+
+    const result = await db.prepare(sql).bind(id, userId).run()
+
+    console.log(`[D1][SUCCESS] ${table} id=${id}`, { result })
+
     return true
   } catch (e) {
-    console.error(`[D1][DELETE][ERROR] ${table} id=${id}:`, e)
+    console.error(`[D1][DELETE][ERROR] ${table} id=${id}:`, {
+      error: e,
+      message: (e as any)?.message
+    })
     return false
   }
 }
