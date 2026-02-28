@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxSession } from '../sessionHelper'
 import { resolveEmailConfig, sendEmail, templateInvite } from '../emailService'
+import { genId } from '../dbHelpers'
 
 const app = new Hono<{ Bindings: { DB: D1Database } }>()
 
@@ -600,6 +601,10 @@ app.get('/', async (c) => {
             <label class="form-label">Razão Social *</label>
             <input class="form-control" id="novaEmpRazao" type="text" placeholder="Ex: Filial Nordeste Ltda">
           </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Nome do Grupo *</label>
+            <input class="form-control" id="novaEmpGrupo" type="text" placeholder="Ex: Grupo Nordeste">
+          </div>
           <div class="form-group">
             <label class="form-label">CNPJ *</label>
             <input class="form-control" id="novaEmpCNPJ" type="text" placeholder="00.000.000/0001-00">
@@ -755,11 +760,26 @@ app.get('/', async (c) => {
     icon.className = inp.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
   }
 
-  function saveNovaEmpresa() {
+  async function saveNovaEmpresa() {
     const razao = document.getElementById('novaEmpRazao').value.trim();
+    const grupo = document.getElementById('novaEmpGrupo').value.trim();
     if (!razao) { showToast('Informe a Razão Social da empresa.', 'error'); return; }
-    showToast('Solicitação registrada! Você receberá instruções por e-mail.', 'success');
-    closeModal('novaEmpresaModal');
+    if (!grupo) { showToast('Informe o Nome do Grupo.', 'error'); return; }
+    try {
+      const res = await fetch('/admin/api/empresas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: razao, groupName: grupo, cnpj: document.getElementById('novaEmpCNPJ').value.trim() })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Empresa criada com sucesso!', 'success');
+        closeModal('novaEmpresaModal');
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showToast(data.error || 'Erro ao criar empresa.', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão.', 'error'); }
   }
 
   async function removeMember(id, name) {
@@ -933,6 +953,32 @@ app.post('/api/remove-member', async (c) => {
     .bind(memberId, session.userId).run()
 
   return c.json({ ok: true })
+})
+
+// ── POST /api/empresas — criar nova empresa com grupo ─────────────────────────
+app.post('/api/empresas', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ ok: false, error: 'Não autorizado.' }, 401)
+  if (!db) return c.json({ ok: false, error: 'Banco indisponível.' }, 503)
+
+  const body = await c.req.json() as any
+  const { name, groupName } = body
+
+  if (!name)      return c.json({ ok: false, error: 'Nome da empresa é obrigatório' })
+  if (!groupName) return c.json({ ok: false, error: 'Nome do grupo é obrigatório' })
+
+  const empresaId = genId('emp')
+  const grupoId   = genId('grupo')
+
+  await db.batch([
+    db.prepare('INSERT INTO grupo (id, name, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .bind(grupoId, groupName),
+    db.prepare('INSERT INTO empresas (id, grupo_id, name, cnpj, status, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)')
+      .bind(empresaId, grupoId, name, body.cnpj || '00000000000000', 'ativa'),
+  ])
+
+  return c.json({ ok: true, id: empresaId, grupoId })
 })
 
 export default app
