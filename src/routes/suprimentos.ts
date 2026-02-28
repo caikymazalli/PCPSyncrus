@@ -2000,9 +2000,11 @@ app.get('/', (c) => {
 // ── Interface pública para fornecedor responder cotação ─────────────────────
 app.get('/cotacao/:id/responder', (c) => {
   const quotId = c.req.param('id')
-  const quotations = (mockData as any).quotations || []
-  const suppliers = (mockData as any).suppliers || []
-  const productSuppliers = (mockData as any).productSuppliers || []
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const quotations = tenant.quotations || []
+  const suppliers = tenant.suppliers || []
+  const productSuppliers = tenant.productSuppliers || []
   const q = quotations.find((x: any) => x.id === quotId)
 
   if (!q) {
@@ -2140,49 +2142,6 @@ app.get('/cotacao/:id/responder', (c) => {
       '<p style="color:#6c757d;font-size:14px;">Sua cotação foi recebida.<br>Total: <strong>R$ ' + grand.toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</strong><br>Prazo: <strong>' + days + ' dias</strong></p>' +
       '<p style="color:#6c757d;font-size:12px;margin-top:12px;">A equipe de compras será notificada e entrará em contato em caso de aprovação.</p>' +
       '</div></div>';
-  }
-  
-
-  async function salvarCotacao() {
-    const title = document.getElementById('cot_titulo')?.value || '';
-    const deadline = document.getElementById('cot_prazo')?.value || '';
-    const notes = document.getElementById('cot_obs')?.value || '';
-    if (!title) { showToast('Informe o título!', 'error'); return; }
-    try {
-      const res = await fetch('/suprimentos/api/quotation/create', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, deadline, notes })
-      });
-      const data = await res.json();
-      if (data.ok) { showToast('✅ Cotação criada!'); closeModal('novaCotacaoModal'); setTimeout(() => location.reload(), 800); }
-      else showToast(data.error || 'Erro ao criar', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
-  }
-  async function salvarPedidoCompra() {
-    const supplierId = document.getElementById('oc_fornecedor')?.value || '';
-    const supplierName = document.getElementById('oc_fornecedor')?.options[document.getElementById('oc_fornecedor')?.selectedIndex]?.text || '';
-    const expectedDate = document.getElementById('oc_prazo')?.value || '';
-    const notes = document.getElementById('oc_obs')?.value || '';
-    if (!supplierId) { showToast('Selecione o fornecedor!', 'error'); return; }
-    try {
-      const res = await fetch('/suprimentos/api/order/create', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supplierId, supplierName, expectedDate, notes })
-      });
-      const data = await res.json();
-      if (data.ok) { showToast('✅ Pedido criado!'); closeModal('novaOCModal'); setTimeout(() => location.reload(), 800); }
-      else showToast(data.error || 'Erro ao criar', 'error');
-    } catch(e) { showToast('Erro de conexão', 'error'); }
-  }
-
-  // ── Toast notification ────────────────────────────────────────────────────
-  function showToast(msg, type = 'success') {
-    const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:360px;';
-    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
-    t.innerHTML = (type === 'success' ? '<i class=\"fas fa-check-circle\"></i>' : type === 'error' ? '<i class=\"fas fa-exclamation-circle\"></i>' : '<i class=\"fas fa-info-circle\"></i>') + ' ' + msg;
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
   }
 </script>
 </body>
