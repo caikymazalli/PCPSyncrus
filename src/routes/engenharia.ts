@@ -567,8 +567,9 @@ app.post('/api/bom/create', async (c) => {
   }
   tenant.bomItems.push(bom)
   if (db && userId !== 'demo-tenant') {
+    const empresaId = getCtxEmpresaId(c)
     await dbInsert(db, 'boms', {
-      id, user_id: userId, product_id: bom.productId, component_id: bom.componentId,
+      id, user_id: userId, empresa_id: empresaId, product_id: bom.productId, component_id: bom.componentId,
       component_name: bom.componentName, component_code: bom.componentCode,
       quantity: bom.quantity, unit: bom.unit, notes: bom.notes,
     })
