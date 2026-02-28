@@ -56,6 +56,7 @@ export interface TenantData {
   warehouses: any[]          // Almoxarifados cadastrados
   separationOrders: any[]    // Ordens de separação
   stockExits: any[]          // Baixas de estoque
+  supplierCategories: any[]  // Categorias de fornecedores personalizadas
 }
 
 export interface RegisteredUser {
@@ -125,6 +126,7 @@ tenants[demoUserId] = {
   warehouses:        JSON.parse(JSON.stringify(_md.warehouses         || [])),
   separationOrders:  JSON.parse(JSON.stringify(_md.separationOrders   || [])),
   stockExits:        JSON.parse(JSON.stringify(_md.stockExits         || [])),
+  supplierCategories: JSON.parse(JSON.stringify(_md.supplierCategories || [])),
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -227,6 +229,7 @@ export function getTenantData(userId: string): TenantData {
       bomItems: [], productSuppliers: [], workOrders: [], routes: [],
       serialNumbers: [], serialPendingItems: [],
       warehouses: [], separationOrders: [], stockExits: [],
+      supplierCategories: [],
     }
   }
   return tenants[userId]
@@ -569,6 +572,13 @@ export async function loadTenantFromDB(userId: string, db: D1Database): Promise<
         plantId: r.plant_id || '', plantName: r.plant_name || '',
         status: r.status || 'available',
         createdAt: r.created_at || new Date().toISOString(),
+      }))
+    }
+    // Load supplier categories
+    const cats = await db.prepare('SELECT * FROM supplier_categories WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all()
+    if (cats.results) {
+      tenant.supplierCategories = (cats.results as any[]).map(r => ({
+        id: r.id, name: r.name, createdAt: r.created_at || new Date().toISOString(),
       }))
     }
   } catch (e) {
