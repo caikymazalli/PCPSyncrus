@@ -231,7 +231,7 @@ app.get('/', (c) => {
                       <button class="btn btn-success btn-sm" onclick="approveQuotation('${q.id}','${q.code}','${(q.supplierResponses[0]?.supplierName||'fornecedor')}')" title="Aprovar"><i class="fas fa-check"></i></button>
                       <button class="btn btn-danger btn-sm" onclick="recusarCotacao('${q.id}','${q.code}')" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
                       ${q.status === 'sent' || q.status === 'awaiting_responses' ? `
-                      <button class="btn btn-secondary btn-sm" onclick="reenviarCotacao('${q.code}')" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
+                      <button class="btn btn-secondary btn-sm" onclick="reenviarCotacao('${q.id}','${q.code}')" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
                       <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;" onclick="copySupplierLink('${q.id}')" title="Copiar link fornecedor"><i class="fas fa-link"></i></button>
                     </div>
                   </td>
@@ -1805,11 +1805,11 @@ app.get('/', (c) => {
 
   // ── Edição Inline — Tabela de Produtos Importados ───────────────────────
   // Mapa em memória dos dados editados pelo usuário (persiste na sessão)
-  const impProdEdits: Record<string, Record<string, string>> = {};
+  const impProdEdits = {};
 
-  function startInlineEdit(td: HTMLElement, inputId: string, code: string, field: string) {
-    const view = td.querySelector('.imp-inline-view') as HTMLElement;
-    const input = td.querySelector('.imp-inline-input') as HTMLInputElement;
+  function startInlineEdit(td, inputId, code, field) {
+    const view = td.querySelector('.imp-inline-view');
+    const input = td.querySelector('.imp-inline-input');
     if (!view || !input) return;
     view.style.display = 'none';
     input.style.display = 'block';
@@ -1817,7 +1817,7 @@ app.get('/', (c) => {
     input.select();
   }
 
-  function saveInlineEdit(input: HTMLInputElement) {
+  function saveInlineEdit(input) {
     const code = input.dataset.code || '';
     const field = input.dataset.field || '';
     const val = input.value.trim();
@@ -1827,7 +1827,7 @@ app.get('/', (c) => {
     // Atualizar view
     const td = input.closest('td');
     if (!td) return;
-    const view = td.querySelector('.imp-inline-view') as HTMLElement;
+    const view = td.querySelector('.imp-inline-view');
     if (view) {
       view.innerHTML = val || '<span style="font-style:italic;font-size:11px;">— clique para preencher —</span>';
       if (val) {
@@ -1848,10 +1848,10 @@ app.get('/', (c) => {
     }).catch(() => showToastSup('Salvo localmente (sincronização pendente)', 'info'));
   }
 
-  function cancelInlineEdit(input: HTMLInputElement) {
+  function cancelInlineEdit(input) {
     const td = input.closest('td');
     if (!td) return;
-    const view = td.querySelector('.imp-inline-view') as HTMLElement;
+    const view = td.querySelector('.imp-inline-view');
     if (view) view.style.display = 'block';
     input.style.display = 'none';
   }
@@ -1874,15 +1874,15 @@ app.get('/', (c) => {
     const q = (document.getElementById('filterImpProd')?.value || '').toLowerCase();
     document.querySelectorAll('.imp-prod-row').forEach(row => {
       const text = row.textContent?.toLowerCase() || '';
-      (row as HTMLElement).style.display = text.includes(q) ? '' : 'none';
+      row.style.display = text.includes(q) ? '' : 'none';
     });
     if (q && !impProdExpanded) toggleImpProdSection();
   }
 
   // Mapa de descrições EN editadas pelo usuário
-  const impProdDescENMap: Record<string, string> = {};
+  const impProdDescENMap = {};
 
-  function editDescEN(code: string) {
+  function editDescEN(code) {
     const current = impProdDescENMap[code] || '';
     const val = prompt('Descrição em inglês para ' + code + ':\\n(Ex: Aluminum Alloy 6061 Sheet 3mm thickness)', current);
     if (val === null) return;
