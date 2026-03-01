@@ -65,6 +65,9 @@ app.get('/', (c) => {
   const totalImportBRL = importsData.reduce((acc: number, imp: any) => acc + (imp.numerario?.totalLandedCostBRL || 0), 0)
 
   const content = `
+  <!-- ✅ Carregar funções de cotação ANTES do HTML -->
+  <script src="/static/suprimentos-init.js"></script>
+
   <!-- Pop-up: cotações pendentes de aprovação -->
   ${pendingApproval.length > 0 ? `
   <div id="pendingApprovalPopup" style="position:fixed;top:80px;right:20px;z-index:500;width:360px;background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.18);border-top:4px solid #dc2626;animation:slideInRight 0.3s ease;">
