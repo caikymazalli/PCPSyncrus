@@ -282,6 +282,20 @@ function solicitarCotacao(id) {
   }, 800);
 }
 
+function solicitarCotacaoParaItem(productCode, productName, supplierId) {
+  showToast('\ud83d\udce7 Abrindo cota\u00e7\u00e3o para ' + productName + '...', 'info');
+  setTimeout(function() {
+    var url = '/suprimentos?mode=nova_cotacao&product_code=' + encodeURIComponent(productCode);
+    if (productName) {
+      url += '&product_name=' + encodeURIComponent(productName);
+    }
+    if (supplierId) {
+      url += '&supplier_id=' + encodeURIComponent(supplierId);
+    }
+    window.location.href = url;
+  }, 500);
+}
+
 // ── Nova categoria ──────────────────────────────────────────────────────
 async function salvarNovaCategoria() {
   var nome = document.getElementById('nova_categoria_nome').value.trim();

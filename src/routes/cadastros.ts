@@ -297,7 +297,9 @@ app.get('/', (c) => {
                         <button class="btn btn-secondary btn-sm" onclick="openModal('vinculacaoModal')"><i class="fas fa-edit"></i></button>
                       </div>
                       <div class="tooltip-wrap" data-tooltip="Solicitar cotação para este item">
-                        <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="alert('Cotação solicitada para ${item?.name||ps.productCode}')">
+                        <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;"
+                          data-product-code="${ps.productCode}" data-product-name="${item?.name||ps.productCode}" data-supplier-id="${linkedSuppliers[0]?.sup?.id||''}"
+                          onclick="solicitarCotacaoParaItem(this.dataset.productCode,this.dataset.productName,this.dataset.supplierId)">
                           <i class="fas fa-file-invoice-dollar"></i>
                         </button>
                       </div>
