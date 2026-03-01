@@ -501,7 +501,7 @@ app.get('/', (c) => {
           const stars = Math.round(s.rating)
           const starsHtml = Array.from({length:5}, (_,i) => `<i class="fas fa-star" style="font-size:11px;color:${i<stars?'#F39C12':'#e9ecef'};"></i>`).join('')
           return `
-          <div class="card sup-card" data-type="${s.type}" data-cat="${s.category}" data-active="${s.active !== false ? '1' : '0'}" data-search="${s.name.toLowerCase()} ${(s.cnpj||'').toLowerCase()} ${s.contact.toLowerCase()} ${s.category.toLowerCase()}" style="padding:0;overflow:hidden;border-top:3px solid ${ti.color};">
+          <div class="card sup-card" data-type="${s.type}" data-cat="${s.category}" data-active="${s.active !== false ? '1' : '0'}" data-search="${s.name.toLowerCase()} ${(s.cnpj||'').toLowerCase()} ${(s.contact||'').toLowerCase()} ${(s.category||'').toLowerCase()}" style="padding:0;overflow:hidden;border-top:3px solid ${ti.color};">
             <div style="padding:16px;">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
                 <div style="flex:1;min-width:0;padding-right:8px;">
@@ -917,7 +917,7 @@ app.get('/api/categories', (c) => {
 
 // ── API: POST /cadastros/api/categories ──────────────────────────────────────
 app.post('/api/categories', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name || !body.name.trim()) return err(c, 'Nome obrigatório')
   const name = body.name.trim()
@@ -933,7 +933,7 @@ app.post('/api/categories', async (c) => {
   const category = { id, name, createdAt: new Date().toISOString() }
   tenant.supplierCategories.push(category)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'supplier_categories', { id, user_id: userId, name })
+    await dbInsert(db, 'supplier_categories', { id, user_id: userId, empresa_id: empresaId, name })
   }
   return ok(c, { category })
 })
@@ -948,11 +948,12 @@ app.post('/api/supplier/vinc', async (c) => {
   // Remove vinculações anteriores do mesmo produto
   tenant.productSuppliers = tenant.productSuppliers.filter((v: any) => v.productCode !== body.productCode)
   if (body.type === 'external' && Array.isArray(body.suppliers)) {
-    body.suppliers.forEach((s: any) => {
-      tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierId: s.supplierId, priority: s.priority, type: 'external' })
-    })
+    const supplierIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean)
+    const priorities: Record<string, number> = {}
+    body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority })
+    tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds, priorities, internalProduction: false })
   } else if (body.type === 'internal') {
-    tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, type: 'internal' })
+    tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds: [], priorities: {}, internalProduction: true })
   }
   return ok(c, { saved: true })
 })
