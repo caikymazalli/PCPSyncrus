@@ -644,6 +644,120 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <script>
+  const quotationsData = ${JSON.stringify(quotations)};
+  const statusInfoData = ${JSON.stringify(statusInfo)};
+  const suppliersData = ${JSON.stringify(suppliers)};
+  const importsData2 = ${JSON.stringify(importsData)};
+  const allItemsData = ${JSON.stringify([...stockItems, ...products])};
+
+  function showToastSup(msg, type) {
+    type = type || 'success';
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:380px;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type==='success'?'<i class="fas fa-check-circle"></i>':type==='error'?'<i class="fas fa-exclamation-circle"></i>':'<i class="fas fa-info-circle"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.style.opacity='0'; setTimeout(function() { t.remove(); }, 300); }, 3500);
+  }
+
+  function addCotItem() {
+    const list = document.getElementById('cotItensList');
+    if (!list) return;
+    const div = document.createElement('div');
+    div.className = 'cot-item';
+    div.style.cssText = 'display:grid;grid-template-columns:2fr 80px 60px auto;gap:8px;margin-bottom:8px;align-items:center;';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;"><option value="">Selecionar item...</option>' +
+      allItemsData.map(function(i) { return '<option value="'+i.code+'">'+i.name+' ('+i.code+')</option>'; }).join('') + '</select>' +
+      '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
+      '<input class="form-control" type="text" placeholder="Un" value="un">' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.cot-item\\').remove()"><i class="fas fa-trash"></i></button>';
+    list.appendChild(div);
+  }
+
+  function addCotSupplier() {
+    const list = document.getElementById('cotSupplierList');
+    if (!list) return;
+    const div = document.createElement('div');
+    div.className = 'cot-sup';
+    div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center;';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;flex:1;"><option value="">Selecionar fornecedor...</option>' +
+      suppliersData.map(function(s) { return '<option value="'+s.id+'">'+s.name+' ('+s.type+') \u2014 Prazo: '+s.deliveryLeadDays+'d</option>'; }).join('') + '</select>' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.cot-sup\\').remove()"><i class="fas fa-trash"></i></button>';
+    list.appendChild(div);
+  }
+
+  async function salvarCotacao() {
+    const tipo = document.getElementById('cotTipo').value;
+    const descricao = document.getElementById('cotDescricao')?.value?.trim() || 'Cotação de suprimentos';
+    const deadline = document.getElementById('cotDataLimite')?.value || '';
+    const obs = document.getElementById('cotObs')?.value?.trim() || '';
+    const items = [];
+    document.querySelectorAll('.cot-item').forEach(function(row) {
+      const sel = row.querySelector('select');
+      const inputs = row.querySelectorAll('input');
+      if (sel && sel.value) items.push({ productCode: sel.value, productName: sel.options[sel.selectedIndex]?.text || sel.value, quantity: parseInt(inputs[0]?.value||'1')||1, unit: inputs[1]?.value||'un' });
+    });
+    const supplierIds = [];
+    document.querySelectorAll('.cot-sup select').forEach(function(sel) { if (sel.value) supplierIds.push(sel.value); });
+    if (items.length === 0 && tipo !== 'critico') { showToastSup('\u26a0\ufe0f Adicione pelo menos 1 item \u00e0 cota\u00e7\u00e3o!', 'error'); return; }
+    if (supplierIds.length === 0) { showToastSup('\u26a0\ufe0f Selecione pelo menos 1 fornecedor!', 'error'); return; }
+    if (!deadline) { showToastSup('\u26a0\ufe0f Informe a data limite para respostas!', 'error'); return; }
+    try {
+      const res = await fetch('/suprimentos/api/quotations/create', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ tipo, descricao, items, supplierIds, deadline, observations: obs })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.warning) {
+          showToastSup('\u26a0\ufe0f ' + data.warning, 'warning');
+          const pendingQuotations = JSON.parse(localStorage.getItem('pending_quotations') || '[]');
+          pendingQuotations.push(data.quotation);
+          localStorage.setItem('pending_quotations', JSON.stringify(pendingQuotations));
+        } else {
+          showToastSup('\u2705 Cota\u00e7\u00e3o ' + (data.code||'') + ' criada com sucesso!', 'success');
+        }
+        closeModal('gerarCotacaoModal');
+        setTimeout(function() { location.reload(); }, 1000);
+      } else { showToastSup(data.error || 'Erro ao criar cota\u00e7\u00e3o', 'error'); }
+    } catch(e) { showToastSup('Erro de conex\u00e3o', 'error'); }
+  }
+
+  function onCotTipoChange() {
+    const tipo = document.getElementById('cotTipo').value;
+    const itensSection = document.getElementById('cotItensSection');
+    if (tipo === 'critico') {
+      if (itensSection) { itensSection.style.opacity = '0.5'; itensSection.style.pointerEvents = 'none'; }
+      preencherItensCriticos();
+    } else {
+      if (itensSection) { itensSection.style.opacity = '1'; itensSection.style.pointerEvents = ''; }
+    }
+  }
+
+  function preencherItensCriticos() {
+    const criticalItems = allItemsData.filter(function(i) { return i.type === 'external' && i.stockStatus === 'critical'; });
+    if (criticalItems.length === 0) {
+      showToastSup('\u26a0\ufe0f Nenhum item cr\u00edtico encontrado!', 'warning');
+      return;
+    }
+    const list = document.getElementById('cotItensList');
+    if (list) { list.querySelectorAll('.cot-item').forEach(function(item) { item.remove(); }); }
+    criticalItems.forEach(function(item) {
+      addCotItem();
+      const items = document.querySelectorAll('.cot-item');
+      const lastItem = items[items.length - 1];
+      if (lastItem) {
+        const sel = lastItem.querySelector('select');
+        if (sel) sel.value = item.code;
+        const inputs = lastItem.querySelectorAll('input');
+        if (inputs[0]) inputs[0].value = (item.stockMin || 10) * 2;
+      }
+    });
+    showToastSup('\u2705 ' + criticalItems.length + ' itens cr\u00edticos adicionados!', 'success');
+  }
+  </script>
+
   <!-- ══ MODAIS ══════════════════════════════════════════════════════════════ -->
 
   <!-- Modal: Gerar Cotação -->
@@ -1121,11 +1235,6 @@ app.get('/', (c) => {
   </div>
 
   <script>
-  const quotationsData = ${JSON.stringify(quotations)};
-  const statusInfoData = ${JSON.stringify(statusInfo)};
-  const suppliersData = ${JSON.stringify(suppliers)};
-  const importsData2 = ${JSON.stringify(importsData)};
-  const allItemsData = ${JSON.stringify([...stockItems, ...products])};
 
   // ── Cotações ──────────────────────────────────────────────────────────────
   async function approveQuotation(id, code, supplierName) {
@@ -1168,104 +1277,11 @@ app.get('/', (c) => {
     showToastSup('✅ Cotações geradas para itens críticos!', 'success');
   }
 
-  async function salvarCotacao() {
-    const tipo = document.getElementById('cotTipo').value;
-    const descricao = document.getElementById('cotDescricao')?.value?.trim() || 'Cotação de suprimentos';
-    const deadline = document.getElementById('cotDataLimite')?.value || '';
-    const obs = document.getElementById('cotObs')?.value?.trim() || '';
-    const items = [];
-    document.querySelectorAll('.cot-item').forEach(row => {
-      const sel = row.querySelector('select');
-      const inputs = row.querySelectorAll('input');
-      if (sel && sel.value) items.push({ productCode: sel.value, productName: sel.options[sel.selectedIndex]?.text || sel.value, quantity: parseInt(inputs[0]?.value||'1')||1, unit: inputs[1]?.value||'un' });
-    });
-    const supplierIds = [];
-    document.querySelectorAll('.cot-sup select').forEach(sel => { if (sel.value) supplierIds.push(sel.value); });
-    if (items.length === 0 && tipo !== 'critico') { showToastSup('⚠️ Adicione pelo menos 1 item à cotação!', 'error'); return; }
-    if (supplierIds.length === 0) { showToastSup('⚠️ Selecione pelo menos 1 fornecedor!', 'error'); return; }
-    if (!deadline) { showToastSup('⚠️ Informe a data limite para respostas!', 'error'); return; }
-    try {
-      const res = await fetch('/suprimentos/api/quotations/create', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ tipo, descricao, items, supplierIds, deadline, observations: obs })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        if (data.warning) {
-          showToastSup('\u26a0\ufe0f ' + data.warning, 'warning');
-          const pendingQuotations = JSON.parse(localStorage.getItem('pending_quotations') || '[]');
-          pendingQuotations.push(data.quotation);
-          localStorage.setItem('pending_quotations', JSON.stringify(pendingQuotations));
-        } else {
-          showToastSup('\u2705 Cotação ' + (data.code||'') + ' criada com sucesso!', 'success');
-        }
-        closeModal('gerarCotacaoModal');
-        setTimeout(() => location.reload(), 1000);
-      } else { showToastSup(data.error || 'Erro ao criar cotação', 'error'); }
-    } catch(e) { showToastSup('Erro de conexão', 'error'); }
-  }
-
-  function onCotTipoChange() {
-    const tipo = document.getElementById('cotTipo').value;
-    const itensSection = document.getElementById('cotItensSection');
-    if (tipo === 'critico') {
-      if (itensSection) { itensSection.style.opacity = '0.5'; itensSection.style.pointerEvents = 'none'; }
-      preencherItensCriticos();
-    } else {
-      if (itensSection) { itensSection.style.opacity = '1'; itensSection.style.pointerEvents = ''; }
-    }
-  }
-
-  function preencherItensCriticos() {
-    const criticalItems = allItemsData.filter(i => i.type === 'external' && i.stockStatus === 'critical');
-    if (criticalItems.length === 0) {
-      showToastSup('\u26a0\ufe0f Nenhum item cr\u00edtico encontrado!', 'warning');
-      return;
-    }
-    const list = document.getElementById('cotItensList');
-    if (list) { list.querySelectorAll('.cot-item').forEach(item => item.remove()); }
-    criticalItems.forEach(item => {
-      addCotItem();
-      const items = document.querySelectorAll('.cot-item');
-      const lastItem = items[items.length - 1];
-      if (lastItem) {
-        const sel = lastItem.querySelector('select');
-        if (sel) sel.value = item.code;
-        const inputs = lastItem.querySelectorAll('input');
-        if (inputs[0]) inputs[0].value = (item.stockMin || 10) * 2;
-      }
-    });
-    showToastSup('\u2705 ' + criticalItems.length + ' itens cr\u00edticos adicionados!', 'success');
-  }
   function copySupplierLink(quotId) {
     const link = window.location.origin + '/suprimentos/cotacao/' + quotId + '/responder';
     navigator.clipboard?.writeText(link).then(() => {
       showToastSup('🔗 Link copiado: ' + link, 'success');
     }).catch(() => { showToastSup('Link: ' + link, 'success'); });
-  }
-
-  function addCotItem() {
-    const list = document.getElementById('cotItensList');
-    const div = document.createElement('div');
-    div.className = 'cot-item';
-    div.style.cssText = 'display:grid;grid-template-columns:2fr 80px 60px auto;gap:8px;margin-bottom:8px;align-items:center;';
-    div.innerHTML = '<select class="form-control" style="font-size:12px;"><option value="">Selecionar item...</option>' +
-      allItemsData.map(i => '<option value="'+i.code+'">'+i.name+' ('+i.code+')</option>').join('') + '</select>' +
-      '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
-      '<input class="form-control" type="text" placeholder="Un" value="un">' +
-      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.cot-item\\').remove()"><i class="fas fa-trash"></i></button>';
-    list.appendChild(div);
-  }
-
-  function addCotSupplier() {
-    const list = document.getElementById('cotSupplierList');
-    const div = document.createElement('div');
-    div.className = 'cot-sup';
-    div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center;';
-    div.innerHTML = '<select class="form-control" style="font-size:12px;flex:1;"><option value="">Selecionar fornecedor...</option>' +
-      suppliersData.map(s => '<option value="'+s.id+'">'+s.name+' ('+s.type+') — Prazo: '+s.deliveryLeadDays+'d</option>').join('') + '</select>' +
-      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.cot-sup\\').remove()"><i class="fas fa-trash"></i></button>';
-    list.appendChild(div);
   }
 
   function openQuotationDetail(id) {
@@ -1952,15 +1968,6 @@ app.get('/', (c) => {
     URL.revokeObjectURL(url);
   }
 
-  // ── Toast helper ─────────────────────────────────────────────────────────
-  function showToastSup(msg, type = 'success') {
-    const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);transition:opacity 0.3s;display:flex;align-items:center;gap:8px;max-width:380px;';
-    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
-    t.innerHTML = (type==='success'?'<i class="fas fa-check-circle"></i>':type==='error'?'<i class="fas fa-exclamation-circle"></i>':'<i class="fas fa-info-circle"></i>') + ' ' + msg;
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity='0'; setTimeout(() => t.remove(), 300); }, 3500);
-  }
 
   // ── Salvar Novo Pedido de Compra ───────────────────────────────────────────
   async function salvarNovoPedidoCompra() {

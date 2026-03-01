@@ -595,7 +595,7 @@ app.post('/api/categories', async (c) => {
 
 // ── API: POST /cadastros/api/supplier/vinc ───────────────────────────────────
 app.post('/api/supplier/vinc', async (c) => {
-  const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.productCode) return err(c, 'Produto obrigatório')
   // Guardar vinculação na lista de productSuppliers do tenant
@@ -605,11 +605,50 @@ app.post('/api/supplier/vinc', async (c) => {
   if (body.type === 'external' && Array.isArray(body.suppliers)) {
     const supplierIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean)
     const priorities: Record<string, number> = {}
-    body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority })
+    body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority || 1 })
     tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds, priorities, internalProduction: false })
   } else if (body.type === 'internal') {
     tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds: [], priorities: {}, internalProduction: true })
   }
+  // Persistir em D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare('DELETE FROM product_suppliers WHERE product_code = ? AND user_id = ?')
+        .bind(body.productCode, userId).run()
+      if (body.type === 'external' && Array.isArray(body.suppliers)) {
+        for (const sup of body.suppliers) {
+          if (!sup.supplierId) continue
+          const persistResult = await dbInsertWithRetry(db, 'product_suppliers', {
+            id: genId('ps'),
+            user_id: userId,
+            empresa_id: empresaId,
+            product_code: body.productCode,
+            supplier_id: sup.supplierId,
+            priority: sup.priority || 1,
+            internal_production: 0,
+          })
+          if (!persistResult.success) {
+            console.error(`[VINCULAÇÃO] Falha ao persistir ${body.productCode} x ${sup.supplierId}: ${persistResult.error}`)
+            return err(c, `Falha ao persistir vinculação em D1: ${persistResult.error}`, 500)
+          }
+        }
+      } else if (body.type === 'internal') {
+        await dbInsertWithRetry(db, 'product_suppliers', {
+          id: genId('ps'),
+          user_id: userId,
+          empresa_id: empresaId,
+          product_code: body.productCode,
+          supplier_id: '',
+          priority: 1,
+          internal_production: 1,
+        })
+      }
+    } catch (e) {
+      console.error('[VINCULAÇÃO] Erro ao persistir em D1:', e)
+      return err(c, `Erro ao persistir vinculação: ${(e as any).message}`, 500)
+    }
+  }
+  markTenantModified(userId)
   return ok(c, { saved: true })
 })
 
