@@ -28,7 +28,7 @@ app.get('/', (c) => {
     manufacture_needed:{ label: 'Nec. Manufatura',      color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry' },
   }
 
-  function buildProdRow(p: any, stockStatusInfo: Record<string, any>): string {
+  function buildProdRow(p: any, stockStatusInfo: Record<string, any>, suppList: any[]): string {
     const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
     const stockPct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
     const _ct = p.controlType === 'serie'
@@ -44,6 +44,14 @@ app.get('/', (c) => {
     const unitOptions = ['un','kg','m','l','pc','m2','lt'].map(u =>
       '<option value="' + u + '"' + (p.unit === u ? ' selected' : '') + '>' + (u === 'm2' ? 'm²' : u) + '</option>'
     ).join('')
+    const supplierIds = [p.supplier_id_1 || p.supplierId, p.supplier_id_2, p.supplier_id_3, p.supplier_id_4].filter(Boolean)
+    const badgeStyles = ['background:#1B4F72;color:white', 'background:#2980B9;color:white', 'background:#6c757d;color:white', 'background:#adb5bd;color:white']
+    const labels = ['Princ.', 'Backup', 'Terç.', 'Quat.']
+    const supplierBadges = supplierIds.map((sid: string, idx: number) => {
+      const s = suppList.find((x: any) => x.id === sid)
+      if (!s) return ''
+      return '<span style="' + badgeStyles[idx] + ';font-size:9px;padding:2px 6px;border-radius:10px;white-space:nowrap;" title="' + labels[idx] + ': ' + s.name + '">' + (s.name.length > 10 ? s.name.substring(0,10) + '…' : s.name) + '</span>'
+    }).filter(Boolean).join(' ')
     return '<tr class="prod-row" data-id="' + p.id + '" data-status="' + p.stockStatus + '"' +
       ' data-search="' + (p.name || '').toLowerCase() + ' ' + (p.code || '').toLowerCase() + '"' +
       ' style="border-bottom:1px solid #f1f3f5;"' +
@@ -79,6 +87,11 @@ app.get('/', (c) => {
       '<td style="padding:8px 12px;max-width:180px;" ondblclick="startProdEdit(this,\'description\',\'' + p.id + '\')">' +
         '<div class="prod-cell-view" style="font-size:12px;color:#6c757d;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="Duplo clique para editar">' + descView + '</div>' +
         '<input class="form-control prod-cell-input" style="display:none;font-size:12px;min-width:120px;" data-field="description" data-id="' + p.id + '" value="' + descEsc + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)" placeholder="Descrição...">' +
+      '</td>' +
+      '<td style="padding:8px 12px;">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:3px;">' +
+          (supplierBadges || '<span style="font-size:11px;color:#9ca3af;">—</span>') +
+        '</div>' +
       '</td>' +
       '<td style="padding:8px 12px;text-align:center;white-space:nowrap;">' +
         '<a href="/engenharia" class="btn btn-secondary btn-sm" style="padding:4px 7px;" title="Ver BOM"><i class="fas fa-list-ul"></i></a>' +
@@ -195,11 +208,12 @@ app.get('/', (c) => {
             <th style="padding:10px 12px;text-align:center;white-space:nowrap;">Est. Atual</th>
             <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Status</th>
             <th style="padding:10px 12px;text-align:left;">Descrição <span style="font-size:9px;opacity:0.7;font-weight:400;">(duplo clique)</span></th>
+            <th style="padding:10px 12px;text-align:left;white-space:nowrap;">Fornecedores</th>
             <th style="padding:10px 12px;text-align:center;width:80px;">Ações</th>
           </tr>
         </thead>
         <tbody id="prodTableBody">
-          ${products.map((p) => buildProdRow(p, stockStatusInfo)).join('')}
+          ${products.map((p) => buildProdRow(p, stockStatusInfo, suppliers)).join('')}
         </tbody>
       </table>
     </div>
@@ -899,6 +913,10 @@ app.post('/api/create', async (c) => {
     stockMin, stockMax, stockCurrent,
     criticalPercentage: criticalPct,
     stockStatus, supplierId: body.supplierId || '',
+    supplier_id_1: body.supplierId || '',
+    supplier_id_2: '',
+    supplier_id_3: '',
+    supplier_id_4: '',
     supplierName: body.supplierName || '', price: parseFloat(body.price) || 0,
     description: body.description || '',
     serialControlled: !!body.serialControlled,
@@ -925,6 +943,10 @@ app.post('/api/create', async (c) => {
     serial_controlled: product.serialControlled ? 1 : 0,
     control_type: product.controlType,
     critical_percentage: product.criticalPercentage,
+    supplier_id_1: body.supplierId || null,
+    supplier_id_2: null,
+    supplier_id_3: null,
+    supplier_id_4: null,
   }
   if (body.supplierId) insertData.supplier_id = body.supplierId
   if (body.notes) insertData.notes = body.notes

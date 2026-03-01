@@ -610,6 +610,17 @@ app.post('/api/supplier/vinc', async (c) => {
   } else if (body.type === 'internal') {
     tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds: [], priorities: {}, internalProduction: true })
   }
+  // Atualizar supplier_id_2/3/4 no produto em memória
+  const product = tenant.products?.find((p: any) => p.code === body.productCode)
+  if (product && body.type === 'external' && Array.isArray(body.suppliers)) {
+    const sortedIds = body.suppliers
+      .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
+      .map((s: any) => s.supplierId)
+      .filter(Boolean)
+    product.supplier_id_2 = sortedIds[0] || ''
+    product.supplier_id_3 = sortedIds[1] || ''
+    product.supplier_id_4 = sortedIds[2] || ''
+  }
   // Persistir em D1
   if (db && userId !== 'demo-tenant') {
     try {
@@ -632,6 +643,15 @@ app.post('/api/supplier/vinc', async (c) => {
             return err(c, `Falha ao persistir vinculação em D1: ${persistResult.error}`, 500)
           }
         }
+        // Atualizar colunas supplier_id_2/3/4 no produto em D1
+        const sortedIds = body.suppliers
+          .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
+          .map((s: any) => s.supplierId)
+          .filter(Boolean)
+        await db.prepare(
+          `UPDATE products SET supplier_id_2 = ?, supplier_id_3 = ?, supplier_id_4 = ? WHERE user_id = ? AND code = ?`
+        ).bind(sortedIds[0] || null, sortedIds[1] || null, sortedIds[2] || null, userId, body.productCode).run()
+        console.log(`[VINCULAÇÃO] Fornecedores 2/3/4 atualizados em D1 para ${body.productCode}`)
       } else if (body.type === 'internal') {
         await dbInsertWithRetry(db, 'product_suppliers', {
           id: genId('ps'),

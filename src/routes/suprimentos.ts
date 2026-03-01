@@ -1264,8 +1264,19 @@ app.get('/', (c) => {
     } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
-  function reenviarCotacao(id, code) {
-    showToastSup('📧 Cotação ' + code + ' reenviada para os fornecedores.', 'success');
+  async function reenviarCotacao(id, code) {
+    if (!confirm('Reenviar cotação ' + code + ' para os fornecedores?')) return;
+    showToastSup('📧 Reenviando cotação...', 'info');
+    try {
+      const res = await fetch('/suprimentos/api/quotations/' + id + '/resend', {
+        method: 'POST', headers: {'Content-Type':'application/json'}
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('✅ Cotação ' + code + ' reenviada para os fornecedores!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else { showToastSup(data.error || 'Erro ao reenviar', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
   function dispararCotacao(supId, supName, supEmail) {
@@ -2349,6 +2360,21 @@ app.post('/api/quotations/:id/reject', async (c) => {
   tenant.quotations[idx].status = 'rejected'
   tenant.quotations[idx].rejectionReason = body.motivo || ''
   return ok(c)
+})
+
+// ── API: POST /suprimentos/api/quotations/:id/resend ─────────────────────────
+app.post('/api/quotations/:id/resend', async (c) => {
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
+  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  const q = tenant.quotations[idx]
+  if (q.status !== 'sent' && q.status !== 'awaiting_responses') {
+    return err(c, 'Cotação não pode ser reenviada no status atual')
+  }
+  tenant.quotations[idx].resentAt = new Date().toISOString()
+  console.log(`[COTAÇÃO] Cotação ${q.code} reenviada`)
+  return ok(c, { code: q.code })
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
