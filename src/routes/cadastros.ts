@@ -624,6 +624,25 @@ app.post('/api/supplier/vinc', async (c) => {
   // Persistir em D1
   if (db && userId !== 'demo-tenant') {
     try {
+      // Verificar e corrigir schema automaticamente antes de persistir
+      const tableInfo = await db.prepare('PRAGMA table_info(product_suppliers)').all()
+      const columns = tableInfo.results ?? []
+      const hasProductCode = columns.some((col: any) => col.name === 'product_code')
+      const hasCode = columns.some((col: any) => col.name === 'code')
+      if (!hasProductCode && hasCode) {
+        console.log('[VINCULAÇÃO] ⚠️ Migrando: code → product_code')
+        try {
+          await db.prepare('ALTER TABLE product_suppliers RENAME COLUMN code TO product_code').run()
+          console.log('[VINCULAÇÃO] ✅ Coluna renomeada')
+        } catch (renameError: any) {
+          console.log('[VINCULAÇÃO] Fallback: criando product_code', renameError?.message)
+          await db.prepare('ALTER TABLE product_suppliers ADD COLUMN product_code TEXT').run()
+          await db.prepare('UPDATE product_suppliers SET product_code = code WHERE product_code IS NULL').run()
+        }
+      } else if (!hasProductCode) {
+        console.log('[VINCULAÇÃO] Criando coluna product_code')
+        await db.prepare('ALTER TABLE product_suppliers ADD COLUMN product_code TEXT').run()
+      }
       await db.prepare('DELETE FROM product_suppliers WHERE product_code = ? AND user_id = ?')
         .bind(body.productCode, userId).run()
       if (body.type === 'external' && Array.isArray(body.suppliers)) {
@@ -670,6 +689,32 @@ app.post('/api/supplier/vinc', async (c) => {
   }
   markTenantModified(userId)
   return ok(c, { saved: true })
+})
+
+// ── API: GET /cadastros/api/check-migrations ─────────────────────────────────
+app.get('/api/check-migrations', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  if (!db || userId === 'demo-tenant') {
+    return ok(c, { message: 'Modo demo - sem D1' })
+  }
+  try {
+    console.log('[MIGRATIONS] Verificando estrutura de tabelas...')
+    const psInfo = await db.prepare('PRAGMA table_info(product_suppliers)').all()
+    const psColumns = psInfo.results?.map((col: any) => col.name) ?? []
+    console.log('[MIGRATIONS] product_suppliers columns:', psColumns)
+    return ok(c, {
+      status: 'ok',
+      product_suppliers: {
+        exists: psColumns.length > 0,
+        has_product_code: psColumns.includes('product_code'),
+        has_code: psColumns.includes('code'),
+        columns: psColumns,
+      },
+    })
+  } catch (e) {
+    return err(c, `Erro ao verificar: ${(e as any).message}`, 500)
+  }
 })
 
 export default app
