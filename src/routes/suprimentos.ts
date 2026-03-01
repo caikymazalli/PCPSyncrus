@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { tenants, markTenantModified } from '../userStore'
 
 const app = new Hono()
 
@@ -2218,6 +2219,196 @@ app.get('/cotacao/:id/responder', (c) => {
 </script>
 </body>
 </html>`)
+})
+
+// ── Rota pública: GET /suprimentos/quote-response?id=<quotId> ───────────────
+app.get('/quote-response', async (c) => {
+  const quotId = c.req.query('id')
+
+  if (!quotId) {
+    return c.html(`
+      <div style="text-align:center;padding:40px;">
+        <h2>Erro: Cotação não especificada</h2>
+        <p><a href="/">Voltar</a></p>
+      </div>
+    `)
+  }
+
+  console.log('[COTAÇÃO-RESPOSTA] Abrindo formulário para:', quotId)
+
+  // Search for the quotation across all tenants
+  let quotCode = quotId
+  let quotItems: any[] = []
+  let quotDeadline = ''
+  const allTenantEntries = Object.entries(tenants)
+  for (const [, t] of allTenantEntries) {
+    const q = (t.quotations || []).find((q: any) => q.id === quotId)
+    if (q) {
+      quotCode = q.code || quotId
+      quotItems = q.items || []
+      quotDeadline = q.deadline || ''
+      break
+    }
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responder Cotação</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f8f9fa; font-family: system-ui, -apple-system, sans-serif; }
+    .container { max-width: 600px; margin: 40px auto; padding: 20px; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; }
+    h1 { margin-bottom: 24px; color: #1B4F72; }
+    .info-box { background: #f0f4f8; padding: 16px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #2980B9; }
+    .info-box p { margin: 8px 0; font-size: 14px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; color: #374151; font-size: 14px; }
+    input, textarea { width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; font-family: inherit; }
+    input:focus, textarea:focus { outline: none; border-color: #2980B9; box-shadow: 0 0 0 3px rgba(41,128,185,0.1); }
+    textarea { resize: vertical; min-height: 100px; }
+    button { background: #2980B9; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+    button:hover { background: #1B4F72; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .success { background: #d4edda; color: #155724; padding: 12px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid #28a745; }
+    .error { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid #dc3545; }
+    .required { color: #dc3545; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>&#128203; Responder Cotação</h1>
+      <div class="info-box" id="quotationInfo">
+        <p><strong>Cotação:</strong> <span id="quotCode">${quotCode}</span></p>
+        <p><strong>Produtos:</strong> <span id="quotItems">${quotItems.length > 0 ? quotItems.length + ' iten(s)' : '—'}</span></p>
+        <p><strong>Prazo até:</strong> <span id="quotDeadline">${quotDeadline ? new Date(quotDeadline + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</span></p>
+      </div>
+      <div id="feedback"></div>
+      <form id="responseForm">
+        <div class="form-group">
+          <label for="supplierName">Nome do Fornecedor <span class="required">*</span></label>
+          <input type="text" id="supplierName" name="supplierName" placeholder="Ex: Woson Ningbo" required>
+        </div>
+        <div class="form-group">
+          <label for="totalPrice">Preço Total (R$) <span class="required">*</span></label>
+          <input type="number" id="totalPrice" name="totalPrice" placeholder="0.00" step="0.01" min="0" required>
+        </div>
+        <div class="form-group">
+          <label for="deliveryDays">Prazo de Entrega (dias) <span class="required">*</span></label>
+          <input type="number" id="deliveryDays" name="deliveryDays" placeholder="30" min="1" required>
+        </div>
+        <div class="form-group">
+          <label for="paymentTerms">Condições de Pagamento</label>
+          <input type="text" id="paymentTerms" name="paymentTerms" placeholder="Ex: 30 dias, À vista, etc">
+        </div>
+        <div class="form-group">
+          <label for="notes">Observações</label>
+          <textarea id="notes" name="notes" placeholder="Ex: Frete incluído, Validade 30 dias, etc"></textarea>
+        </div>
+        <button type="submit" id="submitBtn">Enviar Resposta</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    const quotId = ${JSON.stringify(quotId)}
+
+    function showFeedback(message, type) {
+      const el = document.getElementById('feedback')
+      el.className = type
+      el.textContent = message
+      el.style.display = 'block'
+    }
+
+    document.getElementById('responseForm').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const btn = document.getElementById('submitBtn')
+      btn.disabled = true
+      btn.textContent = '⏳ Enviando...'
+      const formData = {
+        supplierName: document.getElementById('supplierName').value,
+        totalPrice: parseFloat(document.getElementById('totalPrice').value),
+        deliveryDays: parseInt(document.getElementById('deliveryDays').value),
+        paymentTerms: document.getElementById('paymentTerms').value || '',
+        notes: document.getElementById('notes').value || '',
+      }
+      try {
+        const res = await fetch('/suprimentos/api/quotations/' + quotId + '/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        })
+        const data = await res.json()
+        if (data.ok) {
+          showFeedback('✅ Resposta enviada com sucesso! Você pode fechar esta página.', 'success')
+          document.getElementById('responseForm').style.display = 'none'
+        } else {
+          showFeedback('❌ Erro: ' + (data.error || 'Erro desconhecido'), 'error')
+          btn.disabled = false
+          btn.textContent = 'Enviar Resposta'
+        }
+      } catch (e) {
+        showFeedback('❌ Erro de conexão', 'error')
+        btn.disabled = false
+        btn.textContent = 'Enviar Resposta'
+      }
+    })
+  </script>
+</body>
+</html>`
+
+  return c.html(html)
+})
+
+// ── API: POST /suprimentos/api/quotations/:id/respond ────────────────────────
+app.post('/api/quotations/:id/respond', async (c) => {
+  const quotId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.supplierName || body.totalPrice === undefined) {
+    return err(c, 'Fornecedor e preço obrigatórios', 400)
+  }
+
+  console.log('[COTAÇÃO-RESPOSTA] Recebendo resposta de:', body.supplierName, 'para:', quotId)
+
+  const allTenantEntries = Object.entries(tenants)
+  for (const [userId, tenant] of allTenantEntries) {
+    if (!tenant.quotations) continue
+    const quotIdx = tenant.quotations.findIndex((q: any) => q.id === quotId)
+    if (quotIdx !== -1) {
+      const q = tenant.quotations[quotIdx]
+
+      if (q.supplierResponses?.some((r: any) => r.supplierName.toLowerCase() === body.supplierName.toLowerCase())) {
+        return err(c, 'Este fornecedor já respondeu esta cotação', 400)
+      }
+
+      if (q.deadline && new Date(q.deadline + 'T23:59:59') < new Date()) {
+        return err(c, 'Cotação expirada', 400)
+      }
+
+      if (!q.supplierResponses) q.supplierResponses = []
+      q.supplierResponses.push({
+        id: genId('resp'),
+        supplierName: body.supplierName,
+        totalPrice: body.totalPrice,
+        deliveryDays: body.deliveryDays || 0,
+        paymentTerms: body.paymentTerms || '',
+        notes: body.notes || '',
+        respondedAt: new Date().toISOString(),
+      })
+
+      q.status = 'awaiting_responses'
+      markTenantModified(userId)
+
+      console.log('[COTAÇÃO-RESPOSTA] ✅ Resposta salva:', quotId)
+      return ok(c, { quotation: q, message: 'Resposta recebida com sucesso' })
+    }
+  }
+
+  return err(c, 'Cotação não encontrada', 404)
 })
 
 

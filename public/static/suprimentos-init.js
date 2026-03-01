@@ -278,11 +278,12 @@ function openModal(modalId) {
     return
   }
 
-  // Fallback: mostrar elemento por ID
   const modal = document.getElementById(modalId)
   if (modal) {
-    modal.style.display = 'flex'
+    modal.classList.add('open')
     console.log('[MODAL] Aberto:', modalId)
+  } else {
+    console.warn('[MODAL] Elemento não encontrado:', modalId)
   }
 }
 
@@ -295,11 +296,12 @@ function closeModal(modalId) {
     return
   }
 
-  // Fallback: esconder elemento por ID
   const modal = document.getElementById(modalId)
   if (modal) {
-    modal.style.display = 'none'
+    modal.classList.remove('open')
     console.log('[MODAL] Fechado:', modalId)
+  } else {
+    console.warn('[MODAL] Elemento não encontrado:', modalId)
   }
 }
 
