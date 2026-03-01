@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
-import { markTenantModified } from '../userStore'
+import { markTenantModified, getTenantData } from '../userStore'
 
 const app = new Hono()
 
@@ -873,7 +873,7 @@ app.post('/api/create', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name) return err(c, 'Nome do produto obrigatório')
 
-  console.log('[PRODUTOS][POST /api/create]', { userId, empresaId, hasDB: !!db, body })
+  console.log('[PRODUTOS][POST /api/create] INICIANDO', { userId, empresaId, hasDB: !!db, productName: body.name })
 
   const id = genId('prod')
   // Calcular stockStatus baseado nos valores informados
@@ -906,33 +906,40 @@ app.post('/api/create', async (c) => {
     notes: body.notes || '', createdAt: new Date().toISOString(),
   }
 
-  tenant.products.push(product)
-  console.log(`[SAVE] Produto ${id} salvo em memória`)
-
-  if (db && userId !== 'demo-tenant') {
-    console.log(`[PERSIST] Persistindo produto ${id} em D1...`)
-    const persistResult = await dbInsertWithRetry(db, 'products', {
-      id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code,
-      unit: product.unit, type: product.type,
-      stock_min: product.stockMin, stock_max: product.stockMax,
-      stock_current: product.stockCurrent, stock_status: product.stockStatus,
-      price: product.price, notes: product.notes,
-      description: product.description,
-      serial_controlled: product.serialControlled ? 1 : 0,
-      control_type: product.controlType,
-      critical_percentage: product.criticalPercentage,
-    })
-    if (persistResult.success) {
-      console.log(`[SUCCESS] Produto ${id} persistido em D1`)
-    } else {
-      console.error(`[ERROR] Falha ao persistir produto ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
-      return ok(c, {
-        product,
-        warning: 'Produto salvo localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
-      })
-    }
+  // Modo demo: persistência em memória é aceitável
+  if (!db || userId === 'demo-tenant') {
+    console.log('[PRODUTOS] Modo DEMO - salvar apenas em memória')
+    tenant.products.push(product)
+    markTenantModified(userId)
+    return ok(c, { product, warning: 'Modo demo - dados não persistidos' })
   }
 
+  // Produção: OBRIGATÓRIO persistir em D1 antes de confirmar ao usuário
+  console.log(`[PRODUTOS] Modo PRODUÇÃO - persistindo produto ${id} em D1...`)
+  const persistResult = await dbInsertWithRetry(db, 'products', {
+    id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code,
+    unit: product.unit, type: product.type,
+    stock_min: product.stockMin, stock_max: product.stockMax,
+    stock_current: product.stockCurrent, stock_status: product.stockStatus,
+    price: product.price, notes: product.notes,
+    description: product.description,
+    serial_controlled: product.serialControlled ? 1 : 0,
+    control_type: product.controlType,
+    critical_percentage: product.criticalPercentage,
+  })
+
+  if (!persistResult.success) {
+    console.error(`[CRÍTICO] Falha ao persistir produto ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+    return err(c,
+      `Falha crítica ao salvar produto no banco de dados. O produto NÃO foi salvo. Por favor, tente novamente. Erro: ${persistResult.error}`,
+      500
+    )
+  }
+
+  console.log(`[PRODUTOS][SUCCESS] Produto ${id} persistido em D1 após ${persistResult.attempts} tentativa(s)`)
+
+  // Só adicionar em memória DEPOIS que D1 confirmar sucesso
+  tenant.products.push(product)
   markTenantModified(userId)
   return ok(c, { product })
 })
@@ -948,27 +955,78 @@ app.put('/api/:id', async (c) => {
 
   const idx = tenant.products.findIndex((p: any) => p.id === id)
   if (idx === -1) return err(c, 'Produto não encontrado', 404)
-  Object.assign(tenant.products[idx], body)
 
+  console.log(`[PRODUTOS][PUT /${id}] ATUALIZANDO`, { userId, hasDB: !!db })
+
+  // Se não é demo, OBRIGATÓRIO atualizar em D1 antes de modificar memória
   if (db && userId !== 'demo-tenant') {
-    const p = tenant.products[idx] as any
+    const currentProduct = tenant.products[idx] as any
+    const merged = { ...currentProduct, ...body }
+    console.log(`[PRODUTOS] Atualizando produto ${id} em D1...`)
     const updated = await dbUpdate(db, 'products', id, userId, {
-      name: p.name, code: p.code, unit: p.unit, type: p.type,
-      stock_min: p.stockMin, stock_max: p.stockMax,
-      stock_current: p.stockCurrent, stock_status: p.stockStatus,
-      price: p.price, notes: p.notes,
-      description: p.description || '',
-      serial_controlled: p.serialControlled ? 1 : 0,
-      control_type: p.controlType || '',
+      name: merged.name, code: merged.code, unit: merged.unit, type: merged.type,
+      stock_min: merged.stockMin, stock_max: merged.stockMax,
+      stock_current: merged.stockCurrent, stock_status: merged.stockStatus,
+      price: merged.price, notes: merged.notes,
+      description: merged.description || '',
+      serial_controlled: merged.serialControlled ? 1 : 0,
+      control_type: merged.controlType || '',
     })
+
     if (!updated) {
-      console.error(`[ERROR] Falha ao atualizar produto ${id} em D1`)
-      return err(c, 'Falha ao persistir produto no banco de dados. Os dados serão perdidos na próxima reinicialização. Tente novamente.', 500)
+      console.error(`[CRÍTICO] Falha ao atualizar produto ${id} em D1`)
+      return err(c, 'Falha ao persistir produto no banco de dados. As alterações NÃO foram salvas. Tente novamente.', 500)
     }
+
+    console.log(`[PRODUTOS][SUCCESS] Produto ${id} atualizado em D1`)
   }
 
+  // Atualizar em memória após confirmação do D1 (ou imediatamente para demo)
+  Object.assign(tenant.products[idx], body)
   markTenantModified(userId)
   return ok(c, { product: tenant.products[idx] })
+})
+
+// ── API: GET /produtos/api/debug/check-d1 ────────────────────────────────────
+// DEBUG - Verificar exatamente o que está salvo em D1 vs memória
+app.get('/api/debug/check-d1', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+
+  if (!db || userId === 'demo-tenant') {
+    const memProducts = getTenantData(userId).products || []
+    return ok(c, {
+      message: 'Modo demo - sem acesso a D1',
+      count: 0,
+      products: [],
+      memory_count: memProducts.length,
+      memory_products: memProducts.map((p: any) => ({ id: p.id, name: p.name, code: p.code })),
+    })
+  }
+
+  console.log(`[DEBUG] Verificando produtos em D1 para usuário ${userId}`)
+
+  try {
+    const count = await db.prepare(`SELECT COUNT(*) as cnt FROM products WHERE user_id = ?`)
+      .bind(userId).first() as any
+
+    const rows = await db.prepare(`SELECT id, name, code, created_at FROM products WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`)
+      .bind(userId).all()
+
+    console.log(`[DEBUG] D1 tem ${count?.cnt || 0} produtos para ${userId}`)
+
+    const memProducts = getTenantData(userId).products || []
+    return ok(c, {
+      message: `${count?.cnt || 0} produtos encontrados em D1`,
+      count: count?.cnt || 0,
+      products: rows.results || [],
+      memory_count: memProducts.length,
+      memory_products: memProducts.map((p: any) => ({ id: p.id, name: p.name, code: p.code })),
+    })
+  } catch (e) {
+    console.error(`[DEBUG][ERROR] Falha ao verificar D1:`, e)
+    return err(c, `Erro ao verificar D1: ${(e as any)?.message}`, 500)
+  }
 })
 
 // ── API: DELETE /produtos/api/:id ────────────────────────────────────────────
