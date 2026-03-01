@@ -37,16 +37,14 @@ app.get('/', (c) => {
 
   // Build product-supplier map (which products each supplier supplies)
   const supplierProductMap: Record<string, string[]> = {}
+  const allItems = [...stockItems, ...products]
   for (const ps of productSuppliers) {
     for (const sid of ps.supplierIds) {
       if (!supplierProductMap[sid]) supplierProductMap[sid] = []
-      const allItems = [...stockItems, ...products]
       const item = allItems.find((i: any) => i.code === ps.productCode)
-      if (item) supplierProductMap[sid].push(item.name || ps.productCode)
+      supplierProductMap[sid].push(item?.name || ps.productCode)
     }
   }
-
-  const allItems = [...stockItems, ...products]
 
   const content = `
 

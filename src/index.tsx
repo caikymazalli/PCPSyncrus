@@ -63,12 +63,18 @@ const PROTECTED_ROUTES = ['/', '/ordens', '/recursos', '/engenharia', '/planejam
   '/apontamento', '/instrucoes', '/produtos', '/admin', '/assinatura', '/qualidade',
   '/estoque', '/cadastros', '/suprimentos']
 
+// Paths within protected routes that are publicly accessible (no login required)
+// /suprimentos/quote-response: supplier quotation response form (new format)
+// /suprimentos/cotacao/: existing supplier quotation response page
+const PUBLIC_PATHS = ['/suprimentos/quote-response', '/suprimentos/cotacao/']
+
 app.use('*', async (c, next) => {
   const path = new URL(c.req.url).pathname
   const isProtected = PROTECTED_ROUTES.some(r => path === r || path.startsWith(r + '/'))
   const isApi = path.includes('/api/')
+  const isPublicPath = PUBLIC_PATHS.some(p => path === p || path.startsWith(p))
   
-  if (isProtected && !isApi) {
+  if (isProtected && !isApi && !isPublicPath) {
     const token = getCookie(c, SESSION_COOKIE)
     if (!token) {
       return c.redirect('/login')
