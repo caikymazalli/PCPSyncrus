@@ -541,11 +541,16 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         stockStatus: r.stock_status || 'normal', price: r.price || 0,
         notes: r.notes || '', description: r.description || '',
         serialControlled: r.serial_controlled === 1,
-        controlType: r.control_type || '', supplierId: r.supplier_id || '',
+        controlType: r.control_type || '',
+        supplierId: r.supplier_id_1 || r.supplier_id || '',
+        supplier_id_1: r.supplier_id_1 || r.supplier_id || '',
+        supplier_id_2: r.supplier_id_2 || '',
+        supplier_id_3: r.supplier_id_3 || '',
+        supplier_id_4: r.supplier_id_4 || '',
         criticalPercentage: r.critical_percentage || 50,
         createdAt: r.created_at || new Date().toISOString(),
       }))
-      console.log(`[HYDRATION] ✅ ${tenant.products.length} produtos carregados do D1`)
+      console.log(`[HYDRATION] ✅ ${tenant.products.length} produtos carregados com multi-fornecedores`)
     } else {
       console.log(`[HYDRATION] ⚠️ Nenhum produto encontrado em D1 para ${userId}`)
     }
