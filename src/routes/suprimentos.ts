@@ -1206,9 +1206,36 @@ app.get('/', (c) => {
   }
 
   function onCotTipoChange() {
-    const v = document.getElementById('cotTipo').value;
-    document.getElementById('cotItensSection').style.opacity = v === 'critico' ? '0.5' : '1';
-    document.getElementById('cotItensSection').style.pointerEvents = v === 'critico' ? 'none' : '';
+    const tipo = document.getElementById('cotTipo').value;
+    const itensSection = document.getElementById('cotItensSection');
+    if (tipo === 'critico') {
+      if (itensSection) { itensSection.style.opacity = '0.5'; itensSection.style.pointerEvents = 'none'; }
+      preencherItensCriticos();
+    } else {
+      if (itensSection) { itensSection.style.opacity = '1'; itensSection.style.pointerEvents = ''; }
+    }
+  }
+
+  function preencherItensCriticos() {
+    const criticalItems = allItemsData.filter(i => i.type === 'external' && i.stockStatus === 'critical');
+    if (criticalItems.length === 0) {
+      showToastSup('\u26a0\ufe0f Nenhum item cr\u00edtico encontrado!', 'warning');
+      return;
+    }
+    const list = document.getElementById('cotItensList');
+    if (list) { list.querySelectorAll('.cot-item').forEach(item => item.remove()); }
+    criticalItems.forEach(item => {
+      addCotItem();
+      const items = document.querySelectorAll('.cot-item');
+      const lastItem = items[items.length - 1];
+      if (lastItem) {
+        const sel = lastItem.querySelector('select');
+        if (sel) sel.value = item.code;
+        const inputs = lastItem.querySelectorAll('input');
+        if (inputs[0]) inputs[0].value = (item.stockMin || 10) * 2;
+      }
+    });
+    showToastSup('\u2705 ' + criticalItems.length + ' itens cr\u00edticos adicionados!', 'success');
   }
   function copySupplierLink(quotId) {
     const link = window.location.origin + '/suprimentos/cotacao/' + quotId + '/responder';
@@ -1970,9 +1997,28 @@ app.get('/', (c) => {
   (function() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('mode') === 'nova_cotacao') {
+      const productCode = params.get('product_code') || '';
+      const productName = params.get('product_name') || '';
       const supId = params.get('supplier_id') || '';
       const supName = params.get('supplier_name') || '';
       openModal('gerarCotacaoModal');
+      if (productCode) {
+        setTimeout(function() {
+          const firstItemSel = document.querySelector('.cot-item select');
+          if (firstItemSel) {
+            firstItemSel.value = productCode;
+          } else {
+            addCotItem();
+            setTimeout(function() {
+              const sel = document.querySelector('.cot-item select');
+              if (sel) sel.value = productCode;
+            }, 50);
+          }
+        }, 100);
+        if (productName) {
+          showToastSup('\u2709\ufe0f Cota\u00e7\u00e3o para: ' + productName, 'info');
+        }
+      }
       if (supId) {
         // Selecionar o fornecedor no primeiro select de fornecedor da cotação
         setTimeout(function() {
@@ -1989,8 +2035,8 @@ app.get('/', (c) => {
           }
         }, 100);
       }
-      if (supName) {
-        showToastSup('\u2709\ufe0f Cotação para: ' + supName, 'info');
+      if (supName && !productName) {
+        showToastSup('\u2709\ufe0f Cota\u00e7\u00e3o para: ' + supName, 'info');
       }
       // Limpar params da URL sem recarregar
       history.replaceState({}, '', window.location.pathname);
