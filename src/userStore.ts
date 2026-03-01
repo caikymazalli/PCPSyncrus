@@ -638,6 +638,37 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         id: r.id, name: r.name, createdAt: r.created_at || new Date().toISOString(),
       }))
     }
+    // Load product-supplier linkages
+    const prodSupp = await db.prepare(
+      `SELECT id, product_code, supplier_id, priority, internal_production FROM product_suppliers WHERE user_id = ?${byEmpresa} ORDER BY product_code ASC`
+    ).bind(...bindEmpresa([userId])).all()
+    if (prodSupp.results && prodSupp.results.length > 0) {
+      const grouped: Record<string, any> = {}
+      for (const row of prodSupp.results as any[]) {
+        const code = row.product_code
+        if (!code) continue
+        if (!grouped[code]) {
+          grouped[code] = {
+            id: row.id,
+            productCode: code,
+            supplierIds: [],
+            supplierIdSet: new Set<string>(),
+            priorities: {},
+            type: row.internal_production ? 'internal' : 'external',
+            internalProduction: row.internal_production === 1,
+          }
+        }
+        if (row.supplier_id && !grouped[code].supplierIdSet.has(row.supplier_id)) {
+          grouped[code].supplierIdSet.add(row.supplier_id)
+          grouped[code].supplierIds.push(row.supplier_id)
+          grouped[code].priorities[row.supplier_id] = row.priority || 1
+        }
+      }
+      tenant.productSuppliers = Object.values(grouped).map((g: any) => {
+        const { supplierIdSet: _, ...rest } = g
+        return rest
+      })
+    }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
     // Reset the hydration timestamp so the next request retries loading from D1.
