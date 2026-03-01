@@ -645,7 +645,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     }
     // Load product-supplier linkages
     const prodSupp = await db.prepare(
-      `SELECT id, product_code, supplier_id, priority, internal_production FROM product_suppliers WHERE user_id = ?${byEmpresa} ORDER BY product_code ASC`
+      `SELECT id, product_id, product_code, supplier_id, priority, internal_production FROM product_suppliers WHERE user_id = ?${byEmpresa} ORDER BY product_code ASC`
     ).bind(...bindEmpresa([userId])).all()
     if (prodSupp.results && prodSupp.results.length > 0) {
       const grouped: Record<string, any> = {}
@@ -656,6 +656,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           grouped[code] = {
             id: row.id,
             productCode: code,
+            productId: row.product_id || '',
             supplierIds: [],
             supplierIdSet: new Set<string>(),
             priorities: {},

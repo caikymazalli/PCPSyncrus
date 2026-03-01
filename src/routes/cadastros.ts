@@ -629,6 +629,8 @@ app.post('/api/supplier/vinc', async (c) => {
       const columns = tableInfo.results ?? []
       const hasProductCode = columns.some((col: any) => col.name === 'product_code')
       const hasCode = columns.some((col: any) => col.name === 'code')
+      const hasUserId = columns.some((col: any) => col.name === 'user_id')
+      const hasEmpresaId = columns.some((col: any) => col.name === 'empresa_id')
       if (!hasProductCode && hasCode) {
         console.log('[VINCULAÇÃO] ⚠️ Migrando: code → product_code')
         try {
@@ -643,6 +645,34 @@ app.post('/api/supplier/vinc', async (c) => {
         console.log('[VINCULAÇÃO] Criando coluna product_code')
         await db.prepare('ALTER TABLE product_suppliers ADD COLUMN product_code TEXT').run()
       }
+      if (!hasUserId) {
+        console.log('[VINCULAÇÃO] Adicionando coluna user_id...')
+        try {
+          await db.prepare("ALTER TABLE product_suppliers ADD COLUMN user_id TEXT NOT NULL DEFAULT ''").run()
+          console.log('[VINCULAÇÃO] ✅ Coluna user_id adicionada')
+        } catch (e: any) {
+          if (!e.message?.includes('duplicate column')) throw e
+          console.log('[VINCULAÇÃO] Coluna user_id já existe')
+        }
+      }
+      if (!hasEmpresaId) {
+        console.log('[VINCULAÇÃO] Adicionando coluna empresa_id...')
+        try {
+          await db.prepare('ALTER TABLE product_suppliers ADD COLUMN empresa_id TEXT').run()
+          console.log('[VINCULAÇÃO] ✅ Coluna empresa_id adicionada')
+        } catch (e: any) {
+          if (!e.message?.includes('duplicate column')) throw e
+          console.log('[VINCULAÇÃO] Coluna empresa_id já existe')
+        }
+      }
+      // Criar índices para performance
+      try {
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_ps_user_id ON product_suppliers(user_id)').run()
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_ps_product_code ON product_suppliers(product_code)').run()
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_ps_product_id ON product_suppliers(product_id)').run()
+      } catch (e: any) {
+        console.warn('[VINCULAÇÃO] Aviso ao criar índices:', e.message)
+      }
       await db.prepare('DELETE FROM product_suppliers WHERE product_code = ? AND user_id = ?')
         .bind(body.productCode, userId).run()
       if (body.type === 'external' && Array.isArray(body.suppliers)) {
@@ -652,6 +682,7 @@ app.post('/api/supplier/vinc', async (c) => {
             id: genId('ps'),
             user_id: userId,
             empresa_id: empresaId,
+            product_id: product?.id || '',
             product_code: body.productCode,
             supplier_id: sup.supplierId,
             priority: sup.priority || 1,
@@ -676,6 +707,7 @@ app.post('/api/supplier/vinc', async (c) => {
           id: genId('ps'),
           user_id: userId,
           empresa_id: empresaId,
+          product_id: product?.id || '',
           product_code: body.productCode,
           supplier_id: '',
           priority: 1,
@@ -689,6 +721,39 @@ app.post('/api/supplier/vinc', async (c) => {
   }
   markTenantModified(userId)
   return ok(c, { saved: true })
+})
+
+// ── API: GET /cadastros/api/check-schema ─────────────────────────────────────
+app.get('/api/check-schema', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  if (!db || userId === 'demo-tenant') {
+    return ok(c, { message: 'Modo demo - sem D1' })
+  }
+  try {
+    const psInfo = await db.prepare('PRAGMA table_info(product_suppliers)').all()
+    const psColumns = psInfo.results?.map((col: any) => ({ name: col.name, type: col.type, notnull: col.notnull, pk: col.pk })) || []
+    const prodInfo = await db.prepare('PRAGMA table_info(products)').all()
+    const prodColumns = prodInfo.results?.map((col: any) => ({ name: col.name, type: col.type, notnull: col.notnull, pk: col.pk })) || []
+    return ok(c, {
+      status: 'ok',
+      product_suppliers: {
+        columns: psColumns,
+        has_user_id: psColumns.some((col: any) => col.name === 'user_id'),
+        has_empresa_id: psColumns.some((col: any) => col.name === 'empresa_id'),
+        has_product_id: psColumns.some((col: any) => col.name === 'product_id'),
+        has_product_code: psColumns.some((col: any) => col.name === 'product_code'),
+      },
+      products: {
+        has_supplier_id_1: prodColumns.some((col: any) => col.name === 'supplier_id_1'),
+        has_supplier_id_2: prodColumns.some((col: any) => col.name === 'supplier_id_2'),
+        has_supplier_id_3: prodColumns.some((col: any) => col.name === 'supplier_id_3'),
+        has_supplier_id_4: prodColumns.some((col: any) => col.name === 'supplier_id_4'),
+      },
+    })
+  } catch (e) {
+    return err(c, `Erro ao verificar schema: ${(e as any).message}`, 500)
+  }
 })
 
 // ── API: GET /cadastros/api/check-migrations ─────────────────────────────────
