@@ -916,17 +916,19 @@ app.post('/api/create', async (c) => {
 
   // Produção: OBRIGATÓRIO persistir em D1 antes de confirmar ao usuário
   console.log(`[PRODUTOS] Modo PRODUÇÃO - persistindo produto ${id} em D1...`)
-  const persistResult = await dbInsertWithRetry(db, 'products', {
+  const insertData: Record<string, any> = {
     id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code,
     unit: product.unit, type: product.type,
     stock_min: product.stockMin, stock_max: product.stockMax,
     stock_current: product.stockCurrent, stock_status: product.stockStatus,
-    price: product.price, notes: product.notes,
-    description: product.description,
+    price: product.price, description: product.description,
     serial_controlled: product.serialControlled ? 1 : 0,
     control_type: product.controlType,
     critical_percentage: product.criticalPercentage,
-  })
+  }
+  if (body.supplierId) insertData.supplier_id = body.supplierId
+  if (body.notes) insertData.notes = body.notes
+  const persistResult = await dbInsertWithRetry(db, 'products', insertData)
 
   if (!persistResult.success) {
     console.error(`[CRÍTICO] Falha ao persistir produto ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
@@ -963,15 +965,16 @@ app.put('/api/:id', async (c) => {
     const currentProduct = tenant.products[idx] as any
     const merged = { ...currentProduct, ...body }
     console.log(`[PRODUTOS] Atualizando produto ${id} em D1...`)
-    const updated = await dbUpdate(db, 'products', id, userId, {
+    const updateData: Record<string, any> = {
       name: merged.name, code: merged.code, unit: merged.unit, type: merged.type,
       stock_min: merged.stockMin, stock_max: merged.stockMax,
       stock_current: merged.stockCurrent, stock_status: merged.stockStatus,
-      price: merged.price, notes: merged.notes,
-      description: merged.description || '',
+      price: merged.price, description: merged.description || '',
       serial_controlled: merged.serialControlled ? 1 : 0,
       control_type: merged.controlType || '',
-    })
+    }
+    if (merged.notes) updateData.notes = merged.notes
+    const updated = await dbUpdate(db, 'products', id, userId, updateData)
 
     if (!updated) {
       console.error(`[CRÍTICO] Falha ao atualizar produto ${id} em D1`)
