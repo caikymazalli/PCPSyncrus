@@ -6,6 +6,16 @@ import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
+// Escapes JSON for safe inline <script> injection (prevents script termination and HTML injection)
+function safeJson(data: unknown): string {
+  return JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
@@ -41,11 +51,11 @@ app.get('/', (c) => {
   const content = `
 
   <script>
-  var suppliersData = ${JSON.stringify(suppliers)};
-  var productSuppliersData = ${JSON.stringify(productSuppliers)};
-  var allItemsData = ${JSON.stringify(allItems)};
-  var supplierProductMapData = ${JSON.stringify(supplierProductMap)};
-  var allCategoriesData = ${JSON.stringify(allCategories)};
+  var suppliersData = ${safeJson(suppliers)};
+  var productSuppliersData = ${safeJson(productSuppliers)};
+  var allItemsData = ${safeJson(allItems)};
+  var supplierProductMapData = ${safeJson(supplierProductMap)};
+  var allCategoriesData = ${safeJson(allCategories)};
 
   // ── Filtro de fornecedores ──────────────────────────────────────────────
   function filterSuppliers() {
