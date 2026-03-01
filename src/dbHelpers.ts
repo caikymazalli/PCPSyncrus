@@ -43,15 +43,11 @@ export async function dbInsert(db: D1Database, table: string, data: Record<strin
     const vals = Object.values(data)
     const placeholders = keys.map(() => '?').join(', ')
 
-    console.log(`[D1][INSERT] ${table}:`, { keys, values: vals, data })
-
     const sql = `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`
-
-    console.log(`[D1][SQL] ${sql}`)
 
     const result = await db.prepare(sql).bind(...vals).run()
 
-    console.log(`[D1][SUCCESS] ${table} id=${data.id || '?'}:`, { success: true, result })
+    console.log(`[D1][INSERT] ${table}:`, result)
 
     return true
   } catch (e) {
@@ -82,10 +78,8 @@ export async function dbInsertWithRetry(
   let lastError: Error | undefined
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[D1][INSERT][RETRY] Attempt ${attempt}/${maxRetries} for ${table} id=${data.id || '?'}`)
       await db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`)
         .bind(...vals).run()
-      console.log(`[D1][INSERT][SUCCESS] ${table} id=${data.id || '?'} on attempt ${attempt}`)
       return { success: true, attempts: attempt }
     } catch (e) {
       lastError = e as Error
@@ -104,16 +98,10 @@ export async function dbUpdate(db: D1Database, table: string, id: string, userId
     const keys = Object.keys(data)
     const vals = Object.values(data)
 
-    console.log(`[D1][UPDATE] ${table} id=${id}:`, { keys, data })
-
     const setClause = keys.map(k => `${k} = ?`).join(', ')
     const sql = `UPDATE ${table} SET ${setClause} WHERE id = ? AND user_id = ?`
 
-    console.log(`[D1][SQL] ${sql}`)
-
-    const result = await db.prepare(sql).bind(...vals, id, userId).run()
-
-    console.log(`[D1][SUCCESS] ${table} id=${id}`, { result })
+    await db.prepare(sql).bind(...vals, id, userId).run()
 
     return true
   } catch (e) {
@@ -129,15 +117,9 @@ export async function dbUpdate(db: D1Database, table: string, id: string, userId
 /** Delete a record from D1 */
 export async function dbDelete(db: D1Database, table: string, id: string, userId: string): Promise<boolean> {
   try {
-    console.log(`[D1][DELETE] ${table} id=${id}`)
-
     const sql = `DELETE FROM ${table} WHERE id = ? AND user_id = ?`
 
-    console.log(`[D1][SQL] ${sql}`)
-
-    const result = await db.prepare(sql).bind(id, userId).run()
-
-    console.log(`[D1][SUCCESS] ${table} id=${id}`, { result })
+    await db.prepare(sql).bind(id, userId).run()
 
     return true
   } catch (e) {

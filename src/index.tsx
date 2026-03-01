@@ -21,7 +21,6 @@ import suprimentosApp from './routes/suprimentos'
 import masterApp from './routes/master'
 import authApp from './routes/auth'
 import testApp from './routes/test'
-import debugApp from './routes/debug'
 import { newUserDashboard } from './newuser'
 import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getEffectiveTenantId } from './userStore'
 
@@ -217,7 +216,6 @@ app.route('/cadastros', cadastrosApp)
 app.route('/suprimentos', suprimentosApp)
 app.route('/master', masterApp)
 app.route('/test', testApp)
-app.route('/debug', debugApp)
 app.route('/', authApp)
 
 // ── 404 ────────────────────────────────────────────────────────────────────────

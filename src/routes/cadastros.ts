@@ -833,9 +833,7 @@ app.post('/api/supplier/create', async (c) => {
     notes: body.notes || '', createdAt: new Date().toISOString(),
   }
   tenant.suppliers.push(supplier)
-  console.log(`[SAVE] Fornecedor ${id} salvo em memória`)
   if (db && userId !== 'demo-tenant') {
-    console.log(`[PERSIST] Persistindo fornecedor ${id} em D1...`)
     const persistResult = await dbInsertWithRetry(db, 'suppliers', {
       id, user_id: userId, empresa_id: empresaId, name: supplier.name, cnpj: supplier.cnpj,
       email: supplier.email, phone: supplier.phone, contact: supplier.contact,
@@ -846,9 +844,7 @@ app.post('/api/supplier/create', async (c) => {
       lead_days: supplier.deliveryLeadDays,
       notes: supplier.notes,
     })
-    if (persistResult.success) {
-      console.log(`[SUCCESS] Fornecedor ${id} persistido em D1`)
-    } else {
+    if (!persistResult.success) {
       console.error(`[ERROR] Falha ao persistir fornecedor ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
       return ok(c, {
         supplier,
