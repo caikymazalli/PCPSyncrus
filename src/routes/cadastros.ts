@@ -624,6 +624,45 @@ app.post('/api/supplier/vinc', async (c) => {
   // Persistir em D1
   if (db && userId !== 'demo-tenant') {
     try {
+      // Migração de schema: garantir que colunas supplier_id_1/2/3/4 existam em products
+      const prodTableInfo = await db.prepare('PRAGMA table_info(products)').all()
+      const prodColumns = (prodTableInfo.results ?? []).map((col: any) => col.name)
+      const hasSupplier1 = prodColumns.includes('supplier_id_1')
+      const hasSupplier2 = prodColumns.includes('supplier_id_2')
+      const hasSupplier3 = prodColumns.includes('supplier_id_3')
+      const hasSupplier4 = prodColumns.includes('supplier_id_4')
+      const hasLegacySupplier = prodColumns.includes('supplier_id') && !hasSupplier1
+      if (hasLegacySupplier) {
+        try {
+          await db.prepare('ALTER TABLE products RENAME COLUMN supplier_id TO supplier_id_1').run()
+          console.log('[VINCULAÇÃO] ✅ products: supplier_id renomeada para supplier_id_1')
+        } catch {
+          try {
+            await db.prepare('ALTER TABLE products ADD COLUMN supplier_id_1 TEXT').run()
+            await db.prepare('UPDATE products SET supplier_id_1 = supplier_id WHERE supplier_id_1 IS NULL').run()
+          } catch (fallbackError: any) {
+            if (!fallbackError.message?.includes('duplicate column')) console.warn('[VINCULAÇÃO] Aviso ao migrar supplier_id:', fallbackError.message)
+          }
+        }
+      }
+      if (!hasSupplier1 && !hasLegacySupplier) {
+        try { await db.prepare('ALTER TABLE products ADD COLUMN supplier_id_1 TEXT').run() } catch (e: any) { if (!e.message?.includes('duplicate column')) throw e }
+      }
+      if (!hasSupplier2) {
+        try { await db.prepare('ALTER TABLE products ADD COLUMN supplier_id_2 TEXT').run() } catch (e: any) { if (!e.message?.includes('duplicate column')) throw e }
+      }
+      if (!hasSupplier3) {
+        try { await db.prepare('ALTER TABLE products ADD COLUMN supplier_id_3 TEXT').run() } catch (e: any) { if (!e.message?.includes('duplicate column')) throw e }
+      }
+      if (!hasSupplier4) {
+        try { await db.prepare('ALTER TABLE products ADD COLUMN supplier_id_4 TEXT').run() } catch (e: any) { if (!e.message?.includes('duplicate column')) throw e }
+      }
+      console.log('[VINCULAÇÃO] ✅ Schema de products verificado')
+    } catch (migError: any) {
+      console.error('[VINCULAÇÃO] Erro na migração de schema de products:', migError.message)
+      return err(c, `Erro na migração: ${migError.message}`, 500)
+    }
+    try {
       // Verificar e corrigir schema automaticamente antes de persistir
       const tableInfo = await db.prepare('PRAGMA table_info(product_suppliers)').all()
       const columns = tableInfo.results ?? []
