@@ -532,6 +532,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     // Load products
     const prods = await db.prepare(`SELECT * FROM products WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
       .bind(...bindEmpresa([userId])).all()
+    console.log(`[HYDRATION] Carregando ${prods.results?.length || 0} produtos do D1 para ${userId}`)
     if (prods.results && prods.results.length > 0) {
       tenant.products = (prods.results as any[]).map(r => ({
         id: r.id, name: r.name, code: r.code, unit: r.unit || 'un',
@@ -544,6 +545,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         criticalPercentage: r.critical_percentage || 50,
         createdAt: r.created_at || new Date().toISOString(),
       }))
+      console.log(`[HYDRATION] ✅ ${tenant.products.length} produtos carregados do D1`)
+    } else {
+      console.log(`[HYDRATION] ⚠️ Nenhum produto encontrado em D1 para ${userId}`)
     }
     // Load suppliers
     const sups = await db.prepare(`SELECT * FROM suppliers WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
