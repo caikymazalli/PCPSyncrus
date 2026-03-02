@@ -1,8 +1,33 @@
 /**
  * suprimentos-init.js
  * Funções do módulo de suprimentos (Cotações).
- * Deve ser carregado ANTES de qualquer HTML que referencie estas funções.
+ * Deve ser carregado DEPOIS de window.quotationsData ser definido.
  */
+
+/**
+ * ===================================================================
+ * INICIALIZAÇÃO SEGURA - Garantir que quotationsData existe
+ * ===================================================================
+ */
+
+// Se quotationsData não foi definido ainda, inicializar como array vazio
+if (typeof window.quotationsData === 'undefined') {
+  window.quotationsData = []
+  console.warn('[INIT] ⚠️ window.quotationsData não estava definido, inicializado como []')
+}
+
+console.log('[INIT] suprimentos-init.js carregado')
+console.log('[INIT] window.quotationsData:', Array.isArray(window.quotationsData) ? window.quotationsData.length + ' itens' : 'ERRO - não é array')
+
+// Fallback: verificar após DOM estar pronto
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof window.quotationsData === 'undefined' || !Array.isArray(window.quotationsData)) {
+    console.error('[INIT-DOM] ❌ quotationsData ainda inválido após DOMContentLoaded!')
+    window.quotationsData = []
+  } else {
+    console.log('[INIT-DOM] ✅ quotationsData validado:', window.quotationsData.length, 'itens')
+  }
+})
 
 /**
  * Escapa caracteres HTML para evitar XSS

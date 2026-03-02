@@ -101,7 +101,12 @@ app.get('/', (c) => {
   const totalImportBRL = importsData.reduce((acc: number, imp: any) => acc + (imp.numerario?.totalLandedCostBRL || 0), 0)
 
   const content = `
-  <!-- ✅ Carregar funções de cotação ANTES do HTML -->
+  <script>
+    window.quotationsData = ${safeJsonStringify(quotations).replace(/<\//g, '<\\/')};
+    console.log('[SUPRIMENTOS] quotationsData definido:', Array.isArray(window.quotationsData) ? window.quotationsData.length : 'ERRO');
+  </script>
+
+  <!-- ✅ Carregar funções de cotação DEPOIS dos dados -->
   <script src="/static/suprimentos-init.js"></script>
 
   <!-- Pop-up: cotações pendentes de aprovação -->
