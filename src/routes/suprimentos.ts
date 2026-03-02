@@ -37,6 +37,27 @@ function safeJsonStringify(obj: any): string {
   }
 }
 
+/**
+ * Serializar quotations com escape seguro usando replacer
+ */
+function safeStringifyQuotations(quotations: any[]): string {
+  try {
+    const jsonStr = JSON.stringify(quotations, (key, value) => {
+      if (typeof value === 'string') {
+        return escapeJsonString(value)
+      }
+      return value
+    })
+    // Validar que é JSON válido
+    JSON.parse(jsonStr)
+    console.log('[SUPRIMENTOS] JSON válido gerado:', jsonStr.length, 'bytes')
+    return jsonStr
+  } catch (e) {
+    console.error('[SUPRIMENTOS] Erro ao stringify quotations:', (e as any).message)
+    return '[]'
+  }
+}
+
 // ── Rota principal do módulo Suprimentos ──────────────────────────────────────
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
@@ -102,9 +123,35 @@ app.get('/', (c) => {
   const importsData = imports || []
   const totalImportBRL = importsData.reduce((acc: number, imp: any) => acc + (imp.numerario?.totalLandedCostBRL || 0), 0)
 
+  const quotationsData = (quotations || []).map((q: any) => ({
+    id: q.id || '',
+    code: q.code || '',
+    status: q.status || 'pending',
+    deadline: q.deadline || '',
+    supplierName: q.supplierName || '',
+    items: (q.items || []).map((item: any) => ({
+      id: item.id || '',
+      productName: item.productName || '',
+      productCode: item.productCode || '',
+      quantity: item.quantity || 0,
+      unit: item.unit || 'un',
+      unitPrice: item.unitPrice || 0,
+    })),
+    supplierResponses: (q.supplierResponses || []).map((resp: any) => ({
+      id: resp.id || '',
+      supplierName: resp.supplierName || '',
+      totalPrice: resp.totalPrice || 0,
+      deliveryDays: resp.deliveryDays || 0,
+      paymentTerms: resp.paymentTerms || '',
+      notes: resp.notes || '',
+      respondedAt: resp.respondedAt || '',
+    })),
+    createdAt: q.createdAt || '',
+  }))
+
   const content = `
   <script>
-    window.quotationsData = ${safeJsonStringify(quotations).replace(/<\//g, '<\\/')};
+    window.quotationsData = ${safeStringifyQuotations(quotationsData).replace(/<\//g, '<\\/')};
     console.log('[SUPRIMENTOS] quotationsData definido:', Array.isArray(window.quotationsData) ? window.quotationsData.length : 'ERRO');
   </script>
 
