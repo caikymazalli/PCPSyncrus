@@ -1,1 +1,10 @@
+# Redirect rules for static files
+
+# Allow static files to be served
+/static/* 200
+/public/* 200
+*.js 200
+*.css 200
+
+# Catch-all rule
 /* /index.html 200
