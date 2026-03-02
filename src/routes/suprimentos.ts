@@ -2814,7 +2814,7 @@ app.post('/suprimentos/api/quotations/:id/negotiate', async (c) => {
       id: genId('qng'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
       observations: body.observations.trim(), created_by: 'Admin', created_at: now,
     })
-  }
+
   return ok(c, { status: 'awaiting_negotiation' })
 })
 
