@@ -2548,7 +2548,11 @@ app.post('/api/quotations/:id/respond', async (c) => {
     if (quotIdx !== -1) {
       const q = tenant.quotations[quotIdx]
 
-      if (q.supplierResponses?.some((r: any) => r.supplierName.toLowerCase() === body.supplierName.toLowerCase())) {
+      const existingResponseIdx = q.supplierResponses?.findIndex(
+        (r: any) => r.supplierName.toLowerCase() === body.supplierName.toLowerCase()
+      ) ?? -1
+
+      if (existingResponseIdx !== -1 && q.status !== 'awaiting_negotiation') {
         return err(c, 'Este fornecedor já respondeu esta cotação', 400)
       }
 
@@ -2557,15 +2561,30 @@ app.post('/api/quotations/:id/respond', async (c) => {
       }
 
       if (!q.supplierResponses) q.supplierResponses = []
-      q.supplierResponses.push({
-        id: genId('resp'),
-        supplierName: body.supplierName,
-        totalPrice: body.totalPrice,
-        deliveryDays: body.deliveryDays || 0,
-        paymentTerms: body.paymentTerms || '',
-        notes: body.notes || '',
-        respondedAt: new Date().toISOString(),
-      })
+
+      if (existingResponseIdx !== -1 && q.status === 'awaiting_negotiation') {
+        const { negotiationHistory: _nh, ...previousResponse } = q.supplierResponses[existingResponseIdx]
+        if (!q.supplierResponses[existingResponseIdx].negotiationHistory) {
+          q.supplierResponses[existingResponseIdx].negotiationHistory = []
+        }
+        q.supplierResponses[existingResponseIdx].negotiationHistory.push(previousResponse)
+        q.supplierResponses[existingResponseIdx].totalPrice = body.totalPrice
+        q.supplierResponses[existingResponseIdx].deliveryDays = body.deliveryDays || 0
+        q.supplierResponses[existingResponseIdx].paymentTerms = body.paymentTerms || ''
+        q.supplierResponses[existingResponseIdx].notes = body.notes || ''
+        q.supplierResponses[existingResponseIdx].respondedAt = new Date().toISOString()
+        console.log('[COTAÇÃO-RESPOSTA] ♻️ Resposta atualizada durante negociação:', body.supplierName)
+      } else {
+        q.supplierResponses.push({
+          id: genId('resp'),
+          supplierName: body.supplierName,
+          totalPrice: body.totalPrice,
+          deliveryDays: body.deliveryDays || 0,
+          paymentTerms: body.paymentTerms || '',
+          notes: body.notes || '',
+          respondedAt: new Date().toISOString(),
+        })
+      }
 
       q.status = 'with_responses'
       markTenantModified(userId)
