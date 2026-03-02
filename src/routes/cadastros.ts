@@ -620,6 +620,35 @@ app.post('/api/supplier/vinc', async (c) => {
     product.supplier_id_3 = sortedIds[2] || ''
     product.supplier_id_4 = sortedIds[3] || ''
   }
+  // Atualizar productSupplierLinks em memória
+  if (!tenant.productSupplierLinks) tenant.productSupplierLinks = []
+  if (product && body.type === 'external' && Array.isArray(body.suppliers)) {
+    const now = new Date().toISOString()
+    // Build a Set of already-linked supplier IDs for O(1) duplicate check
+    const linkedSet = new Set(
+      tenant.productSupplierLinks
+        .filter((l: any) => l.product_id === product.id)
+        .map((l: any) => l.supplier_id)
+    )
+    // Build a Map of supplier info for O(1) lookup
+    const supplierMap = new Map((tenant.suppliers || []).map((s: any) => [s.id, s]))
+    for (const sup of body.suppliers) {
+      if (!sup.supplierId || linkedSet.has(sup.supplierId)) continue
+      const supplier = supplierMap.get(sup.supplierId)
+      if (!supplier) continue
+      linkedSet.add(sup.supplierId)
+      tenant.productSupplierLinks.push({
+        id: genId('vinc'),
+        product_id: product.id,
+        supplier_id: sup.supplierId,
+        supplier_name: supplier.name || '',
+        supplier_email: supplier.email || '',
+        supplier_phone: supplier.phone || supplier.tel || '',
+        status: 'active',
+        created_at: now,
+      })
+    }
+  }
   // Persistir em D1
   if (db && userId !== 'demo-tenant') {
     try {
@@ -755,6 +784,40 @@ app.post('/api/supplier/vinc', async (c) => {
     } catch (e) {
       console.error('[VINCULAÇÃO] Erro ao persistir em D1:', e)
       return err(c, `Erro ao persistir vinculação: ${(e as any).message}`, 500)
+    }
+    // Persistir vínculos individuais em product_supplier_links
+    if (body.type === 'external' && Array.isArray(body.suppliers) && product?.id) {
+      const now = new Date().toISOString()
+      // Build a Map of supplier info for O(1) lookup
+      const supplierMap = new Map((tenant.suppliers || []).map((s: any) => [s.id, s]))
+      for (const sup of body.suppliers) {
+        if (!sup.supplierId) continue
+        const supplier = supplierMap.get(sup.supplierId)
+        if (!supplier) continue
+        try {
+          const vinculoId = genId('vinc')
+          await dbInsertWithRetry(db, 'product_supplier_links', {
+            id: vinculoId,
+            user_id: userId,
+            empresa_id: empresaId || '1',
+            product_id: product.id,
+            supplier_id: sup.supplierId,
+            supplier_name: supplier.name || '',
+            supplier_email: supplier.email || '',
+            supplier_phone: supplier.phone || supplier.tel || '',
+            status: 'active',
+            created_at: now,
+            updated_at: now,
+            created_by: userId,
+          })
+          console.log(`[VINCULAÇÃO] ✅ Vínculo persistido em product_supplier_links: ${product.id} x ${sup.supplierId}`)
+        } catch (linkErr: any) {
+          // UNIQUE constraint violations are expected for re-vinculations and are safe to ignore
+          if (!linkErr.message?.includes('UNIQUE') && !linkErr.message?.includes('unique')) {
+            console.warn(`[VINCULAÇÃO] ⚠️ Erro ao salvar product_supplier_links:`, linkErr.message)
+          }
+        }
+      }
     }
   }
   markTenantModified(userId)

@@ -23,12 +23,16 @@ import authApp from './routes/auth'
 import testApp from './routes/test'
 import { newUserDashboard } from './newuser'
 import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getEffectiveTenantId } from './userStore'
+import { migrateProductSupplierLinks } from './migrations/001_create_product_supplier_links'
 
 type Bindings = {
   DB: D1Database
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+// ── One-time startup migrations (run once per worker instance) ─────────────────
+let migrationRan = false
 
 const SESSION_COOKIE = 'pcp_session'
 const SESSION_MAX_AGE = 60 * 60 * 8
@@ -42,6 +46,11 @@ app.get('/favicon.ico', (c) => c.redirect('/favicon.svg', 301))
 
 // ── Middleware: load session from D1 if not in memory + hydrate tenant ─────────
 app.use('*', async (c, next) => {
+  // Run one-time migrations on first request per worker instance
+  if (!migrationRan && c.env?.DB) {
+    migrationRan = true
+    await migrateProductSupplierLinks(c.env.DB)
+  }
   const token = getCookie(c, SESSION_COOKIE)
   if (token && c.env?.DB) {
     let session = getSession(token)
