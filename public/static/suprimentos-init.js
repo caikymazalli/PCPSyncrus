@@ -456,21 +456,44 @@ function carregarItensQuotacao() {
     if (container) container.style.display = 'none'
     return
   }
+  const bestResponse = (quot.supplierResponses || []).reduce((best, r) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
+  const totalValue = bestResponse ? bestResponse.totalPrice : quot.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
   let itemsHTML = ''
+  if (bestResponse) {
+    itemsHTML += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:8px;">'
+    itemsHTML += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+    itemsHTML += '<span style="font-size:13px;font-weight:700;color:#15803d;">Fornecedor: ' + escHtml(bestResponse.supplierName || '—') + '</span>'
+    itemsHTML += '<span style="font-size:15px;font-weight:800;color:#1B4F72;">R$ ' + totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '</span>'
+    itemsHTML += '</div>'
+    if (bestResponse.deliveryDays) {
+      itemsHTML += '<div style="font-size:12px;color:#6c757d;">Prazo: ' + escHtml(bestResponse.deliveryDays) + ' dias</div>'
+    }
+    itemsHTML += '</div>'
+  }
   for (const item of quot.items) {
     itemsHTML += '<div style="background:#f8f9fa;padding:12px;border-radius:6px;margin-bottom:8px;border-left:3px solid #2980B9;">'
     itemsHTML += '<div style="font-weight:600;color:#1B4F72;margin-bottom:4px;">' + escHtml(item.productName || '—') + '</div>'
-    itemsHTML += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;color:#6c757d;">'
+    const gridCols = item.unitPrice > 0 ? '1fr 1fr 1fr' : '1fr 1fr'
+    itemsHTML += '<div style="display:grid;grid-template-columns:' + gridCols + ';gap:8px;font-size:12px;color:#6c757d;">'
     itemsHTML += '<div><strong>Qtd:</strong> ' + escHtml(item.quantity || 0) + '</div>'
     itemsHTML += '<div><strong>Un.:</strong> ' + escHtml(item.unit || 'un') + '</div>'
-    itemsHTML += '<div><strong>Total:</strong> R$ ' + ((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '</div>'
+    if (item.unitPrice > 0) {
+      itemsHTML += '<div><strong>Total:</strong> R$ ' + ((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '</div>'
+    }
+    itemsHTML += '</div></div>'
+  }
+  if (!bestResponse) {
+    itemsHTML += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-top:8px;">'
+    itemsHTML += '<div style="display:flex;justify-content:space-between;align-items:center;">'
+    itemsHTML += '<span style="font-size:13px;font-weight:700;color:#15803d;">Valor Total</span>'
+    itemsHTML += '<span style="font-size:15px;font-weight:800;color:#1B4F72;">R$ ' + totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '</span>'
     itemsHTML += '</div></div>'
   }
   const itemsEl = document.getElementById('quotationItems')
   if (itemsEl) itemsEl.innerHTML = itemsHTML
   const container = document.getElementById('quotationItemsContainer')
   if (container) container.style.display = 'block'
-  console.log('[PEDIDO] Itens carregados:', quot.items.length)
+  console.log('[PEDIDO] Itens carregados:', quot.items.length, 'Valor total:', totalValue)
 }
 
 function aprovarCotacao(quotId) {

@@ -1302,8 +1302,10 @@ app.get('/', (c) => {
             <select class="form-control" id="formQuotationRef" required onchange="carregarItensQuotacao()">
               <option value="">— Selecione uma cotação aprovada —</option>
               ${(quotations as any[]).filter((q: any) => q.status === 'approved').sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((q: any) => {
-                const totalValue = (q.items || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
-                return `<option value="${q.id}">${q.code} | ${q.supplierName || q.supplierResponses?.[0]?.supplierName || 'Fornecedor'} | R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>`
+                const bestResponse = (q.supplierResponses || []).reduce((best: any, r: any) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
+                const totalValue = bestResponse ? bestResponse.totalPrice : (q.items || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
+                const supplierName = bestResponse?.supplierName || q.supplierName || q.supplierResponses?.[0]?.supplierName || 'Fornecedor'
+                return `<option value="${q.id}">${q.code} | ${supplierName} | R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>`
               }).join('')}
               ${(quotations as any[]).filter((q: any) => q.status === 'approved').length === 0 ? '<option value="" disabled>Nenhuma cotação aprovada disponível</option>' : ''}
             </select>
@@ -2783,13 +2785,14 @@ app.post('/suprimentos/api/purchase-orders/create', async (c) => {
   if (quot.status !== 'approved') return err(c, 'Cotação deve estar aprovada', 400)
   const id = genId('pc')
   const code = `PED-${new Date().getFullYear()}-${String((tenant.purchaseOrders.length || 0) + 1).padStart(3,'0')}`
+  const bestResponse = (quot.supplierResponses || []).reduce((best: any, r: any) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
   const pedido = {
     id, code,
     quotationId: quot.id,
     quotationCode: quot.code,
-    supplierName: quot.supplierName || (quot.supplierResponses?.[0]?.supplierName || ''),
+    supplierName: bestResponse?.supplierName || quot.supplierName || (quot.supplierResponses?.[0]?.supplierName || ''),
     items: quot.items || [],
-    totalValue: quot.totalValue || (quot.supplierResponses?.[0]?.totalPrice || 0),
+    totalValue: quot.totalValue || bestResponse?.totalPrice || (quot.supplierResponses?.[0]?.totalPrice || 0),
     pedidoData: body.pedidoData || '',
     dataEntrega: body.dataEntrega || '',
     observacoes: body.observacoes || '',
