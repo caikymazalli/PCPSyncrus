@@ -2816,7 +2816,7 @@ app.post('/suprimentos/api/quotations/:id/negotiate', async (c) => {
     })
 
   return ok(c, { status: 'awaiting_negotiation' })
-})
+)
 
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
 app.post('/suprimentos/api/purchase-orders/create', async (c) => {
