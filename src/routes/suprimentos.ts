@@ -2531,7 +2531,7 @@ app.get('/quote-response', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/respond ────────────────────────
-app.post('/suprimentos/api/quotations/:id/respond', async (c) => {
+app.post('/api/quotations/:id/respond', async (c) => {
   const quotId = c.req.param('id')
   const body = await c.req.json().catch(() => null)
 
@@ -2716,7 +2716,7 @@ app.post('/api/quotations/:id/reject', async (c) => {
   return ok(c, { quotation })
 })
 // ── API: POST /suprimentos/api/quotations/:id/resend ─────────────────────────
-app.post('/suprimentos/api/quotations/:id/resend', async (c) => {
+app.post('/api/quotations/:id/resend', async (c) => {
   const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const idx = tenant.quotations.findIndex((q: any) => q.id === id)
@@ -2856,7 +2856,7 @@ app.post('/suprimentos/api/product-imp-field', async (c) => {
     item[field] = value
   } else {
     // Criar entrada no mapa de descrições importadas se não existir
-    if (!tenant.impProdDesc) (tenant as any).impProdDesc = {}
+    if (!tenant.impProdDesc) tenant.impProdDesc = {}
     if (!tenant.impProdDesc[code]) tenant.impProdDesc[code] = {}
     tenant.impProdDesc[code][field] = value
   }

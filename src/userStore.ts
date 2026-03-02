@@ -61,6 +61,7 @@ export interface TenantData {
   supplierCategories: any[]  // Categorias de fornecedores personalizadas
   productSupplierLinks: any[] // Vínculos fornecedor-produto persistidos em D1
   quotationNegotiations: any[] // Negociações de cotações
+  impProdDesc?: Record<string, Record<string, string>> // Mapa de descrições de produtos importados
 }
 
 export interface RegisteredUser {
