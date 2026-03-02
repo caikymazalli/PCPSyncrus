@@ -2591,55 +2591,7 @@ app.post('/suprimentos/api/quotations/:id/respond', async (c) => {
 })
 
 
-// ── API: POST /suprimentos/api/quotations/create (new format) ─────────────────
-app.post('/api/quotations/create', async (c) => {
-  const db = getCtxDB(c)
-  const userId = getCtxUserId(c)
-  const empresaId = getCtxEmpresaId(c)
-  const tenant = getCtxTenant(c)
-  const body = await c.req.json().catch(() => null)
-  
-  if (!body) return err(c, 'Dados inválidos')
-  if (!body.deadline) return err(c, 'Data limite obrigatória')
-  if (!body.supplierIds || body.supplierIds.length === 0) return err(c, 'Selecione pelo menos um fornecedor')
-  if (body.tipo !== 'critico' && (!body.items || body.items.length === 0)) return err(c, 'Adicione pelo menos um produto')
-  
-  const id = genId('cot')
-  const code = `COT-${new Date().getFullYear()}-${String(tenant.quotations.length + 1).padStart(3,'0')}`
-  const quotation = {
-    id, code,
-    descricao: body.descricao || 'Cotação de suprimentos',
-    tipo: body.tipo || 'manual',
-    items: body.items || [],
-    supplierIds: body.supplierIds || [],
-    deadline: body.deadline,
-    observations: body.observations || '',
-    status: 'pending_approval',
-    createdBy: userId || 'Admin',
-    createdAt: new Date().toISOString(),
-    supplierResponses: [],
-  }
-  
-  tenant.quotations.push(quotation)
-  markTenantModified(userId)
-  
-  if (db && userId !== 'demo-tenant') {
-    const persistResult = await dbInsertWithRetry(db, 'quotations', {
-      id, user_id: userId, empresa_id: empresaId, title: quotation.descricao, status: 'pending_approval',
-      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
-    })
-    if (!persistResult.success) {
-      console.error(`[ERROR] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
-      return ok(c, {
-        quotation, code,
-        warning: 'Cotação salva localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
-      })
-    }
-  }
-  return ok(c, { quotation, code })
-})
-
-// ── API: POST /suprimentos/api/quotations/create (new format) ─────────────────
+// ── API: POST /suprimentos/api/quotations/create ─────────────────────────────
 app.post('/suprimentos/api/quotations/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
@@ -2680,7 +2632,7 @@ app.post('/suprimentos/api/quotations/create', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
-app.post('/api/quotations/:id/approve', async (c) => {
+app.post('/suprimentos/api/quotations/:id/approve', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
   const empresaId = getCtxEmpresaId(c)
@@ -2729,11 +2681,11 @@ app.post('/api/quotations/:id/approve', async (c) => {
     })
   }
   
-  return ok(c, { quotation, purchaseOrder, pcCode })
+  return ok(c, { pcCode })
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/reject ───────────────────────────
-app.post('/api/quotations/:id/reject', async (c) => {
+app.post('/suprimentos/api/quotations/:id/reject', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
   const tenant = getCtxTenant(c)
@@ -2753,7 +2705,7 @@ app.post('/api/quotations/:id/reject', async (c) => {
     await dbUpdate(db, 'quotations', id, { status: 'rejected' }, userId)
   }
   
-  return ok(c, { quotation })
+  return ok(c, {})
 })
 // ── API: POST /suprimentos/api/quotations/:id/resend ─────────────────────────
 app.post('/suprimentos/api/quotations/:id/resend', async (c) => {
@@ -2771,7 +2723,7 @@ app.post('/suprimentos/api/quotations/:id/resend', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/negotiate ──────────────────────
-app.post('/api/quotations/:id/negotiate', async (c) => {
+app.post('/suprimentos/api/quotations/:id/negotiate', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
   const tenant = getCtxTenant(c)
@@ -2791,7 +2743,7 @@ app.post('/api/quotations/:id/negotiate', async (c) => {
     await dbUpdate(db, 'quotations', id, { status: 'awaiting_negotiation' }, userId)
   }
   
-  return ok(c, { quotation })
+  return ok(c, {})
 })
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
 app.post('/suprimentos/api/purchase-orders/create', async (c) => {
