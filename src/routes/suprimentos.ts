@@ -27,11 +27,14 @@ app.get('/', (c) => {
   }
 
   const pcStatusInfo: Record<string, { label: string, badge: string }> = {
+    pending_approval: { label: 'Pend. Aprovação', badge: 'badge-warning' },
     pending:    { label: 'Pendente',     badge: 'badge-warning' },
     confirmed:  { label: 'Confirmado',   badge: 'badge-info' },
     in_transit: { label: 'Em Trânsito',  badge: 'badge-primary' },
     delivered:  { label: 'Entregue',     badge: 'badge-success' },
     cancelled:  { label: 'Cancelado',    badge: 'badge-secondary' },
+    approved:   { label: 'Aprovado',     badge: 'badge-success' },
+    rejected:   { label: 'Recusado',     badge: 'badge-secondary' },
   }
 
   const impStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
@@ -149,7 +152,7 @@ app.get('/', (c) => {
       <button class="btn btn-secondary" onclick="openModal('novaImportacaoModal')">
         <i class="fas fa-ship"></i> Nova Importação
       </button>
-      <button class="btn btn-primary" onclick="openModal('novoPCModal')">
+      <button class="btn btn-primary" onclick="openModal('novoPedidoCompraModal')">
         <i class="fas fa-plus"></i> Pedido de Compra
       </button>
     </div>
@@ -268,11 +271,11 @@ app.get('/', (c) => {
                   <td style="font-weight:700;color:#1B4F72;">${pc.currency} ${pc.totalValue.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
                   <td><span class="badge" style="background:${cc.bg};color:${cc.c};">${pc.currency}</span></td>
                   <td>${pc.isImport ? '<span class="badge badge-info"><i class="fas fa-ship" style="font-size:9px;"></i> Sim</span>' : '<span class="badge badge-secondary">Não</span>'}</td>
-                  <td style="font-size:12px;color:#6c757d;">${new Date(pc.expectedDelivery+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td style="font-size:12px;color:#6c757d;">${(pc.dataEntrega || pc.expectedDelivery) ? new Date((pc.dataEntrega || pc.expectedDelivery)+'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td><span class="badge ${si.badge}">${si.label}</span></td>
                   <td>
                     <div style="display:flex;gap:4px;">
-                      <button class="btn btn-secondary btn-sm" onclick="alert('Detalhes: ${pc.code}\\nFornecedor: ${pc.supplierName}\\nValor: ${pc.currency} ${pc.totalValue.toLocaleString('pt-BR',{minimumFractionDigits:2})}\\nEntrega: ${new Date(pc.expectedDelivery+'T12:00:00').toLocaleDateString('pt-BR')}')" title="Ver detalhes"><i class="fas fa-eye"></i></button>
+                      <button class="btn btn-secondary btn-sm" onclick="abrirModalPedidoCompra('${pc.id}')" title="Ver detalhes"><i class="fas fa-eye"></i></button>
                       ${pc.isImport ? `<button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="switchTab('tabImportacao','suprimentos')" title="Ver importação"><i class="fas fa-ship"></i></button>` : ''}
                     </div>
                   </td>
@@ -650,6 +653,7 @@ app.get('/', (c) => {
 
   <script>
   const quotationsData = ${JSON.stringify(quotations)};
+  const purchaseOrdersData = ${JSON.stringify(purchaseOrders)};
   const statusInfoData = ${JSON.stringify(statusInfo)};
   const suppliersData = ${JSON.stringify(suppliers)};
   const importsData2 = ${JSON.stringify(importsData)};
@@ -1200,40 +1204,52 @@ app.get('/', (c) => {
   </div>
 
   <!-- Modal: Novo Pedido de Compra -->
-  <div class="modal-overlay" id="novoPCModal">
+  <div class="modal-overlay" id="novoPedidoCompraModal">
     <div class="modal" style="max-width:560px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-shopping-cart" style="margin-right:8px;"></i>Novo Pedido de Compra</h3>
-        <button onclick="closeModal('novoPCModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+        <button onclick="closeModal('novoPedidoCompraModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:24px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div class="form-group" style="grid-column:span 2;">
-            <label class="form-label">Fornecedor *</label>
-            <select class="form-control">
-              <option value="">Selecionar fornecedor...</option>
-              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type})</option>`).join('')}
+            <label class="form-label">Cotação de Referência *</label>
+            <select class="form-control" id="formQuotationRef" required onchange="carregarItensQuotacao()">
+              <option value="">— Selecione uma cotação aprovada —</option>
+              ${(quotations as any[]).filter((q: any) => q.status === 'approved').sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((q: any) => {
+                const totalValue = (q.items || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
+                return `<option value="${q.id}">${q.code} | ${q.supplierName || q.supplierResponses?.[0]?.supplierName || 'Fornecedor'} | R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>`
+              }).join('')}
+              ${(quotations as any[]).filter((q: any) => q.status === 'approved').length === 0 ? '<option value="" disabled>Nenhuma cotação aprovada disponível</option>' : ''}
             </select>
           </div>
-          <div class="form-group"><label class="form-label">Cotação de Referência</label>
-            <select class="form-control">
-              <option value="">Nenhuma (compra direta)</option>
-              ${quotations.filter((q: any) => q.status==='approved').map((q: any) => `<option value="${q.id}">${q.code}</option>`).join('')}
-            </select>
+          <div id="quotationItemsContainer" style="display:none;grid-column:span 2;">
+            <label class="form-label" style="font-weight:700;">Itens da Cotação</label>
+            <div id="quotationItems" style="margin-top:8px;"></div>
           </div>
-          <div class="form-group"><label class="form-label">Data Entrega Prevista *</label><input class="form-control" type="date"></div>
-          <div class="form-group"><label class="form-label">Moeda</label>
-            <select class="form-control"><option value="BRL">BRL — Real</option><option value="USD">USD — Dólar</option><option value="EUR">EUR — Euro</option></select>
-          </div>
-          <div class="form-group"><label class="form-label">É Importação?</label>
-            <select class="form-control"><option value="0">Não</option><option value="1">Sim — criar processo de importação</option></select>
-          </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" rows="2" placeholder="NF, condições especiais..."></textarea></div>
+          <div class="form-group"><label class="form-label">Data do Pedido *</label><input class="form-control" type="date" id="formPedidoData" required></div>
+          <div class="form-group"><label class="form-label">Data de Entrega *</label><input class="form-control" type="date" id="formDataEntrega" required></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" rows="2" placeholder="Observações especiais para o pedido..." id="formObservacoes"></textarea></div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeModal('novoPCModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="salvarNovoPedidoCompra()" class="btn btn-primary" id="btnCriarPC"><i class="fas fa-save"></i> Criar Pedido</button>
+        <button onclick="closeModal('novoPedidoCompraModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarNovoPedidoCompra()" class="btn btn-primary" id="btnCriarPC"><i class="fas fa-save"></i> Salvar Pedido de Compra</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Detalhes Pedido de Compra -->
+  <div class="modal-overlay" id="pedidoCompraDetailModal">
+    <div class="modal" style="max-width:700px;max-height:80vh;overflow-y:auto;display:flex;flex-direction:column;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;background:white;position:sticky;top:0;z-index:10;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="pedidoDetailTitle">
+          <i class="fas fa-shopping-cart" style="margin-right:8px;"></i>Detalhes do Pedido
+        </h3>
+        <button onclick="closeModal('pedidoCompraDetailModal')" style="background:none;border:none;font-size:24px;cursor:pointer;color:#9ca3af;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;">×</button>
+      </div>
+      <div style="padding:20px 24px;flex:1;overflow-y:auto;" id="pedidoDetailBody">
+        <p style="text-align:center;color:#9ca3af;">Carregando detalhes...</p>
       </div>
     </div>
   </div>
@@ -1984,32 +2000,10 @@ app.get('/', (c) => {
   }
 
 
-  // ── Salvar Novo Pedido de Compra ───────────────────────────────────────────
-  async function salvarNovoPedidoCompra() {
-    const supplierId = document.getElementById('pc_supplier')?.value || '';
-    const supplierName = document.getElementById('pc_supplier')?.options[document.getElementById('pc_supplier')?.selectedIndex]?.text || '';
-    const expectedDelivery = document.getElementById('pc_delivery')?.value || '';
-    const currency = document.getElementById('pc_currency')?.value || 'BRL';
-    const notes = document.getElementById('pc_notes')?.value?.trim() || '';
-    if (!supplierId) { showToastSup('Selecione o fornecedor!', 'error'); return; }
-    const btn = document.getElementById('btnCriarPC');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Criando...'; }
-    try {
-      const res = await fetch('/suprimentos/api/purchase-orders/create', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ supplierId, supplierName, expectedDelivery, currency, notes })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showToastSup('✅ Pedido de Compra ' + (data.code||'') + ' criado!', 'success');
-        closeModal('novoPCModal');
-        setTimeout(() => location.reload(), 1000);
-      } else { showToastSup(data.error || 'Erro ao criar pedido', 'error'); }
-    } catch(e) { showToastSup('Erro de conexão', 'error'); }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Criar Pedido'; }
-  }
-
   // ── Misc ──────────────────────────────────────────────────────────────────
+  // Expose purchaseOrdersData for abrirModalPedidoCompra()
+  window.purchaseOrdersData = purchaseOrdersData;
+  window.quotationsData = quotationsData;
   // Auto close popups after 12s
   setTimeout(() => {
     ['pendingApprovalPopup','criticalQuotPopup'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
@@ -2573,26 +2567,63 @@ app.post('/api/quotations/:id/resend', async (c) => {
 
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
 app.post('/api/purchase-orders/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
-  if (!body || !body.supplierId) return err(c, 'Fornecedor obrigatório')
+  if (!body || !body.quotationId) return err(c, 'Cotação obrigatória', 400)
+  const quotIdx = (tenant.quotations || []).findIndex((q: any) => q.id === body.quotationId)
+  if (quotIdx === -1) return err(c, 'Cotação não encontrada', 404)
+  const quot = tenant.quotations[quotIdx]
+  if (quot.status !== 'approved') return err(c, 'Cotação deve estar aprovada', 400)
   const id = genId('pc')
-  const code = `PC-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(3,'0')}`
-  const order = {
-    id, code, supplierId: body.supplierId, supplierName: body.supplierName || '',
-    status: 'pending', totalValue: 0, currency: body.currency || 'BRL',
-    expectedDelivery: body.expectedDelivery || '', notes: body.notes || '',
+  const code = `PED-${new Date().getFullYear()}-${String((tenant.purchaseOrders.length || 0) + 1).padStart(3,'0')}`
+  const pedido = {
+    id, code,
+    quotationId: quot.id,
+    quotationCode: quot.code,
+    supplierName: quot.supplierName || (quot.supplierResponses?.[0]?.supplierName || ''),
+    items: quot.items || [],
+    totalValue: quot.totalValue || (quot.supplierResponses?.[0]?.totalPrice || 0),
+    pedidoData: body.pedidoData || '',
+    dataEntrega: body.dataEntrega || '',
+    observacoes: body.observacoes || '',
+    status: 'pending_approval',
     createdAt: new Date().toISOString(),
+    userId,
+    empresaId,
   }
-  tenant.purchaseOrders.push(order)
-  if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'purchase_orders', {
-      id, user_id: userId, empresa_id: empresaId, supplier_id: order.supplierId,
-      status: 'pending', total_value: 0,
-      expected_date: order.expectedDelivery, notes: order.notes,
-    })
-  }
-  return ok(c, { order, code })
+  if (!tenant.purchaseOrders) (tenant as any).purchaseOrders = []
+  tenant.purchaseOrders.push(pedido)
+  console.log(`[PEDIDO] ✅ Pedido criado: ${pedido.id}`)
+  markTenantModified(userId)
+  return ok(c, { purchaseOrder: pedido, message: 'Pedido de compra criado com sucesso' })
+})
+
+// ── API: POST /suprimentos/api/purchase-orders/:id/approve ───────────────────
+app.post('/api/purchase-orders/:id/approve', async (c) => {
+  const pedidoId = c.req.param('id')
+  const tenant = getCtxTenant(c)
+  const userId = getCtxUserId(c)
+  const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
+  if (pedidoIdx === -1) return err(c, 'Pedido não encontrado', 404)
+  tenant.purchaseOrders[pedidoIdx].status = 'approved'
+  tenant.purchaseOrders[pedidoIdx].approvedAt = new Date().toISOString()
+  console.log(`[PEDIDO] ✅ Pedido aprovado: ${pedidoId}`)
+  markTenantModified(userId)
+  return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
+})
+
+// ── API: POST /suprimentos/api/purchase-orders/:id/reject ────────────────────
+app.post('/api/purchase-orders/:id/reject', async (c) => {
+  const pedidoId = c.req.param('id')
+  const tenant = getCtxTenant(c)
+  const userId = getCtxUserId(c)
+  const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
+  if (pedidoIdx === -1) return err(c, 'Pedido não encontrado', 404)
+  tenant.purchaseOrders[pedidoIdx].status = 'rejected'
+  tenant.purchaseOrders[pedidoIdx].rejectedAt = new Date().toISOString()
+  console.log(`[PEDIDO] ✅ Pedido recusado: ${pedidoId}`)
+  markTenantModified(userId)
+  return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
 })
 
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
