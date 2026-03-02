@@ -1,22 +1,18 @@
-// Corrected content of suprimentos-init.js
+// Quotations Module
 
-// All functions included without syntax errors
+const quotations = {
+    getQuote: function() {
+        return "This is an example of a quote that is returned from the getQuote method.";
+    },
+    getAuthor: function() {
+        return "Author Name";
+    },
+    getAllQuotes: function() {
+        return [
+            { quote: "First quote example.", author: "First Author" },
+            { quote: "Second quote example.", author: "Second Author" }
+        ];
+    }
+};
 
-function initialize() {
-    // initialization code
-}
-
-function fetchData() {
-    // Fetch data from API
-}
-
-function updateUI() {
-    // Update the User Interface
-}
-
-function handleError(error) {
-    console.error('An error occurred:', error);
-}
-
-initialize();
-fetchData();
+module.exports = quotations;
