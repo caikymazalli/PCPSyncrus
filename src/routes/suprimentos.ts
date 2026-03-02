@@ -2775,7 +2775,7 @@ app.post('/api/quotations/:id/negotiate', async (c) => {
   return ok(c, { quotation })
 })
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
-app.post('/suprimentos/api/purchase-orders/create', async (c) => {
+app.post('/api/purchase-orders/create', async (c) => {
   const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.quotationId) return err(c, 'Cotação obrigatória', 400)
@@ -2809,7 +2809,7 @@ app.post('/suprimentos/api/purchase-orders/create', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/approve ───────────────────
-app.post('/suprimentos/api/purchase-orders/:id/approve', async (c) => {
+app.post('/api/purchase-orders/:id/approve', async (c) => {
   const pedidoId = c.req.param('id')
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
@@ -2823,7 +2823,7 @@ app.post('/suprimentos/api/purchase-orders/:id/approve', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/reject ────────────────────
-app.post('/suprimentos/api/purchase-orders/:id/reject', async (c) => {
+app.post('/api/purchase-orders/:id/reject', async (c) => {
   const pedidoId = c.req.param('id')
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
@@ -2837,7 +2837,7 @@ app.post('/suprimentos/api/purchase-orders/:id/reject', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
-app.post('/suprimentos/api/imports/create', async (c) => {
+app.post('/api/imports/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.invoiceNumber) return err(c, 'Número da Invoice obrigatório')
@@ -2861,7 +2861,7 @@ app.post('/suprimentos/api/imports/create', async (c) => {
 })
 
 // ── Salvar campo editado inline na tabela de Produtos Importados ──────────
-app.post('/suprimentos/api/product-imp-field', async (c) => {
+app.post('/api/product-imp-field', async (c) => {
   const tenant = getCtxTenant(c)
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
