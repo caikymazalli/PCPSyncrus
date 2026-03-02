@@ -50,12 +50,14 @@ app.get('/', (c) => {
   const imports = (mockData as any).imports || []
 
   const statusInfo: Record<string, { label: string, color: string, bg: string }> = {
-    sent:               { label: 'Enviada',            color: '#3498DB', bg: '#d1ecf1' },
-    awaiting_responses: { label: 'Aguard. Respostas',  color: '#d97706', bg: '#fffbeb' },
-    with_responses:     { label: 'Com Respostas',      color: '#7c3aed', bg: '#f5f3ff' },
-    pending_approval:   { label: 'Pend. Aprovação',    color: '#dc2626', bg: '#fef2f2' },
-    approved:           { label: 'Aprovada',           color: '#16a34a', bg: '#f0fdf4' },
-    cancelled:          { label: 'Cancelada',          color: '#6c757d', bg: '#e2e3e5' },
+    sent:                  { label: 'Enviada',             color: '#3498DB', bg: '#d1ecf1' },
+    awaiting_responses:    { label: 'Aguard. Respostas',   color: '#d97706', bg: '#fffbeb' },
+    with_responses:        { label: 'Com Respostas',       color: '#7c3aed', bg: '#f5f3ff' },
+    pending_approval:      { label: 'Pend. Aprovação',     color: '#dc2626', bg: '#fef2f2' },
+    approved:              { label: 'Aprovada',            color: '#16a34a', bg: '#f0fdf4' },
+    cancelled:             { label: 'Cancelada',           color: '#6c757d', bg: '#e2e3e5' },
+    rejected:              { label: 'Negada',              color: '#dc2626', bg: '#fef2f2' },
+    awaiting_negotiation:  { label: 'Em Negociação',       color: '#2563eb', bg: '#eff6ff' },
   }
 
   const pcStatusInfo: Record<string, { label: string, badge: string }> = {
@@ -879,8 +881,12 @@ app.get('/', (c) => {
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="quotDetailTitle"><i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>Detalhes da Cotação</h3>
         <button onclick="closeModal('quotationDetailModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
-      <div style="padding:24px;max-height:70vh;overflow-y:auto;" id="quotDetailBody"></div>
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;" id="quotDetailActions">
+      <div style="padding:24px;max-height:60vh;overflow-y:auto;" id="quotDetailBody"></div>
+      <div id="quotNegotiationArea" style="display:none;padding:0 24px 16px;">
+        <label style="font-size:12px;font-weight:700;color:#2563eb;display:block;margin-bottom:4px;"><i class="fas fa-comments" style="margin-right:4px;"></i>Observações da Negociação</label>
+        <textarea id="quotNegotiationObs" class="form-control" rows="3" placeholder="Descreva os termos da negociação, contrapropostas ou condições..."></textarea>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;" id="quotDetailActions">
         <button onclick="closeModal('quotationDetailModal')" class="btn btn-secondary">Fechar</button>
       </div>
     </div>
@@ -1353,21 +1359,40 @@ app.get('/', (c) => {
   }
 
   function openQuotationDetail(id) {
-    const q = quotationsData.find(x => x.id === id);
-    if (!q) return;
+    // Nível 1: validar parâmetro quotId
+    if (!id) { showToastSup('⚠️ ID da cotação inválido', 'error'); return; }
+    // Nível 2: validar que quotationsData está definido
+    if (typeof quotationsData === 'undefined') { showToastSup('⚠️ Dados de cotações não carregados', 'error'); return; }
+    // Nível 3: validar que quotationsData é um array
+    if (!Array.isArray(quotationsData)) { showToastSup('⚠️ Estrutura de cotações inválida', 'error'); return; }
+    // Nível 4: validar que há cotações
+    if (quotationsData.length === 0) { showToastSup('⚠️ Nenhuma cotação disponível', 'error'); return; }
+    // Nível 5: buscar cotação
+    const found = quotationsData.find(function(x) { return x.id === id; });
+    // Nível 6: validar que a cotação foi encontrada
+    if (!found) { showToastSup('⚠️ Cotação não encontrada: ' + id, 'error'); return; }
+    const q = found;
+    // Nível 7: validar que o status existe
+    if (!q.status) { showToastSup('⚠️ Status da cotação inválido', 'error'); return; }
+    // Nível 8: cotação com status final não permite mais ações (apenas visualização)
+    const finalStatuses = ['approved', 'cancelled', 'rejected'];
+    const canAct = !finalStatuses.includes(q.status);
+
     const si = statusInfoData[q.status] || statusInfoData.sent;
     document.getElementById('quotDetailTitle').innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>' + q.code;
     let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">' +
       detRow('Código', q.code) + detRow('Status', '<span class="badge" style="background:'+si.bg+';color:'+si.color+';">'+si.label+'</span>') +
-      detRow('Criado por', q.createdBy) + detRow('Data', new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR')) +
+      detRow('Criado por', q.createdBy || '—') + detRow('Data', new Date((q.createdAt||new Date().toISOString())+'T12:00:00').toLocaleDateString('pt-BR')) +
       (q.approvedBy ? detRow('Aprovado por', q.approvedBy) + detRow('Aprovação', new Date((q.approvedAt||'')+'T12:00:00').toLocaleDateString('pt-BR')) : '') +
+      (q.rejectionReason ? detRow('Motivo Negação', q.rejectionReason) : '') +
+      (q.negotiationObs ? detRow('Obs. Negociação', q.negotiationObs) : '') +
       '</div>';
     html += '<div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Itens Solicitados</div>';
     html += '<div class="table-wrapper" style="margin-bottom:16px;"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Unidade</th></tr></thead><tbody>';
-    for (const it of q.items) html += '<tr><td>'+it.productName+'</td><td><strong>'+it.quantity+'</strong></td><td>'+it.unit+'</td></tr>';
+    for (const it of (q.items||[])) html += '<tr><td>'+(it.productName||'')+'</td><td><strong>'+(it.quantity||0)+'</strong></td><td>'+(it.unit||'un')+'</td></tr>';
     html += '</tbody></table></div>';
-    if (q.supplierResponses.length > 0) {
-      const best = q.supplierResponses.reduce((b, r) => (!b || r.totalPrice < b.totalPrice) ? r : b, null);
+    if ((q.supplierResponses||[]).length > 0) {
+      const best = q.supplierResponses.reduce(function(b, r) { return (!b || r.totalPrice < b.totalPrice) ? r : b; }, null);
       html += '<div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Respostas dos Fornecedores</div>';
       html += '<div style="display:flex;flex-direction:column;gap:8px;">';
       for (const r of q.supplierResponses) {
@@ -1378,9 +1403,9 @@ app.get('/', (c) => {
           (isBest ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-crown" style="font-size:9px;"></i> Melhor Preço</span>' : '') +
           '</div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">' +
-          '<div><div style="font-size:10px;color:#9ca3af;">PREÇO UNIT.</div><div style="font-size:14px;font-weight:800;color:#27AE60;">R$ '+r.unitPrice.toFixed(2)+'</div></div>' +
-          '<div><div style="font-size:10px;color:#9ca3af;">TOTAL</div><div style="font-size:14px;font-weight:800;color:#1B4F72;">R$ '+r.totalPrice.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>' +
-          '<div><div style="font-size:10px;color:#9ca3af;">PRAZO</div><div style="font-size:14px;font-weight:800;color:#2980B9;">'+r.deliveryDays+'d</div></div>' +
+          '<div><div style="font-size:10px;color:#9ca3af;">PREÇO UNIT.</div><div style="font-size:14px;font-weight:800;color:#27AE60;">R$ '+(r.unitPrice||0).toFixed(2)+'</div></div>' +
+          '<div><div style="font-size:10px;color:#9ca3af;">TOTAL</div><div style="font-size:14px;font-weight:800;color:#1B4F72;">R$ '+(r.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>' +
+          '<div><div style="font-size:10px;color:#9ca3af;">PRAZO</div><div style="font-size:14px;font-weight:800;color:#2980B9;">'+(r.deliveryDays||0)+'d</div></div>' +
           '</div>' + (r.notes ? '<div style="font-size:12px;color:#6c757d;margin-top:6px;">'+r.notes+'</div>' : '') +
           '</div>';
       }
@@ -1389,16 +1414,28 @@ app.get('/', (c) => {
       html += '<div style="background:#fffbeb;border-radius:8px;padding:16px;text-align:center;"><i class="fas fa-clock" style="font-size:24px;color:#F39C12;margin-bottom:6px;"></i><div style="font-size:13px;color:#d97706;">Aguardando resposta dos fornecedores...</div></div>';
     }
     document.getElementById('quotDetailBody').innerHTML = html;
-    // Botão aprovar se pendente
+
+    // Ocultar área de negociação
+    const negArea = document.getElementById('quotNegotiationArea');
+    const negObs = document.getElementById('quotNegotiationObs');
+    if (negArea) negArea.style.display = 'none';
+    if (negObs) negObs.value = '';
+
+    // Montar botões de ação
     const actDiv = document.getElementById('quotDetailActions');
-    actDiv.innerHTML = '<button onclick="closeModal(&quot;quotationDetailModal&quot;)" class="btn btn-secondary">Fechar</button>';
-    if (q.status === 'pending_approval') {
-      const supName = (q.supplierResponses[0]?.supplierName||'fornecedor').replace(/'/g,"'");
-      actDiv.innerHTML = '<button onclick="approveQuotationFromDetail()" class="btn btn-success"><i class="fas fa-check"></i> Aprovar Cotação</button>' + actDiv.innerHTML;
-      window._pendingApprovalId = q.id;
-      window._pendingApprovalCode = q.code;
-      window._pendingApprovalSup = supName;
+    let actHtml = '<button onclick="closeModal(&quot;quotationDetailModal&quot;)" class="btn btn-secondary">Fechar</button>';
+    if (canAct) {
+      const supName = ((q.supplierResponses||[])[0]?.supplierName||'fornecedor').replace(/'/g,"'");
+      window._detailQuotId = q.id;
+      window._detailQuotCode = q.code;
+      window._detailQuotSup = supName;
+      actHtml =
+        '<button onclick="rejectQuotationFromDetail()" class="btn" style="background:#dc2626;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times"></i> Negar</button>' +
+        '<button onclick="negotiateQuotationFromDetail()" class="btn" style="background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-comments"></i> Negociar</button>' +
+        '<button onclick="approveQuotationFromDetail()" class="btn btn-success" style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Aprovar</button>' +
+        actHtml;
     }
+    actDiv.innerHTML = actHtml;
     openModal('quotationDetailModal');
   }
 
@@ -1409,8 +1446,65 @@ app.get('/', (c) => {
   }
 
   function approveQuotationFromDetail() {
-    approveQuotation(window._pendingApprovalId, window._pendingApprovalCode, window._pendingApprovalSup);
+    approveQuotation(window._detailQuotId, window._detailQuotCode, window._detailQuotSup);
     closeModal('quotationDetailModal');
+  }
+
+  function cancelNegotiationFromDetail() {
+    const negArea = document.getElementById('quotNegotiationArea');
+    if (negArea) negArea.style.display = 'none';
+    openQuotationDetail(window._detailQuotId);
+  }
+
+  function negotiateQuotationFromDetail() {
+    const negArea = document.getElementById('quotNegotiationArea');
+    const actDiv = document.getElementById('quotDetailActions');
+    if (!negArea) return;
+    if (negArea.style.display === 'none') {
+      negArea.style.display = 'block';
+      // Replace action buttons with Confirmar Negociação
+      actDiv.innerHTML =
+        '<button onclick="cancelNegotiationFromDetail()" class="btn btn-secondary">Cancelar</button>' +
+        '<button onclick="confirmNegotiateQuotation()" class="btn" style="background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-paper-plane"></i> Confirmar Negociação</button>';
+    }
+  }
+
+  async function confirmNegotiateQuotation() {
+    const obs = (document.getElementById('quotNegotiationObs')?.value || '').trim();
+    if (!obs) { showToastSup('⚠️ Informe as observações da negociação', 'error'); return; }
+    const id = window._detailQuotId;
+    const code = window._detailQuotCode;
+    if (!id || !code) { showToastSup('⚠️ Cotação inválida', 'error'); return; }
+    try {
+      const res = await fetch('/suprimentos/api/quotations/' + id + '/negotiate', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ observations: obs })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('🤝 Cotação ' + code + ' em negociação!', 'success');
+        closeModal('quotationDetailModal');
+        setTimeout(() => location.reload(), 1000);
+      } else { showToastSup(data.error || 'Erro ao registrar negociação', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
+  }
+
+  async function rejectQuotationFromDetail() {
+    const id = window._detailQuotId;
+    const code = window._detailQuotCode;
+    if (!id || !code) { showToastSup('⚠️ Cotação inválida', 'error'); return; }
+    const motivo = prompt('Motivo da negação da cotação ' + code + ':');
+    if (!motivo) return;
+    try {
+      const res = await fetch('/suprimentos/api/quotations/' + id + '/reject', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ motivo })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToastSup('❌ Cotação ' + code + ' negada.', 'success');
+        closeModal('quotationDetailModal');
+        setTimeout(() => location.reload(), 1000);
+      } else { showToastSup(data.error || 'Erro ao negar cotação', 'error'); }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
   }
 
   // ── Importação ────────────────────────────────────────────────────────────
@@ -2573,15 +2667,30 @@ app.post('/api/quotations/:id/approve', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const idx = tenant.quotations.findIndex((q: any) => q.id === id)
   if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  const previousStatus = tenant.quotations[idx].status
+  const now = new Date().toISOString()
   tenant.quotations[idx].status = 'approved'
   tenant.quotations[idx].approvedBy = 'Admin'
-  tenant.quotations[idx].approvedAt = new Date().toISOString()
+  tenant.quotations[idx].approvedAt = now
+  markTenantModified(userId)
   // Auto-create purchase order
   const pcId = genId('pc')
   const pcCode = `PC-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(3,'0')}`
-  const pc = { id: pcId, code: pcCode, quotationId: id, supplierId: body.supplierName || '', supplierName: body.supplierName || 'Fornecedor', status: 'pending', totalValue: 0, currency: 'BRL', createdAt: new Date().toISOString() }
+  const pc = { id: pcId, code: pcCode, quotationId: id, supplierId: body.supplierName || '', supplierName: body.supplierName || 'Fornecedor', status: 'pending', totalValue: 0, currency: 'BRL', createdAt: now }
   tenant.purchaseOrders.push(pc)
   if (db && userId !== 'demo-tenant') {
+    // UPDATE quotations in D1
+    const updateOk = await dbUpdate(db, 'quotations', id, userId, { status: 'approved', approved_by: 'Admin', approved_at: now, updated_at: now })
+    if (!updateOk) {
+      console.error(`[APPROVE] Falha ao atualizar cotação ${id} em D1`)
+      return err(c, 'Falha ao persistir aprovação no banco de dados', 500)
+    }
+    // INSERT audit trail
+    await dbInsert(db, 'quotation_statuses', {
+      id: genId('qst'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
+      previous_status: previousStatus, new_status: 'approved', changed_by: 'Admin', notes: `Cotação aprovada. PC: ${pcCode}`, created_at: now,
+    })
+    // INSERT purchase order
     await dbInsert(db, 'purchase_orders', { id: pcId, user_id: userId, empresa_id: empresaId, supplier_id: pc.supplierId, status: 'pending', total_value: 0, expected_date: '', notes: `Gerado da cotação ${tenant.quotations[idx].code || id}` })
   }
   return ok(c, { pcCode })
@@ -2589,13 +2698,29 @@ app.post('/api/quotations/:id/approve', async (c) => {
 
 // ── API: POST /suprimentos/api/quotations/:id/reject ─────────────────────────
 app.post('/api/quotations/:id/reject', async (c) => {
-  const tenant = getCtxTenant(c)
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   const idx = tenant.quotations.findIndex((q: any) => q.id === id)
   if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  const previousStatus = tenant.quotations[idx].status
+  const now = new Date().toISOString()
   tenant.quotations[idx].status = 'rejected'
   tenant.quotations[idx].rejectionReason = body.motivo || ''
+  markTenantModified(userId)
+  if (db && userId !== 'demo-tenant') {
+    // UPDATE quotations in D1
+    const updateOk = await dbUpdate(db, 'quotations', id, userId, { status: 'rejected', notes: body.motivo || '', updated_at: now })
+    if (!updateOk) {
+      console.error(`[REJECT] Falha ao atualizar cotação ${id} em D1`)
+      return err(c, 'Falha ao persistir negação no banco de dados', 500)
+    }
+    // INSERT audit trail
+    await dbInsert(db, 'quotation_statuses', {
+      id: genId('qst'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
+      previous_status: previousStatus, new_status: 'rejected', changed_by: 'Admin', notes: body.motivo || '', created_at: now,
+    })
+  }
   return ok(c)
 })
 
@@ -2612,6 +2737,41 @@ app.post('/api/quotations/:id/resend', async (c) => {
   tenant.quotations[idx].resentAt = new Date().toISOString()
   console.log(`[COTAÇÃO] Cotação ${q.code} reenviada`)
   return ok(c, { code: q.code })
+})
+
+// ── API: POST /suprimentos/api/quotations/:id/negotiate ──────────────────────
+app.post('/api/quotations/:id/negotiate', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  if (!body.observations || !body.observations.trim()) return err(c, 'Observações da negociação são obrigatórias', 400)
+  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
+  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  const previousStatus = tenant.quotations[idx].status
+  const now = new Date().toISOString()
+  tenant.quotations[idx].status = 'awaiting_negotiation'
+  tenant.quotations[idx].negotiationObs = body.observations.trim()
+  markTenantModified(userId)
+  if (db && userId !== 'demo-tenant') {
+    // UPDATE quotations in D1
+    const updateOk = await dbUpdate(db, 'quotations', id, userId, { status: 'awaiting_negotiation', updated_at: now })
+    if (!updateOk) {
+      console.error(`[NEGOTIATE] Falha ao atualizar cotação ${id} em D1`)
+      return err(c, 'Falha ao persistir negociação no banco de dados', 500)
+    }
+    // INSERT audit trail
+    await dbInsert(db, 'quotation_statuses', {
+      id: genId('qst'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
+      previous_status: previousStatus, new_status: 'awaiting_negotiation', changed_by: 'Admin',
+      notes: body.observations.trim(), created_at: now,
+    })
+    // INSERT negotiation record
+    await dbInsert(db, 'quotation_negotiations', {
+      id: genId('qng'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
+      observations: body.observations.trim(), created_by: 'Admin', created_at: now,
+    })
+  }
+  return ok(c, { status: 'awaiting_negotiation' })
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
