@@ -305,4 +305,263 @@ function closeModal(modalId) {
   }
 }
 
+/**
+ * Salvar novo pedido de compra
+ */
+async function salvarNovoPedidoCompra() {
+  console.log('[PEDIDO] Salvando novo pedido de compra...')
+
+  const quotationId = document.getElementById('formQuotationRef')?.value
+  const pedidoData = document.getElementById('formPedidoData')?.value
+  const dataEntrega = document.getElementById('formDataEntrega')?.value
+  const observacoes = document.getElementById('formObservacoes')?.value || ''
+
+  if (!quotationId) {
+    showToastSup('Selecione uma cotação', 'error')
+    return
+  }
+
+  if (!pedidoData) {
+    showToastSup('Data do pedido obrigatória', 'error')
+    return
+  }
+
+  if (!dataEntrega) {
+    showToastSup('Data de entrega obrigatória', 'error')
+    return
+  }
+
+  const pedidoDate = new Date(pedidoData)
+  const entregaDate = new Date(dataEntrega)
+
+  if (entregaDate < pedidoDate) {
+    showToastSup('Data de entrega não pode ser menor que data do pedido', 'error')
+    return
+  }
+
+  if (!confirm('Criar pedido de compra com base na cotação selecionada?')) {
+    return
+  }
+
+  console.log('[PEDIDO] Enviando novo pedido:', { quotationId, pedidoData, dataEntrega, observacoes })
+  showToastSup('📝 Criando pedido de compra...', 'info')
+
+  try {
+    const res = await fetch('/suprimentos/api/purchase-orders/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quotationId, pedidoData, dataEntrega, observacoes }),
+    })
+
+    const data = await res.json()
+
+    if (data.ok) {
+      showToastSup('✅ Pedido de compra criado com sucesso!', 'success')
+      console.log('[PEDIDO] ✅ Pedido criado:', data.purchaseOrder)
+
+      closeModal('novoPedidoCompraModal')
+
+      document.getElementById('formQuotationRef').value = ''
+      document.getElementById('formPedidoData').value = ''
+      document.getElementById('formDataEntrega').value = ''
+      document.getElementById('formObservacoes').value = ''
+
+      setTimeout(() => location.reload(), 1000)
+    } else {
+      showToastSup('❌ Erro: ' + (data.error || 'Erro desconhecido'), 'error')
+      console.error('[PEDIDO] Erro:', data)
+    }
+  } catch (e) {
+    showToastSup('❌ Erro de conexão', 'error')
+    console.error('[PEDIDO] Erro de conexão:', e)
+  }
+}
+
+/**
+ * Abrir modal de visualização de pedido de compra
+ */
+function abrirModalPedidoCompra(pedidoId) {
+  if (!pedidoId) {
+    showToastSup('Pedido não encontrado', 'error')
+    return
+  }
+
+  console.log('[PEDIDO] Abrindo modal para:', pedidoId)
+
+  const purchaseOrders = window.purchaseOrdersData || []
+  const pedido = purchaseOrders.find((p) => p.id === pedidoId)
+
+  if (!pedido) {
+    showToastSup('Pedido não encontrado', 'error')
+    return
+  }
+
+  const statusColors = {
+    pending_approval: '#fff3cd',
+    approved: '#d4edda',
+    rejected: '#f8d7da',
+    pending: '#fff3cd',
+    confirmed: '#d1ecf1',
+    in_transit: '#d1ecf1',
+    delivered: '#d4edda',
+    cancelled: '#e2e3e5',
+  }
+
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+  html += '<div><label class="form-label">Código</label><input class="form-control" value="' + escHtml(pedido.code || pedido.id) + '" readonly></div>'
+  html += '<div><label class="form-label">Status</label><input class="form-control" value="' + escHtml(pedido.status || 'pending') + '" readonly style="background:' + (statusColors[pedido.status] || '#fff3cd') + ';"></div>'
+  html += '<div><label class="form-label">Data Pedido</label><input class="form-control" value="' + escHtml(pedido.pedidoData ? new Date(pedido.pedidoData).toLocaleDateString('pt-BR') : (pedido.createdAt ? new Date(pedido.createdAt).toLocaleDateString('pt-BR') : '—')) + '" readonly></div>'
+  html += '<div><label class="form-label">Data Entrega</label><input class="form-control" value="' + escHtml((pedido.dataEntrega || pedido.expectedDelivery) ? new Date((pedido.dataEntrega || pedido.expectedDelivery) + 'T12:00:00').toLocaleDateString('pt-BR') : '—') + '" readonly></div>'
+  html += '</div>'
+
+  html += '<div style="background:#f8f9fa;padding:12px;border-radius:6px;margin-bottom:16px;border-left:3px solid #2980B9;">'
+  html += '<div><strong>Cotação Ref:</strong> ' + escHtml(pedido.quotationCode || (pedido.quotationId ? pedido.quotationId : '—')) + '</div>'
+  html += '<div><strong>Fornecedor:</strong> ' + escHtml(pedido.supplierName || '—') + '</div>'
+  html += '<div><strong>Valor Total:</strong> R$ ' + ((pedido.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</div>'
+  html += '</div>'
+
+  if (pedido.items && pedido.items.length > 0) {
+    html += '<div style="margin-bottom:16px;"><label class="form-label" style="font-weight:700;">Itens do Pedido</label>'
+    html += '<div class="table-wrapper" style="margin-top:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f8f9fa;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Produto</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e9ecef;">Qtd</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e9ecef;">Un.Valor</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e9ecef;">Total</th></tr></thead><tbody>'
+
+    for (const item of pedido.items) {
+      const itemTotal = (item.quantity || 0) * (item.unitPrice || 0)
+      html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px;">' + escHtml(item.productName || '—') + '</td><td style="padding:8px;text-align:right;"><strong>' + escHtml(item.quantity || 0) + '</strong></td><td style="padding:8px;text-align:right;">R$ ' + ((item.unitPrice || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</td><td style="padding:8px;text-align:right;"><strong>R$ ' + (itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</strong></td></tr>'
+    }
+
+    html += '</tbody></table></div></div>'
+  }
+
+  if (pedido.observacoes || pedido.notes) {
+    html += '<div style="background:#f0f4f8;padding:12px;border-radius:6px;margin-bottom:16px;">'
+    html += '<strong>Observações:</strong><br>'
+    html += '<span style="white-space:pre-wrap;color:#555;">' + escHtml(pedido.observacoes || pedido.notes) + '</span>'
+    html += '</div>'
+  }
+
+  if (pedido.status === 'pending_approval') {
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">'
+    html += '<button onclick="aprovarPedidoCompra(' + JSON.stringify(pedidoId) + ', ' + JSON.stringify(pedido.code || pedidoId) + ')" style="flex:1;background:#28a745;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Aprovar</button>'
+    html += '<button onclick="recusarPedidoCompra(' + JSON.stringify(pedidoId) + ', ' + JSON.stringify(pedido.code || pedidoId) + ')" style="flex:1;background:#dc3545;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Recusar</button>'
+    html += '</div>'
+  }
+
+  const titleEl = document.getElementById('pedidoDetailTitle')
+  if (titleEl) {
+    titleEl.innerHTML = '<i class="fas fa-shopping-cart" style="margin-right:8px;"></i>' + escHtml(pedido.code || 'Pedido de Compra')
+  }
+
+  const bodyEl = document.getElementById('pedidoDetailBody')
+  if (bodyEl) bodyEl.innerHTML = html
+
+  openModal('pedidoCompraDetailModal')
+  console.log('[PEDIDO] Modal aberto com sucesso')
+}
+
+/**
+ * Aprovar pedido de compra
+ */
+async function aprovarPedidoCompra(pedidoId, pedidoCode) {
+  if (!confirm('Aprovar pedido de compra ' + (pedidoCode || pedidoId) + '?')) {
+    return
+  }
+
+  console.log('[PEDIDO] Aprovando:', pedidoId)
+  showToastSup('✅ Aprovando pedido...', 'info')
+
+  try {
+    const res = await fetch('/suprimentos/api/purchase-orders/' + pedidoId + '/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    const data = await res.json()
+
+    if (data.ok) {
+      showToastSup('✅ Pedido ' + (pedidoCode || pedidoId) + ' aprovado!', 'success')
+      console.log('[PEDIDO] Aprovado com sucesso')
+      setTimeout(() => location.reload(), 1000)
+    } else {
+      showToastSup(data.error || 'Erro ao aprovar', 'error')
+      console.error('[PEDIDO] Erro:', data)
+    }
+  } catch (e) {
+    showToastSup('Erro de conexão', 'error')
+    console.error('[PEDIDO] Erro de conexão:', e)
+  }
+}
+
+/**
+ * Recusar pedido de compra
+ */
+async function recusarPedidoCompra(pedidoId, pedidoCode) {
+  if (!confirm('Recusar pedido de compra ' + (pedidoCode || pedidoId) + '?')) {
+    return
+  }
+
+  console.log('[PEDIDO] Recusando:', pedidoId)
+  showToastSup('Recusando pedido...', 'info')
+
+  try {
+    const res = await fetch('/suprimentos/api/purchase-orders/' + pedidoId + '/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    const data = await res.json()
+
+    if (data.ok) {
+      showToastSup('✅ Pedido ' + (pedidoCode || pedidoId) + ' recusado!', 'success')
+      console.log('[PEDIDO] Recusado com sucesso')
+      setTimeout(() => location.reload(), 1000)
+    } else {
+      showToastSup(data.error || 'Erro ao recusar', 'error')
+      console.error('[PEDIDO] Erro:', data)
+    }
+  } catch (e) {
+    showToastSup('Erro de conexão', 'error')
+    console.error('[PEDIDO] Erro:', e)
+  }
+}
+
+/**
+ * Carregar itens da cotação selecionada no formulário de novo pedido
+ */
+function carregarItensQuotacao() {
+  const quotId = document.getElementById('formQuotationRef')?.value
+
+  if (!quotId) {
+    const container = document.getElementById('quotationItemsContainer')
+    if (container) container.style.display = 'none'
+    return
+  }
+
+  const quotations = window.quotationsData || []
+  const quot = quotations.find((q) => q.id === quotId)
+
+  if (!quot || !quot.items || quot.items.length === 0) {
+    const container = document.getElementById('quotationItemsContainer')
+    if (container) container.style.display = 'none'
+    return
+  }
+
+  let itemsHTML = ''
+  for (const item of quot.items) {
+    itemsHTML += '<div style="background:#f8f9fa;padding:12px;border-radius:6px;margin-bottom:8px;border-left:3px solid #2980B9;">'
+    itemsHTML += '<div style="font-weight:600;color:#1B4F72;margin-bottom:4px;">' + escHtml(item.productName || '—') + '</div>'
+    itemsHTML += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;color:#6c757d;">'
+    itemsHTML += '<div><strong>Qtd:</strong> ' + escHtml(item.quantity || 0) + '</div>'
+    itemsHTML += '<div><strong>Un.:</strong> ' + escHtml(item.unit || 'un') + '</div>'
+    itemsHTML += '<div><strong>Total:</strong> R$ ' + ((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '</div>'
+    itemsHTML += '</div></div>'
+  }
+
+  const itemsEl = document.getElementById('quotationItems')
+  if (itemsEl) itemsEl.innerHTML = itemsHTML
+  const container = document.getElementById('quotationItemsContainer')
+  if (container) container.style.display = 'block'
+
+  console.log('[PEDIDO] Itens carregados:', quot.items.length)
+}
+
 console.log('[SUPRIMENTOS-INIT] ✅ Todas as funções de cotação carregadas')
