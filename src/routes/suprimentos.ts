@@ -2531,7 +2531,7 @@ app.get('/quote-response', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/respond ────────────────────────
-app.post('/api/quotations/:id/respond', async (c) => {
+app.post('/suprimentos/api/quotations/:id/respond', async (c) => {
   const quotId = c.req.param('id')
   const body = await c.req.json().catch(() => null)
 
@@ -2592,7 +2592,7 @@ app.post('/api/quotations/:id/respond', async (c) => {
 
 
 // ── API: POST /suprimentos/api/quotation/create ──────────────────────────────
-app.post('/api/quotation/create', async (c) => {
+app.post('/suprimentos/api/quotation/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.title) return err(c, 'Título obrigatório')
@@ -2613,7 +2613,7 @@ app.post('/api/quotation/create', async (c) => {
   return ok(c, { quotation })
 })
 
-app.delete('/api/quotation/:id', async (c) => {
+app.delete('/suprimentos/api/quotation/:id', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const idx = tenant.quotations.findIndex((q: any) => q.id === id)
@@ -2624,7 +2624,7 @@ app.delete('/api/quotation/:id', async (c) => {
 })
 
 // Purchase Orders
-app.post('/api/order/create', async (c) => {
+app.post('/suprimentos/api/order/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.supplierId) return err(c, 'Fornecedor obrigatório')
@@ -2647,7 +2647,7 @@ app.post('/api/order/create', async (c) => {
   return ok(c, { order })
 })
 
-app.delete('/api/order/:id', async (c) => {
+app.delete('/suprimentos/api/order/:id', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const idx = tenant.purchaseOrders.findIndex((o: any) => o.id === id)
@@ -2657,13 +2657,13 @@ app.delete('/api/order/:id', async (c) => {
   return ok(c)
 })
 
-app.get('/api/list', (c) => {
+app.get('/suprimentos/api/list', (c) => {
   const tenant = getCtxTenant(c)
   return ok(c, { quotations: tenant.quotations, orders: tenant.purchaseOrders, imports: tenant.imports })
 })
 
 // ── API: POST /suprimentos/api/quotations/create (new format) ─────────────────
-app.post('/api/quotations/create', async (c) => {
+app.post('/suprimentos/api/quotations/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
@@ -2703,7 +2703,7 @@ app.post('/api/quotations/create', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
-app.post('/api/quotations/:id/approve', async (c) => {
+app.post('/suprimentos/api/quotations/:id/approve', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
@@ -2739,7 +2739,7 @@ app.post('/api/quotations/:id/approve', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/reject ─────────────────────────
-app.post('/api/quotations/:id/reject', async (c) => {
+app.post('/suprimentos/api/quotations/:id/reject', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
@@ -2767,7 +2767,7 @@ app.post('/api/quotations/:id/reject', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/resend ─────────────────────────
-app.post('/api/quotations/:id/resend', async (c) => {
+app.post('/suprimentos/api/quotations/:id/resend', async (c) => {
   const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const idx = tenant.quotations.findIndex((q: any) => q.id === id)
@@ -2782,7 +2782,7 @@ app.post('/api/quotations/:id/resend', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/negotiate ──────────────────────
-app.post('/api/quotations/:id/negotiate', async (c) => {
+app.post('/suprimentos/api/quotations/:id/negotiate', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
@@ -2817,7 +2817,7 @@ app.post('/api/quotations/:id/negotiate', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
-app.post('/api/purchase-orders/create', async (c) => {
+app.post('/suprimentos/api/purchase-orders/create', async (c) => {
   const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.quotationId) return err(c, 'Cotação obrigatória', 400)
@@ -2850,7 +2850,7 @@ app.post('/api/purchase-orders/create', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/approve ───────────────────
-app.post('/api/purchase-orders/:id/approve', async (c) => {
+app.post('/suprimentos/api/purchase-orders/:id/approve', async (c) => {
   const pedidoId = c.req.param('id')
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
@@ -2864,7 +2864,7 @@ app.post('/api/purchase-orders/:id/approve', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/reject ────────────────────
-app.post('/api/purchase-orders/:id/reject', async (c) => {
+app.post('/suprimentos/api/purchase-orders/:id/reject', async (c) => {
   const pedidoId = c.req.param('id')
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
@@ -2878,7 +2878,7 @@ app.post('/api/purchase-orders/:id/reject', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
-app.post('/api/imports/create', async (c) => {
+app.post('/suprimentos/api/imports/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.invoiceNumber) return err(c, 'Número da Invoice obrigatório')
@@ -2902,7 +2902,7 @@ app.post('/api/imports/create', async (c) => {
 })
 
 // ── Salvar campo editado inline na tabela de Produtos Importados ──────────
-app.post('/api/product-imp-field', async (c) => {
+app.post('/suprimentos/api/product-imp-field', async (c) => {
   const tenant = getCtxTenant(c)
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
