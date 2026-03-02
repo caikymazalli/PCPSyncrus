@@ -17,7 +17,7 @@ function escHtml(str) {
 }
 
 /**
- * Abre modal com detalhes completos da cotação
+ * Abre modal com detalhes completos da cotação - COM VALIDAÇÃO ROBUSTA
  */
 function openQuotationDetail(quotId) {
   if (!quotId) {
@@ -27,71 +27,109 @@ function openQuotationDetail(quotId) {
 
   console.log('[COTAÇÃO] Abrindo detalhes:', quotId)
 
-  // Buscar cotação nos dados (assumindo que quotations está disponível)
-  const quotations = window.quotationsData || []
-  const q = quotations.find((qu) => qu.id === quotId)
-
-  if (!q) {
-    showToastSup('Cotação não encontrada', 'error')
+  // VALIDAÇÃO 1: Verificar se window.quotationsData existe
+  if (typeof window.quotationsData === 'undefined') {
+    console.error('[COTAÇÃO] ERRO: window.quotationsData não definido')
+    showToastSup('Erro: Dados de cotações não carregados. Recarregue a página.', 'error')
     return
   }
 
-  // Montar HTML detalhado
-  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
-  html += '<div><label class="form-label">Código</label><input class="form-control" value="' + escHtml(q.code || '—') + '" readonly></div>'
-  html += '<div><label class="form-label">Status</label><input class="form-control" value="' + escHtml(q.status || '—') + '" readonly></div>'
-  html += '<div><label class="form-label">Data Limite</label><input class="form-control" value="' + escHtml(q.deadline || '—') + '" readonly></div>'
-  html += '<div><label class="form-label">Itens</label><input class="form-control" value="' + escHtml(q.items?.length || 0) + '" readonly></div>'
-  html += '</div>'
+  // VALIDAÇÃO 2: Verificar tipo
+  if (!Array.isArray(window.quotationsData)) {
+    console.error('[COTAÇÃO] ERRO: window.quotationsData não é um array, é:', typeof window.quotationsData)
+    console.log('[COTAÇÃO] Conteúdo:', window.quotationsData)
+    showToastSup('Erro: Formato de dados inválido. Recarregue a página.', 'error')
+    return
+  }
 
-  // Itens cotados
-  html += '<div style="margin-top:14px;"><label class="form-label" style="font-weight:700;">Itens Cotados</label>'
-  html += '<div class="table-wrapper" style="margin-top:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f8f9fa;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Produto</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Qtd</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Un</th></tr></thead><tbody>'
+  // VALIDAÇÃO 3: Verificar se array não está vazio
+  if (window.quotationsData.length === 0) {
+    console.warn('[COTAÇÃO] Array de quotations vazio')
+    showToastSup('Nenhuma cotação carregada', 'error')
+    return
+  }
 
-  if (q.items && q.items.length > 0) {
-    for (const item of q.items) {
-      html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px;">' + escHtml(item.productName || '—') + '</td><td style="padding:8px;"><strong>' + escHtml(item.quantity || 0) + '</strong></td><td style="padding:8px;">' + escHtml(item.unit || 'un') + '</td></tr>'
+  // VALIDAÇÃO 4: Buscar cotação com try/catch
+  let q = null
+  try {
+    q = window.quotationsData.find((qu) => qu && qu.id === quotId)
+  } catch (e) {
+    console.error('[COTAÇÃO] Erro ao buscar cotação:', e)
+    showToastSup('Erro ao buscar cotação', 'error')
+    return
+  }
+
+  if (!q) {
+    const ids = window.quotationsData.map((x) => x && x.id).join(', ')
+    console.error('[COTAÇÃO] Cotação não encontrada. Procurando:', quotId, 'IDs disponíveis:', ids)
+    showToastSup('Cotação ' + quotId + ' não encontrada', 'error')
+    return
+  }
+
+  console.log('[COTAÇÃO] Cotação encontrada:', q)
+
+  // VALIDAÇÃO 5: Renderizar modal com try/catch
+  try {
+    // Montar HTML detalhado
+    let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+    html += '<div><label class="form-label">Código</label><input class="form-control" value="' + escHtml(q.code || '—') + '" readonly></div>'
+    html += '<div><label class="form-label">Status</label><input class="form-control" value="' + escHtml(q.status || '—') + '" readonly></div>'
+    html += '<div><label class="form-label">Data Limite</label><input class="form-control" value="' + escHtml(q.deadline || '—') + '" readonly></div>'
+    html += '<div><label class="form-label">Itens</label><input class="form-control" value="' + escHtml(q.items?.length || 0) + '" readonly></div>'
+    html += '</div>'
+
+    // Itens cotados
+    html += '<div style="margin-top:14px;"><label class="form-label" style="font-weight:700;">Itens Cotados</label>'
+    html += '<div class="table-wrapper" style="margin-top:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f8f9fa;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Produto</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Qtd</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Un</th></tr></thead><tbody>'
+
+    if (q.items && q.items.length > 0) {
+      for (const item of q.items) {
+        html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px;">' + escHtml(item.productName || '—') + '</td><td style="padding:8px;"><strong>' + escHtml(item.quantity || 0) + '</strong></td><td style="padding:8px;">' + escHtml(item.unit || 'un') + '</td></tr>'
+      }
+    } else {
+      html += '<tr><td colspan="3" style="padding:8px;text-align:center;color:#9ca3af;">Nenhum item</td></tr>'
     }
-  } else {
-    html += '<tr><td colspan="3" style="padding:8px;text-align:center;color:#9ca3af;">Nenhum item</td></tr>'
-  }
 
-  html += '</tbody></table></div></div>'
+    html += '</tbody></table></div></div>'
 
-  // Respostas dos fornecedores
-  if (q.supplierResponses && q.supplierResponses.length > 0) {
-    html += '<div style="margin-top:14px;"><label class="form-label" style="font-weight:700;">Respostas dos Fornecedores</label>'
-    html += '<div style="display:flex;flex-direction:column;gap:8px;">'
+    // Respostas dos fornecedores
+    if (q.supplierResponses && q.supplierResponses.length > 0) {
+      html += '<div style="margin-top:14px;"><label class="form-label" style="font-weight:700;">Respostas dos Fornecedores</label>'
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">'
 
-    for (const resp of q.supplierResponses) {
-      html += '<div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid #2980B9;">'
-      html += '<div style="font-weight:600;color:#1B4F72;margin-bottom:6px;">' + escHtml(resp.supplierName || 'Fornecedor') + '</div>'
-      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#6c757d;">'
-      html += '<div><strong>Valor:</strong> R$ ' + escHtml(Number(resp.totalPrice || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</div>'
-      html += '<div><strong>Prazo:</strong> ' + escHtml(resp.deliveryDays || '—') + ' dias</div>'
-      html += '<div><strong>Pgto:</strong> ' + escHtml(resp.paymentTerms || '—') + '</div>'
-      html += '<div><strong>Respondido:</strong> ' + escHtml(resp.respondedAt || '—') + '</div>'
-      html += '</div>'
-      html += '</div>'
+      for (const resp of q.supplierResponses) {
+        html += '<div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid #2980B9;">'
+        html += '<div style="font-weight:600;color:#1B4F72;margin-bottom:6px;">' + escHtml(resp.supplierName || 'Fornecedor') + '</div>'
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#6c757d;">'
+        html += '<div><strong>Valor:</strong> R$ ' + escHtml(Number(resp.totalPrice || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</div>'
+        html += '<div><strong>Prazo:</strong> ' + escHtml(resp.deliveryDays || '—') + ' dias</div>'
+        html += '<div><strong>Pgto:</strong> ' + escHtml(resp.paymentTerms || '—') + '</div>'
+        html += '<div><strong>Respondido:</strong> ' + escHtml(resp.respondedAt || '—') + '</div>'
+        html += '</div>'
+        html += '</div>'
+      }
+
+      html += '</div></div>'
     }
 
-    html += '</div></div>'
+    // Preencher modal
+    const titleEl = document.getElementById('quotDetailTitle')
+    if (titleEl) {
+      titleEl.innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>'
+      const titleText = document.createTextNode(q.code || 'Cotação')
+      titleEl.appendChild(titleText)
+    }
+
+    const bodyEl = document.getElementById('quotDetailBody')
+    if (bodyEl) bodyEl.innerHTML = html
+
+    // Abrir modal
+    openModal('quotationDetailModal')
+    console.log('[COTAÇÃO] ✅ Modal aberto com sucesso')
+  } catch (e) {
+    console.error('[COTAÇÃO] Erro ao renderizar modal:', e)
+    showToastSup('Erro ao abrir detalhes da cotação', 'error')
   }
-
-  // Preencher modal
-  const titleEl = document.getElementById('quotDetailTitle')
-  if (titleEl) {
-    titleEl.innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>'
-    const titleText = document.createTextNode(q.code || 'Cotação')
-    titleEl.appendChild(titleText)
-  }
-
-  const bodyEl = document.getElementById('quotDetailBody')
-  if (bodyEl) bodyEl.innerHTML = html
-
-  // Abrir modal
-  openModal('quotationDetailModal')
-  console.log('[COTAÇÃO] Modal aberto com sucesso')
 }
 
 /**

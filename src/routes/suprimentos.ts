@@ -6,6 +6,37 @@ import { tenants, markTenantModified } from '../userStore'
 
 const app = new Hono()
 
+/**
+ * Escapar string para JSON de forma segura
+ */
+function escapeJsonString(str: string): string {
+  if (typeof str !== 'string') return ''
+
+  return str
+    .replace(/\\/g, '\\\\')  // Backslash primeiro
+    .replace(/"/g, '\\"')     // Aspas duplas
+    .replace(/\n/g, '\\n')    // Quebra de linha
+    .replace(/\r/g, '\\r')    // Carriage return
+    .replace(/\t/g, '\\t')    // Tab
+    .replace(/\b/g, '\\b')    // Backspace
+    .replace(/\f/g, '\\f')    // Form feed
+}
+
+/**
+ * Serializar objeto para JSON de forma segura
+ */
+function safeJsonStringify(obj: any): string {
+  try {
+    const jsonStr = JSON.stringify(obj)
+    // Validar que é JSON válido
+    JSON.parse(jsonStr)
+    return jsonStr
+  } catch (e) {
+    console.error('[JSON] Erro ao stringify:', (e as any).message)
+    return '[]'
+  }
+}
+
 // ── Rota principal do módulo Suprimentos ──────────────────────────────────────
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
@@ -653,12 +684,12 @@ app.get('/', (c) => {
   </div>
 
   <script>
-  const quotationsData = ${JSON.stringify(quotations).replace(/<\//g, '<\\/')};
-  const purchaseOrdersData = ${JSON.stringify(purchaseOrders).replace(/<\//g, '<\\/')};
-  const statusInfoData = ${JSON.stringify(statusInfo).replace(/<\//g, '<\\/')};
-  const suppliersData = ${JSON.stringify(suppliers).replace(/<\//g, '<\\/')};
-  const importsData2 = ${JSON.stringify(importsData).replace(/<\//g, '<\\/')};
-  const allItemsData = ${JSON.stringify([...stockItems, ...products]).replace(/<\//g, '<\\/')};
+  const quotationsData = ${safeJsonStringify(quotations).replace(/<\//g, '<\\/')};
+  const purchaseOrdersData = ${safeJsonStringify(purchaseOrders).replace(/<\//g, '<\\/')};
+  const statusInfoData = ${safeJsonStringify(statusInfo).replace(/<\//g, '<\\/')};
+  const suppliersData = ${safeJsonStringify(suppliers).replace(/<\//g, '<\\/')};
+  const importsData2 = ${safeJsonStringify(importsData).replace(/<\//g, '<\\/')};
+  const allItemsData = ${safeJsonStringify([...stockItems, ...products]).replace(/<\//g, '<\\/')};
 
   function showToastSup(msg, type) {
     type = type || 'success';
