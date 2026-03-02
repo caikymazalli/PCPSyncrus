@@ -2752,7 +2752,7 @@ app.post('/api/quotations/:id/reject', async (c) => {
   markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
     // UPDATE quotations in D1
-    const updateOk = await dbUpdate(db, 'quotations', id, userId, { status: 'rejected', notes: body.motivo || '', updated_at: now })
+    const updateOk = await dbUpdate(db, 'quotations', id, userId, { status: 'rejected', quotation_reason: body.motivo || '', updated_at: now })
     if (!updateOk) {
       console.error(`[REJECT] Falha ao atualizar cotação ${id} em D1`)
       return err(c, 'Falha ao persistir negação no banco de dados', 500)
