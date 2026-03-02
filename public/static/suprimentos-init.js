@@ -138,6 +138,23 @@ function openQuotationDetail(quotId) {
     }
 
     // Preencher modal
+    // ✅ BOTÕES DE AÇÃO
+    html += '<div style="display:flex;gap:8px;margin-top:20px;border-top:1px solid #f1f3f5;padding-top:16px;">'
+    html += '<button onclick="aprovarCotacao(\'' + quotId + '\')" style="flex:1;background:#28a745;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">✅ Aprovar</button>'
+    html += '<button onclick="toggleNegociacao(\'' + quotId + '\')" style="flex:1;background:#2980B9;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">🤝 Negociar</button>'
+    html += '<button onclick="negarCotacao(\'' + quotId + '\')" style="flex:1;background:#dc3545;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">❌ Negar</button>'
+    html += '</div>'
+
+    // ✅ CAMPO NEGOCIAÇÃO (OCULTO)
+    html += '<div id="negociacao-' + quotId + '" style="display:none;margin-top:16px;border:1px solid #e9ecef;padding:12px;border-radius:6px;background:#f8f9fa;">'
+    html += '<label class="form-label" style="font-weight:600;">Observações para Negociação *</label>'
+    html += '<textarea id="obs-' + quotId + '" placeholder="Informe sugestões de preço, prazo, etc... (mínimo 10 caracteres)" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-family:inherit;resize:vertical;height:80px;"></textarea>'
+    html += '<div style="display:flex;gap:8px;margin-top:8px;">'
+    html += '<button onclick="enviarNegociacao(\'' + quotId + '\')" style="flex:1;background:#2980B9;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">📤 Enviar Negociação</button>'
+    html += '<button onclick="cancelarNegociacao(\'' + quotId + '\')" style="flex:1;background:#6c757d;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Cancelar</button>'
+    html += '</div>'
+    html += '</div>'
+
     const titleEl = document.getElementById('quotDetailTitle')
     if (titleEl) {
       titleEl.innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>'
@@ -625,6 +642,123 @@ function carregarItensQuotacao() {
   if (container) container.style.display = 'block'
 
   console.log('[PEDIDO] Itens carregados:', quot.items.length)
+}
+
+/**
+ * Aprovar cotação
+ */
+function aprovarCotacao(quotId) {
+  if (!confirm('Aprovar cotação?')) return
+
+  console.log('[COTAÇÃO] Aprovando:', quotId)
+  showToastSup('✅ Aprovando cotação...', 'info')
+
+  fetch('/suprimentos/api/quotations/' + quotId + '/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok) {
+        showToastSup('✅ Cotação aprovada!', 'success')
+        setTimeout(() => location.reload(), 1000)
+      } else {
+        showToastSup('❌ ' + (data.error || 'Erro'), 'error')
+      }
+    })
+    .catch((e) => {
+      console.error('[COTAÇÃO] Erro:', e)
+      showToastSup('❌ Erro ao aprovar', 'error')
+    })
+}
+
+/**
+ * Negar cotação
+ */
+function negarCotacao(quotId) {
+  if (!confirm('Negar cotação?')) return
+
+  console.log('[COTAÇÃO] Negando:', quotId)
+  showToastSup('❌ Negando cotação...', 'info')
+
+  fetch('/suprimentos/api/quotations/' + quotId + '/reject', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok) {
+        showToastSup('✅ Cotação negada!', 'success')
+        setTimeout(() => location.reload(), 1000)
+      } else {
+        showToastSup('❌ ' + (data.error || 'Erro'), 'error')
+      }
+    })
+    .catch((e) => {
+      console.error('[COTAÇÃO] Erro:', e)
+      showToastSup('❌ Erro ao negar', 'error')
+    })
+}
+
+/**
+ * Mostrar/ocultar campo negociação
+ */
+function toggleNegociacao(quotId) {
+  const negDiv = document.getElementById('negociacao-' + quotId)
+  if (negDiv) {
+    negDiv.style.display = negDiv.style.display === 'none' ? 'block' : 'none'
+  }
+}
+
+/**
+ * Cancelar negociação
+ */
+function cancelarNegociacao(quotId) {
+  const negDiv = document.getElementById('negociacao-' + quotId)
+  if (negDiv) negDiv.style.display = 'none'
+  const obsField = document.getElementById('obs-' + quotId)
+  if (obsField) obsField.value = ''
+}
+
+/**
+ * Enviar negociação
+ */
+function enviarNegociacao(quotId) {
+  const obs = document.getElementById('obs-' + quotId)?.value || ''
+
+  if (obs.length < 10) {
+    showToastSup('Observações devem ter no mínimo 10 caracteres', 'error')
+    return
+  }
+
+  if (obs.length > 500) {
+    showToastSup('Observações não podem exceder 500 caracteres', 'error')
+    return
+  }
+
+  if (!confirm('Enviar negociação?')) return
+
+  console.log('[COTAÇÃO] Negociando:', quotId)
+  showToastSup('🤝 Enviando negociação...', 'info')
+
+  fetch('/suprimentos/api/quotations/' + quotId + '/negotiate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ observations: obs }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok) {
+        showToastSup('✅ Negociação enviada!', 'success')
+        setTimeout(() => location.reload(), 1000)
+      } else {
+        showToastSup('❌ ' + (data.error || 'Erro'), 'error')
+      }
+    })
+    .catch((e) => {
+      console.error('[COTAÇÃO] Erro:', e)
+      showToastSup('❌ Erro ao enviar', 'error')
+    })
 }
 
 console.log('[SUPRIMENTOS-INIT] ✅ Todas as funções de cotação carregadas')
