@@ -59,6 +59,7 @@ export interface TenantData {
   separationOrders: any[]    // Ordens de separação
   stockExits: any[]          // Baixas de estoque
   supplierCategories: any[]  // Categorias de fornecedores personalizadas
+  quotationNegotiations: any[] // Negociações de cotações
 }
 
 export interface RegisteredUser {
@@ -234,6 +235,7 @@ export function getTenantData(userId: string): TenantData {
       serialNumbers: [], serialPendingItems: [],
       warehouses: [], separationOrders: [], stockExits: [],
       supplierCategories: [],
+      quotationNegotiations: [],
     }
   }
   return tenants[userId]
@@ -690,7 +692,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         for (const q of (tenant.quotations || [])) {
           const dbRow = dbById[q.id]
           if (dbRow) {
-            updated.push({ ...q, status: dbRow.status || q.status })
+            updated.push({ ...q, status: dbRow.status || q.status, quotationReason: dbRow.quotation_reason || q.quotationReason || '' })
           } else {
             updated.push(q)
           }
@@ -707,6 +709,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
               deadline: r.deadline || '', observations: notes.observations || '',
               items: notes.items || [], supplierIds: [], supplierResponses: [],
               approvedBy: r.approved_by || '', approvedAt: r.approved_at || '',
+              quotationReason: r.quotation_reason || '',
             })
           }
         }
@@ -717,6 +720,20 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }
     } catch (e) {
       console.warn(`[HYDRATION] ⚠️ Não foi possível carregar cotações de D1 (tabela pode não ter user_id):`, (e as any).message)
+    }
+    // Load quotation negotiations
+    try {
+      const negs = await db.prepare(`SELECT * FROM quotation_negotiations WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (negs.results) {
+        tenant.quotationNegotiations = (negs.results as any[]).map(r => ({
+          id: r.id, quotationId: r.quotation_id,
+          observations: r.observations || '', createdAt: r.created_at || '',
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.quotationNegotiations.length} negociações carregadas de D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn(`[HYDRATION] ⚠️ Não foi possível carregar quotation_negotiations de D1:`, (e as any).message)
     }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
