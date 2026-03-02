@@ -2592,9 +2592,13 @@ app.post('/suprimentos/api/quotations/:id/respond', async (c) => {
 
 
 // ── API: POST /suprimentos/api/quotations/create (new format) ─────────────────
-app.post('/suprimentos/api/quotations/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+app.post('/api/quotations/create', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
+  
   if (!body) return err(c, 'Dados inválidos')
   if (!body.deadline) return err(c, 'Data limite obrigatória')
   if (!body.supplierIds || body.supplierIds.length === 0) return err(c, 'Selecione pelo menos um fornecedor')
@@ -2610,8 +2614,8 @@ app.post('/suprimentos/api/quotations/create', async (c) => {
     supplierIds: body.supplierIds || [],
     deadline: body.deadline,
     observations: body.observations || '',
-    status: 'sent',
-    createdBy: 'Admin',
+    status: 'pending_approval',
+    createdBy: userId || 'Admin',
     createdAt: new Date().toISOString(),
     supplierResponses: [],
   }
@@ -2620,16 +2624,18 @@ app.post('/suprimentos/api/quotations/create', async (c) => {
   markTenantModified(userId)
   
   if (db && userId !== 'demo-tenant') {
-    try {
-      await dbInsertWithRetry(db, 'quotations', {
-        id, user_id: userId, empresa_id: empresaId, title: quotation.descricao, status: 'sent',
-        deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
+    const persistResult = await dbInsertWithRetry(db, 'quotations', {
+      id, user_id: userId, empresa_id: empresaId, title: quotation.descricao, status: 'pending_approval',
+      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
+    })
+    if (!persistResult.success) {
+      console.error(`[ERROR] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return ok(c, {
+        quotation, code,
+        warning: 'Cotação salva localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
       })
-    } catch (e) {
-      console.error(`[QUOTACAO] Erro ao persistir: ${(e as any).message}`)
     }
   }
-  
   return ok(c, { quotation, code })
 })
 
@@ -2674,87 +2680,81 @@ app.post('/suprimentos/api/quotations/create', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
-app.post('/suprimentos/api/quotations/:id/approve', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+app.post('/api/quotations/:id/approve', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   
-  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
-  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  const quotation = tenant.quotations.find((q: any) => q.id === id)
+  if (!quotation) return err(c, 'Cotação não encontrada', 404)
   
-  const previousStatus = tenant.quotations[idx].status
-  const now = new Date().toISOString()
-  
-  tenant.quotations[idx].status = 'approved'
-  tenant.quotations[idx].approvedBy = 'Admin'
-  tenant.quotations[idx].approvedAt = now
+  quotation.status = 'approved'
+  quotation.approvedBy = userId
+  quotation.approvedAt = new Date().toISOString()
   markTenantModified(userId)
   
-  // Auto-create purchase order
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'quotations', id, { status: 'approved' }, userId)
+  }
+  
+  // Gerar Pedido de Compra automaticamente
   const pcId = genId('pc')
-  const pcCode = `PC-${new Date().getFullYear()}-${String((tenant.purchaseOrders?.length || 0) + 1).padStart(3,'0')}`
-  const pc = { 
-    id: pcId, code: pcCode, quotationId: id, 
-    supplierId: body.supplierName || '', 
-    supplierName: body.supplierName || 'Fornecedor', 
-    status: 'pending', totalValue: 0, currency: 'BRL', 
-    createdAt: now 
+  const pcCode = `PC-${new Date().getFullYear()}-${String((tenant.purchaseOrders || []).length + 1).padStart(4,'0')}`
+  
+  const purchaseOrder = {
+    id: pcId,
+    code: pcCode,
+    quotationId: id,
+    supplierName: body.supplierName || quotation.supplierResponses?.[0]?.supplierName || 'Fornecedor',
+    items: quotation.items || [],
+    totalValue: quotation.items.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice || 0)), 0),
+    currency: 'BRL',
+    status: 'confirmed',
+    isImport: false,
+    createdAt: new Date().toISOString(),
+    expectedDelivery: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   }
   
-  if (!tenant.purchaseOrders) (tenant as any).purchaseOrders = []
-  tenant.purchaseOrders.push(pc)
+  if (!tenant.purchaseOrders) tenant.purchaseOrders = []
+  tenant.purchaseOrders.push(purchaseOrder)
   
   if (db && userId !== 'demo-tenant') {
-    try {
-      // UPDATE quotations in D1
-      await db.prepare('UPDATE quotations SET status = ?, approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-        .bind('approved', 'Admin', now, now, id, userId)
-        .run()
-      
-      // INSERT purchase order
-      await dbInsert(db, 'purchase_orders', { 
-        id: pcId, user_id: userId, empresa_id: empresaId, 
-        supplier_id: pc.supplierId, status: 'pending', total_value: 0, 
-        expected_date: '', notes: `Gerado da cotação ${tenant.quotations[idx].code || id}` 
-      })
-    } catch (e) {
-      console.error(`[APPROVE] Erro ao persistir: ${(e as any).message}`)
-    }
+    await dbInsertWithRetry(db, 'purchase_orders', {
+      id: pcId, user_id: userId, empresa_id: empresaId, code: pcCode, supplier_id: '',
+      supplier_name: purchaseOrder.supplierName, status: 'confirmed', total_value: purchaseOrder.totalValue,
+      currency: 'BRL', is_import: false, notes: JSON.stringify({ items: purchaseOrder.items }),
+    })
   }
   
-  return ok(c, { pcCode })
+  return ok(c, { quotation, purchaseOrder, pcCode })
 })
 
-// ── API: POST /suprimentos/api/quotations/:id/reject ─────────────────────────
-app.post('/suprimentos/api/quotations/:id/reject', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+// ── API: POST /suprimentos/api/quotations/:id/reject ───────────────────────────
+app.post('/api/quotations/:id/reject', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   
-  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
-  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
+  const quotation = tenant.quotations.find((q: any) => q.id === id)
+  if (!quotation) return err(c, 'Cotação não encontrada', 404)
   
-  const previousStatus = tenant.quotations[idx].status
-  const now = new Date().toISOString()
-  
-  tenant.quotations[idx].status = 'rejected'
-  tenant.quotations[idx].rejectionReason = body.motivo || ''
+  quotation.status = 'rejected'
+  quotation.rejectionReason = body.motivo || 'Cotação recusada'
+  quotation.rejectedAt = new Date().toISOString()
+  quotation.rejectedBy = userId
   markTenantModified(userId)
   
   if (db && userId !== 'demo-tenant') {
-    try {
-      // UPDATE quotations in D1
-      await db.prepare('UPDATE quotations SET status = ?, quotation_reason = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-        .bind('rejected', body.motivo || '', now, id, userId)
-        .run()
-    } catch (e) {
-      console.error(`[REJECT] Erro ao persistir: ${(e as any).message}`)
-    }
+    await dbUpdate(db, 'quotations', id, { status: 'rejected' }, userId)
   }
   
-  return ok(c)
+  return ok(c, { quotation })
 })
-
 // ── API: POST /suprimentos/api/quotations/:id/resend ─────────────────────────
 app.post('/suprimentos/api/quotations/:id/resend', async (c) => {
   const tenant = getCtxTenant(c)
@@ -2771,52 +2771,28 @@ app.post('/suprimentos/api/quotations/:id/resend', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/negotiate ──────────────────────
-app.post('/suprimentos/api/quotations/:id/negotiate', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+app.post('/api/quotations/:id/negotiate', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   
-  if (!body.observations || !body.observations.trim()) {
-    return err(c, 'Observações da negociação são obrigatórias', 400)
-  }
+  const quotation = tenant.quotations.find((q: any) => q.id === id)
+  if (!quotation) return err(c, 'Cotação não encontrada', 404)
   
-  const idx = tenant.quotations.findIndex((q: any) => q.id === id)
-  if (idx === -1) return err(c, 'Cotação não encontrada', 404)
-  
-  const previousStatus = tenant.quotations[idx].status
-  const now = new Date().toISOString()
-  
-  tenant.quotations[idx].status = 'awaiting_negotiation'
-  tenant.quotations[idx].negotiationObs = body.observations.trim()
+  quotation.status = 'awaiting_negotiation'
+  quotation.negotiationObs = body.observations || ''
+  quotation.negotiationStartedAt = new Date().toISOString()
+  quotation.negotiatedBy = userId
   markTenantModified(userId)
   
   if (db && userId !== 'demo-tenant') {
-    try {
-      // UPDATE quotations in D1
-      await db.prepare('UPDATE quotations SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-        .bind('awaiting_negotiation', now, id, userId)
-        .run()
-    } catch (e) {
-      console.error(`[NEGOTIATE] Erro ao persistir: ${(e as any).message}`)
-    }
+    await dbUpdate(db, 'quotations', id, { status: 'awaiting_negotiation' }, userId)
   }
   
-  return ok(c, { status: 'awaiting_negotiation' })
+  return ok(c, { quotation })
 })
-    // INSERT audit trail
-    await dbInsert(db, 'quotation_statuses', {
-      id: genId('qst'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
-      previous_status: previousStatus, new_status: 'awaiting_negotiation', changed_by: 'Admin',
-      notes: body.observations.trim(), created_at: now,
-    })
-    // INSERT negotiation record
-    await dbInsert(db, 'quotation_negotiations', {
-      id: genId('qng'), quotation_id: id, user_id: userId, empresa_id: empresaId || '1',
-      observations: body.observations.trim(), created_by: 'Admin', created_at: now,
-    })
-
-  return ok(c, { status: 'awaiting_negotiation' })
-
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
 app.post('/suprimentos/api/purchase-orders/create', async (c) => {
   const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
