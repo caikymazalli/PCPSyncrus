@@ -675,6 +675,49 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         return rest
       })
     }
+    // Load quotations
+    try {
+      const quots = await db.prepare(`SELECT * FROM quotations WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (quots.results && quots.results.length > 0) {
+        // Merge: update existing in-memory quotations from D1 (preserving supplierResponses/items from memory)
+        const dbById: Record<string, any> = {}
+        for (const r of quots.results as any[]) {
+          dbById[r.id] = r
+        }
+        const existingIds = new Set((tenant.quotations || []).map((q: any) => q.id))
+        const updated: any[] = []
+        for (const q of (tenant.quotations || [])) {
+          const dbRow = dbById[q.id]
+          if (dbRow) {
+            updated.push({ ...q, status: dbRow.status || q.status })
+          } else {
+            updated.push(q)
+          }
+        }
+        // Add quotations from D1 that aren't in memory yet
+        for (const r of quots.results as any[]) {
+          if (!existingIds.has(r.id)) {
+            let notes: any = {}
+            try { notes = JSON.parse(r.notes || '{}') } catch { notes = {} }
+            updated.push({
+              id: r.id, code: r.code || r.id, descricao: r.title || '',
+              status: r.status || 'sent', tipo: r.tipo || 'manual',
+              createdBy: r.creator || '', createdAt: r.created_at || new Date().toISOString(),
+              deadline: r.deadline || '', observations: notes.observations || '',
+              items: notes.items || [], supplierIds: [], supplierResponses: [],
+              approvedBy: r.approved_by || '', approvedAt: r.approved_at || '',
+            })
+          }
+        }
+        if (updated.length > 0) {
+          tenant.quotations = updated
+          console.log(`[HYDRATION] ✅ ${updated.length} cotações carregadas/atualizadas de D1 para ${userId}`)
+        }
+      }
+    } catch (e) {
+      console.warn(`[HYDRATION] ⚠️ Não foi possível carregar cotações de D1 (tabela pode não ter user_id):`, (e as any).message)
+    }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
     // Reset the hydration timestamp so the next request retries loading from D1.
