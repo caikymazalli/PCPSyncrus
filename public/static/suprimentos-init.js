@@ -1,27 +1,20 @@
-// Wrapper Function 1
-function wrapperFunction1() {
-    console.log('Wrapper Function 1');
+// Wrapper functions
+function toggleNegociacao() {
+    // TODO: Implement function logic
 }
 
-// Wrapper Function 2
-function wrapperFunction2() {
-    console.log('Wrapper Function 2');
+function aprovarCotacao() {
+    // TODO: Implement function logic
 }
 
-// Wrapper Function 3
-function wrapperFunction3() {
-    console.log('Wrapper Function 3');
+function negarCotacao() {
+    // TODO: Implement function logic
 }
 
-// Wrapper Function 4
-function wrapperFunction4() {
-    console.log('Wrapper Function 4');
+function enviarNegociacao() {
+    // TODO: Implement function logic
 }
 
-// Wrapper Function 5
-function wrapperFunction5() {
-    console.log('Wrapper Function 5');
+function cancelarNegociacao() {
+    // TODO: Implement function logic
 }
-
-// Existing console.log
-console.log('Some existing log here...');
