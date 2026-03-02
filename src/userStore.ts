@@ -59,6 +59,7 @@ export interface TenantData {
   separationOrders: any[]    // Ordens de separação
   stockExits: any[]          // Baixas de estoque
   supplierCategories: any[]  // Categorias de fornecedores personalizadas
+  productSupplierLinks: any[] // Vínculos fornecedor-produto persistidos em D1
   quotationNegotiations: any[] // Negociações de cotações
 }
 
@@ -130,6 +131,8 @@ tenants[demoUserId] = {
   separationOrders:  JSON.parse(JSON.stringify(_md.separationOrders   || [])),
   stockExits:        JSON.parse(JSON.stringify(_md.stockExits         || [])),
   supplierCategories: JSON.parse(JSON.stringify(_md.supplierCategories || [])),
+  productSupplierLinks: JSON.parse(JSON.stringify(_md.productSupplierLinks || [])),
+  quotationNegotiations: [],
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -235,6 +238,7 @@ export function getTenantData(userId: string): TenantData {
       serialNumbers: [], serialPendingItems: [],
       warehouses: [], separationOrders: [], stockExits: [],
       supplierCategories: [],
+      productSupplierLinks: [],
       quotationNegotiations: [],
     }
   }
@@ -734,6 +738,27 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }
     } catch (e) {
       console.warn(`[HYDRATION] ⚠️ Não foi possível carregar quotation_negotiations de D1:`, (e as any).message)
+    }
+    // Load product_supplier_links
+    try {
+      console.log('[HYDRATION] Carregando product_supplier_links...')
+      const links = await db.prepare(
+        `SELECT * FROM product_supplier_links WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`
+      ).bind(...bindEmpresa([userId])).all()
+      tenant.productSupplierLinks = (links.results as any[]).map((r: any) => ({
+        id: r.id,
+        product_id: r.product_id,
+        supplier_id: r.supplier_id,
+        supplier_name: r.supplier_name,
+        supplier_email: r.supplier_email || '',
+        supplier_phone: r.supplier_phone || '',
+        status: r.status || 'active',
+        created_at: r.created_at,
+      }))
+      console.log(`[HYDRATION] ✅ ${tenant.productSupplierLinks.length} vínculos product_supplier_links carregados`)
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar product_supplier_links:', (e as any).message)
+      tenant.productSupplierLinks = []
     }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
