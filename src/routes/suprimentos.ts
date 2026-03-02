@@ -38,16 +38,11 @@ function safeJsonStringify(obj: any): string {
 }
 
 /**
- * Serializar quotations com escape seguro usando replacer
+ * Serializar quotations para JSON de forma segura
  */
 function safeStringifyQuotations(quotations: any[]): string {
   try {
-    const jsonStr = JSON.stringify(quotations, (key, value) => {
-      if (typeof value === 'string') {
-        return escapeJsonString(value)
-      }
-      return value
-    })
+    const jsonStr = JSON.stringify(quotations)
     // Validar que é JSON válido
     JSON.parse(jsonStr)
     console.log('[SUPRIMENTOS] JSON válido gerado:', jsonStr.length, 'bytes')
