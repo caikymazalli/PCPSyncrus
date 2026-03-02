@@ -21,6 +21,7 @@ app.get('/', (c) => {
   const statusInfo: Record<string, { label: string, color: string, bg: string }> = {
     sent:               { label: 'Enviada',            color: '#3498DB', bg: '#d1ecf1' },
     awaiting_responses: { label: 'Aguard. Respostas',  color: '#d97706', bg: '#fffbeb' },
+    with_responses:     { label: 'Com Respostas',      color: '#7c3aed', bg: '#f5f3ff' },
     pending_approval:   { label: 'Pend. Aprovação',    color: '#dc2626', bg: '#fef2f2' },
     approved:           { label: 'Aprovada',           color: '#16a34a', bg: '#f0fdf4' },
     cancelled:          { label: 'Cancelada',          color: '#6c757d', bg: '#e2e3e5' },
@@ -652,12 +653,12 @@ app.get('/', (c) => {
   </div>
 
   <script>
-  const quotationsData = ${JSON.stringify(quotations)};
-  const purchaseOrdersData = ${JSON.stringify(purchaseOrders)};
-  const statusInfoData = ${JSON.stringify(statusInfo)};
-  const suppliersData = ${JSON.stringify(suppliers)};
-  const importsData2 = ${JSON.stringify(importsData)};
-  const allItemsData = ${JSON.stringify([...stockItems, ...products])};
+  const quotationsData = ${JSON.stringify(quotations).replace(/<\//g, '<\\/')};
+  const purchaseOrdersData = ${JSON.stringify(purchaseOrders).replace(/<\//g, '<\\/')};
+  const statusInfoData = ${JSON.stringify(statusInfo).replace(/<\//g, '<\\/')};
+  const suppliersData = ${JSON.stringify(suppliers).replace(/<\//g, '<\\/')};
+  const importsData2 = ${JSON.stringify(importsData).replace(/<\//g, '<\\/')};
+  const allItemsData = ${JSON.stringify([...stockItems, ...products]).replace(/<\//g, '<\\/')};
 
   function showToastSup(msg, type) {
     type = type || 'success';
@@ -2394,8 +2395,20 @@ app.post('/api/quotations/:id/respond', async (c) => {
         respondedAt: new Date().toISOString(),
       })
 
-      q.status = 'awaiting_responses'
+      q.status = 'with_responses'
       markTenantModified(userId)
+
+      // Persist updated status to D1
+      const db = getCtxDB(c)
+      if (db && userId !== 'demo-tenant') {
+        try {
+          await db.prepare(`UPDATE quotations SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`)
+            .bind(q.status, new Date().toISOString(), quotId, userId).run()
+          console.log('[COTAÇÃO-RESPOSTA] ✅ Status persistido em D1:', q.status)
+        } catch (e) {
+          console.error('[COTAÇÃO-RESPOSTA] ⚠️ Erro ao persistir status:', (e as any).message)
+        }
+      }
 
       console.log('[COTAÇÃO-RESPOSTA] ✅ Resposta salva:', quotId)
       return ok(c, { quotation: q, message: 'Resposta recebida com sucesso' })
