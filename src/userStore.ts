@@ -712,7 +712,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
             let notes: any = {}
             try { notes = JSON.parse(r.notes || '{}') } catch { notes = {} }
             updated.push({
-              id: r.id, code: r.code || r.id, descricao: r.title || '',
+              id: r.id, code: r.code || r.id, descricao: notes.descricao || '',
               status: r.status || 'sent', tipo: r.tipo || 'manual',
               createdBy: r.creator || '', createdAt: r.created_at || new Date().toISOString(),
               deadline: r.deadline || '', observations: notes.observations || '',
