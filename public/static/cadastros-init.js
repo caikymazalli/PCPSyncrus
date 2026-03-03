@@ -240,8 +240,8 @@ async function salvarFornecedor() {
 // ── Salvar vinculação ───────────────────────────────────────────────────
 async function salvarVinculacao() {
   var prodEl = document.getElementById('vincProduto');
-  var prod = prodEl ? prodEl.value : '';
-  if (!prod) { showToast('Selecione um produto!', 'error'); return; }
+  var productCodes = prodEl ? Array.from(prodEl.selectedOptions).map(function(o) { return o.value; }).filter(Boolean) : [];
+  if (productCodes.length === 0) { showToast('Selecione ao menos um produto!', 'error'); return; }
   var vincTypeEl = document.querySelector('input[name="vincType"]:checked');
   var vincType = vincTypeEl ? vincTypeEl.value : 'external';
   var rows = document.querySelectorAll('.vinc-supplier-row');
@@ -259,7 +259,7 @@ async function salvarVinculacao() {
     var res = await fetch('/cadastros/api/supplier/vinc', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productCode: prod, type: vincType, suppliers: suppliers_vinc })
+      body: JSON.stringify({ productCodes: productCodes, type: vincType, suppliers: suppliers_vinc })
     });
     var data = await res.json();
     if (data.ok) {

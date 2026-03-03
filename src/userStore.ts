@@ -677,10 +677,14 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           grouped[code].priorities[row.supplier_id] = row.priority || 1
         }
       }
-      tenant.productSuppliers = Object.values(grouped).map((g: any) => {
+      const dbEntries = Object.values(grouped).map((g: any) => {
         const { supplierIdSet: _, ...rest } = g
         return rest
       })
+      const dbCodeSet = new Set(dbEntries.map((e: any) => e.productCode))
+      // Merge: keep in-memory entries that are not yet in D1 (not persisted)
+      const memoryOnly = (tenant.productSuppliers || []).filter((m: any) => !dbCodeSet.has(m.productCode))
+      tenant.productSuppliers = [...dbEntries, ...memoryOnly]
     }
     // Load quotations
     try {
