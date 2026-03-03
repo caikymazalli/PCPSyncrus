@@ -678,6 +678,11 @@ function enviarNegociacao(quotId) {
     })
 }
 
+function dispararCotacao(supId, supName, supEmail) {
+  if (!confirm('Disparar cotação individual para ' + (supName || supId) + '?')) return
+  showToastSup('📧 Cotação enviada para ' + (supName || supId) + '!', 'success')
+}
+
 console.log('[SUPRIMENTOS-INIT] ✅ Todas as funções de cotação carregadas')
 
 // ── Event delegation for data-action quotation buttons ──────────────────────
@@ -691,4 +696,26 @@ document.addEventListener('click', function (e) {
   else if (action === 'quot-negar') negarCotacao(quotId)
   else if (action === 'quot-enviar-neg') enviarNegociacao(quotId)
   else if (action === 'quot-cancelar-neg') cancelarNegociacao(quotId)
+})
+
+// ── Event delegation for table/page button actions ───────────────────────────
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('[data-action]')
+  if (!btn) return
+  const action = btn.dataset.action
+  if (action === 'view-quotation') {
+    openQuotationDetail(btn.dataset.id || '')
+  } else if (action === 'approve-quotation') {
+    approveQuotation(btn.dataset.id || '', btn.dataset.code || '', btn.dataset.supplier || 'fornecedor')
+  } else if (action === 'reject-quotation') {
+    recusarCotacao(btn.dataset.id || '', btn.dataset.code || '')
+  } else if (action === 'resend-quotation') {
+    reenviarCotacao(btn.dataset.id || '', btn.dataset.code || '')
+  } else if (action === 'copy-supplier-link') {
+    copySupplierLink(btn.dataset.id || '')
+  } else if (action === 'view-pc') {
+    abrirModalPedidoCompra(btn.dataset.id || '')
+  } else if (action === 'disparar-cotacao') {
+    dispararCotacao(btn.dataset.supplierId || '', btn.dataset.supplierName || '', btn.dataset.supplierEmail || '')
+  }
 })
