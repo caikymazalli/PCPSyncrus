@@ -343,9 +343,9 @@ app.get('/', (c) => {
                       <button class="btn btn-secondary btn-sm" onclick="openQuotationDetail('${q.id}')" title="Ver detalhes"><i class="fas fa-eye"></i></button>
                       ${q.status === 'pending_approval' ? `
                       <button class="btn btn-success btn-sm" onclick="approveQuotation('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}','${escapeJsStr(q.supplierResponses[0]?.supplierName||'fornecedor')}')" title="Aprovar"><i class="fas fa-check"></i></button>
-                      <button class="btn btn-danger btn-sm" onclick="recusarCotacao('${q.id}','${q.code}')" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
+                      <button class="btn btn-danger btn-sm" onclick="recusarCotacao('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}')" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
                       ${q.status === 'sent' || q.status === 'awaiting_responses' ? `
-                      <button class="btn btn-secondary btn-sm" onclick="reenviarCotacao('${q.id}','${q.code}')" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
+                      <button class="btn btn-secondary btn-sm" onclick="reenviarCotacao('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}')" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
                       <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;" onclick="copySupplierLink('${q.id}')" title="Copiar link fornecedor"><i class="fas fa-link"></i></button>
                     </div>
                   </td>
@@ -1282,7 +1282,7 @@ app.get('/', (c) => {
                 <div style="font-size:12px;font-weight:600;color:#374151;">${doc}</div>
                 <div style="font-size:11px;color:#9ca3af;" id="docSlotStatus${i}">Aguardando upload</div>
               </div>
-              <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="uploadDocSlot(${i},'${doc}')"><i class="fas fa-upload"></i></button>
+              <button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" data-action="upload-doc" data-slot-index="${i}" data-slot-doc="${escapeHtmlAttr(doc)}"><i class="fas fa-upload"></i></button>
             </div>`).join('')}
           </div>
         </div>
@@ -2205,6 +2205,16 @@ app.get('/', (c) => {
   // Expose purchaseOrdersData for abrirModalPedidoCompra()
   window.purchaseOrdersData = purchaseOrdersData;
   window.quotationsData = quotationsData;
+
+  // ── Event delegation for data-action buttons (avoids unsafe onclick inline) ─
+  document.addEventListener('click', function(e) {
+    const btn = (e.target as Element).closest('[data-action="upload-doc"]') as HTMLElement | null;
+    if (btn) {
+      const idx = parseInt(btn.dataset.slotIndex || '0', 10);
+      const docName = btn.dataset.slotDoc || '';
+      uploadDocSlot(idx, docName);
+    }
+  });
   // Auto close popups after 12s
   setTimeout(() => {
     ['pendingApprovalPopup','criticalQuotPopup'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
