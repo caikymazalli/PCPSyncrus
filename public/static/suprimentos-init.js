@@ -380,8 +380,8 @@ function abrirModalPedidoCompra(pedidoId) {
   }
   if (pedido.status === 'pending_approval') {
     html += '<div style="display:flex;gap:8px;margin-top:16px;">'
-    html += '<button onclick="aprovarPedidoCompra(' + JSON.stringify(pedidoId) + ', ' + JSON.stringify(pedido.code || pedidoId) + ')" style="flex:1;background:#28a745;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Aprovar</button>'
-    html += '<button onclick="recusarPedidoCompra(' + JSON.stringify(pedidoId) + ', ' + JSON.stringify(pedido.code || pedidoId) + ')" style="flex:1;background:#dc3545;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Recusar</button>'
+    html += '<button class="btn-aprovar-pc" data-pedido-id="' + escHtml(pedidoId) + '" data-pedido-code="' + escHtml(pedido.code || pedidoId) + '" style="flex:1;background:#28a745;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Aprovar</button>'
+    html += '<button class="btn-recusar-pc" data-pedido-id="' + escHtml(pedidoId) + '" data-pedido-code="' + escHtml(pedido.code || pedidoId) + '" style="flex:1;background:#dc3545;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Recusar</button>'
     html += '</div>'
   }
   const titleEl = document.getElementById('pedidoDetailTitle')
@@ -389,7 +389,21 @@ function abrirModalPedidoCompra(pedidoId) {
     titleEl.innerHTML = '<i class="fas fa-shopping-cart" style="margin-right:8px;"></i>' + escHtml(pedido.code || 'Pedido de Compra')
   }
   const bodyEl = document.getElementById('pedidoDetailBody')
-  if (bodyEl) bodyEl.innerHTML = html
+  if (bodyEl) {
+    bodyEl.innerHTML = html
+    const btnAprovar = bodyEl.querySelector('.btn-aprovar-pc')
+    if (btnAprovar) {
+      btnAprovar.addEventListener('click', () => {
+        aprovarPedidoCompra(btnAprovar.dataset.pedidoId, btnAprovar.dataset.pedidoCode)
+      })
+    }
+    const btnRecusar = bodyEl.querySelector('.btn-recusar-pc')
+    if (btnRecusar) {
+      btnRecusar.addEventListener('click', () => {
+        recusarPedidoCompra(btnRecusar.dataset.pedidoId, btnRecusar.dataset.pedidoCode)
+      })
+    }
+  }
   openModal('pedidoCompraDetailModal')
   console.log('[PEDIDO] Modal aberto com sucesso')
 }
