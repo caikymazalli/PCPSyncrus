@@ -91,6 +91,21 @@ app.get('/', (c) => {
   const products = (mockData as any).products || []
   const imports = (mockData as any).imports || []
 
+  // Build a map: productCode → [supplierIds] from tenant.productSuppliers
+  const productSupplierMap = new Map<string, string[]>()
+  const productSuppliers = (mockData as any).productSuppliers || []
+  for (const ps of productSuppliers) {
+    const productKey = ps.productCode || ps.productId
+    if (!productKey) continue
+    if (!productSupplierMap.has(productKey)) {
+      productSupplierMap.set(productKey, [])
+    }
+    if (ps.supplierIds && Array.isArray(ps.supplierIds)) {
+      const supplierList = productSupplierMap.get(productKey)
+      if (supplierList) { supplierList.push(...ps.supplierIds) }
+    }
+  }
+
   const statusInfo: Record<string, { label: string, color: string, bg: string }> = {
     sent:                  { label: 'Enviada',             color: '#3498DB', bg: '#d1ecf1' },
     awaiting_responses:    { label: 'Aguard. Respostas',   color: '#d97706', bg: '#fffbeb' },
@@ -587,7 +602,7 @@ app.get('/', (c) => {
         <!-- Sumário de stats -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">
           <div style="background:#e8f4fd;border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-size:20px;font-weight:800;color:#2980B9;">${[...stockItems, ...products].filter((i: any) => (i.supplierIds||[]).some((sid: string) => suppliers.find((s: any) => s.id === sid && s.type === 'importado'))).length}</div>
+            <div style="font-size:20px;font-weight:800;color:#2980B9;">${[...stockItems, ...products].filter((i: any) => { const allSupplierIds = [...(i.supplierIds||[]), ...(productSupplierMap.get(i.code)||[])]; return allSupplierIds.some((sid: string) => suppliers.find((s: any) => s.id === sid && s.type === 'importado')) }).length}</div>
             <div style="font-size:11px;color:#6c757d;margin-top:2px;">Produtos com Forn. Import.</div>
           </div>
           <div style="background:#ede9fe;border-radius:8px;padding:12px;text-align:center;">
@@ -619,15 +634,16 @@ app.get('/', (c) => {
                 <tbody id="impProdTableBody">
                   ${(() => {
                     const importedSupIds = new Set(suppliers.filter((s: any) => s.type === 'importado').map((s: any) => s.id))
-                    const importedItems = [...stockItems, ...products].filter((i: any) =>
-                      (i.supplierIds||[]).some((sid: string) => importedSupIds.has(sid))
-                    )
+                    const importedItems = [...stockItems, ...products].filter((i: any) => {
+                      const allSupplierIds = [...(i.supplierIds||[]), ...(productSupplierMap.get(i.code)||[])]
+                      return allSupplierIds.some((sid: string) => importedSupIds.has(sid))
+                    })
                     if (importedItems.length === 0) {
                       return `<tr><td colspan="10" style="padding:28px;text-align:center;color:#9ca3af;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>Nenhum item vinculado a fornecedor importado</td></tr>`
                     }
                     // Calcular preço unit. referência a partir do processo de importação se existir
                     return importedItems.map((item: any) => {
-                      const supId = (item.supplierIds||[]).find((sid: string) => importedSupIds.has(sid))
+                      const supId = [...(item.supplierIds||[]), ...(productSupplierMap.get(item.code)||[])].find((sid: string) => importedSupIds.has(sid))
                       const sup = suppliers.find((s: any) => s.id === supId)
                       // Tentar achar processo de importação que tem esse produto pelo código
                       const relatedImp = importsData.find((imp: any) =>
