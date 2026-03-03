@@ -197,13 +197,13 @@ async function approveQuotation(quotId, quotCode, supplierName) {
   }
 }
 
-function copySupplierLink(quotId) {
-  if (!quotId) {
+function copySupplierLink(quotCode) {
+  if (!quotCode) {
     showToastSup('Cotação não encontrada', 'error')
     return
   }
   const baseUrl = window.location.origin || ''
-  const link = baseUrl + '/suprimentos/quote-response?id=' + encodeURIComponent(quotId)
+  const link = baseUrl + '/suprimentos/quote-response?code=' + encodeURIComponent(quotCode)
   console.log('[COTAÇÃO] Copiando link:', link)
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(link).then(() => {
@@ -559,7 +559,7 @@ document.addEventListener('click', function (e) {
   } else if (action === 'resend-quotation') {
     reenviarCotacao(btn.dataset.id || '', btn.dataset.code || '')
   } else if (action === 'copy-supplier-link') {
-    copySupplierLink(btn.dataset.id || '')
+    copySupplierLink(btn.dataset.code || '')
   } else if (action === 'view-pc') {
     abrirModalPedidoCompra(btn.dataset.id || '')
   } else if (action === 'disparar-cotacao') {

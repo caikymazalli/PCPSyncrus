@@ -1409,11 +1409,11 @@ app.get('/cotacao/:id/responder', (c) => {
 </html>`)
 })
 
-// ── Rota pública: GET /suprimentos/quote-response?id=<quotId> ───────────────
+// ── Rota pública: GET /suprimentos/quote-response?code=<quotCode> ───────────────
 app.get('/quote-response', async (c) => {
-  const quotId = c.req.query('id')
+  const quotCode = c.req.query('code')
 
-  if (!quotId) {
+  if (!quotCode) {
     return c.html(`
       <div style="text-align:center;padding:40px;">
         <h2>Erro: Cotação não especificada</h2>
@@ -1422,17 +1422,17 @@ app.get('/quote-response', async (c) => {
     `)
   }
 
-  console.log('[COTAÇÃO-RESPOSTA] Abrindo formulário para:', quotId)
+  console.log('[COTAÇÃO-RESPOSTA] Abrindo formulário para:', quotCode)
 
   // Search for the quotation across all tenants
-  let quotCode = quotId
+  let quotId = ''
   let quotItems: any[] = []
   let quotDeadline = ''
   const allTenantEntries = Object.entries(tenants)
   for (const [, t] of allTenantEntries) {
-    const q = (t.quotations || []).find((q: any) => q.id === quotId)
+    const q = (t.quotations || []).find((q: any) => q.code === quotCode)
     if (q) {
-      quotCode = q.code || quotId
+      quotId = q.id || ''
       quotItems = q.items || []
       quotDeadline = q.deadline || ''
       break
