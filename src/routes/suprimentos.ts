@@ -1258,20 +1258,25 @@ app.get('/', (c) => {
   return c.html(layout('Suprimentos', content, 'suprimentos', userInfo))
 })
 
-// ── Interface pública para fornecedor responder cotação ─────────────────────
+// ── Interface pública para fornecedor responder cotação (redireciona para URL com código) ──
 app.get('/cotacao/:id/responder', (c) => {
   const quotId = c.req.param('id')
   const tenant = getCtxTenant(c)
-  const userInfo = getCtxUserInfo(c)
   const quotations = tenant.quotations || []
-  const suppliers = tenant.suppliers || []
-  const productSuppliers = tenant.productSuppliers || []
   const q = quotations.find((x: any) => x.id === quotId)
 
   if (!q) {
     return c.html(`<html><body style="font-family:sans-serif;padding:40px;text-align:center;">
       <h2 style="color:#dc2626;">Cotação não encontrada</h2><p>O link pode ter expirado ou ser inválido.</p></body></html>`, 404)
   }
+
+  if (q.code) {
+    return c.redirect(`/suprimentos/quote-response?code=${encodeURIComponent(q.code)}`, 301)
+  }
+
+  const userInfo = getCtxUserInfo(c)
+  const suppliers = tenant.suppliers || []
+  const productSuppliers = tenant.productSuppliers || []
 
   const firstItem = q.items[0]
   const ps = (productSuppliers as any[]).find((p: any) => p.productCode === firstItem?.productCode)
@@ -1691,7 +1696,21 @@ app.post('/api/quotations/:id/approve', async (c) => {
   
   const quotation = tenant.quotations.find((q: any) => q.id === id)
   if (!quotation) return err(c, 'Cotação não encontrada', 404)
-  
+
+  // ✅ Verificar duplicação: não criar pedido se já existe para esta cotação
+  if (!tenant.purchaseOrders) tenant.purchaseOrders = []
+  const existingOrder = tenant.purchaseOrders.find((po: any) => po.quotationId === id)
+  if (existingOrder) {
+    quotation.status = 'approved'
+    quotation.approvedBy = userId
+    quotation.approvedAt = new Date().toISOString()
+    markTenantModified(userId)
+    if (db && userId !== 'demo-tenant') {
+      await dbUpdate(db, 'quotations', id, userId, { status: 'approved' })
+    }
+    return ok(c, { quotation, purchaseOrder: existingOrder, pcCode: existingOrder.code, duplicate: true })
+  }
+
   quotation.status = 'approved'
   quotation.approvedBy = userId
   quotation.approvedAt = new Date().toISOString()
@@ -1701,32 +1720,46 @@ app.post('/api/quotations/:id/approve', async (c) => {
     await dbUpdate(db, 'quotations', id, userId, { status: 'approved' })
   }
   
+  // ✅ Usar melhor resposta para valor e fornecedor
+  const bestResponse = (quotation.supplierResponses || []).reduce((best: any, r: any) =>
+    (!best || r.totalPrice < best.totalPrice) ? r : best, null)
+  const totalValue = bestResponse?.totalPrice ||
+    (quotation.items || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
+  const supplierName = body.supplierName || bestResponse?.supplierName || quotation.supplierResponses?.[0]?.supplierName || 'Fornecedor'
+
+  // ✅ Verificar tipo de fornecedor para is_import
+  const suppliers = tenant.suppliers || []
+  const supplierObj = suppliers.find((s: any) => s.id === (bestResponse?.supplierId || quotation.supplierIds?.[0]))
+  const isImport = supplierObj?.type === 'importado'
+
   // Gerar Pedido de Compra automaticamente
   const pcId = genId('pc')
-  const pcCode = `PC-${new Date().getFullYear()}-${String((tenant.purchaseOrders || []).length + 1).padStart(4,'0')}`
+  const pcCode = `PC-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(4,'0')}`
   
   const purchaseOrder = {
     id: pcId,
     code: pcCode,
     quotationId: id,
-    supplierName: body.supplierName || quotation.supplierResponses?.[0]?.supplierName || 'Fornecedor',
+    quotationCode: quotation.code,
+    supplierName,
     items: quotation.items || [],
-    totalValue: quotation.items.reduce((sum: number, item: any) => sum + (item.quantity * (item.unitPrice || 0)), 0),
+    totalValue,
     currency: 'BRL',
-    status: 'confirmed',
-    isImport: false,
+    status: 'pending_approval',
+    isImport,
     createdAt: new Date().toISOString(),
     expectedDelivery: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   }
   
-  if (!tenant.purchaseOrders) tenant.purchaseOrders = []
   tenant.purchaseOrders.push(purchaseOrder)
   
   if (db && userId !== 'demo-tenant') {
     await dbInsertWithRetry(db, 'purchase_orders', {
-      id: pcId, user_id: userId, empresa_id: empresaId, code: pcCode, supplier_id: '',
-      supplier_name: purchaseOrder.supplierName, status: 'confirmed', total_value: purchaseOrder.totalValue,
-      currency: 'BRL', is_import: false, notes: JSON.stringify({ items: purchaseOrder.items }),
+      id: pcId, user_id: userId, empresa_id: empresaId, code: pcCode,
+      quotation_id: id,
+      supplier_id: bestResponse?.supplierId || quotation.supplierIds?.[0] || '',
+      supplier_name: purchaseOrder.supplierName, status: 'pending_approval', total_value: totalValue,
+      currency: 'BRL', is_import: isImport ? 1 : 0, notes: JSON.stringify({ items: purchaseOrder.items }),
     })
   }
   
@@ -1804,34 +1837,47 @@ app.post('/api/purchase-orders/create', async (c) => {
   if (quotIdx === -1) return err(c, 'Cotação não encontrada', 404)
   const quot = tenant.quotations[quotIdx]
   if (quot.status !== 'approved') return err(c, 'Cotação deve estar aprovada', 400)
+
+  // ✅ Verificar duplicação
+  if (!tenant.purchaseOrders) (tenant as any).purchaseOrders = []
+  const existingOrder = tenant.purchaseOrders.find((po: any) => po.quotationId === body.quotationId)
+  if (existingOrder) return err(c, 'Pedido para esta cotação já existe', 409)
+
   const id = genId('pc')
-  const code = `PED-${new Date().getFullYear()}-${String((tenant.purchaseOrders.length || 0) + 1).padStart(3,'0')}`
+  const code = `PED-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(3,'0')}`
   const bestResponse = (quot.supplierResponses || []).reduce((best: any, r: any) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
+
+  // ✅ Verificar tipo de fornecedor para is_import
+  const suppliers = tenant.suppliers || []
+  const supplierObj = suppliers.find((s: any) => s.id === (bestResponse?.supplierId || quot.supplierIds?.[0]))
+  const isImport = supplierObj?.type === 'importado'
+
   const pedido = {
     id, code,
     quotationId: quot.id,
     quotationCode: quot.code,
     supplierName: bestResponse?.supplierName || quot.supplierName || (quot.supplierResponses?.[0]?.supplierName || ''),
     items: quot.items || [],
-    totalValue: quot.totalValue || bestResponse?.totalPrice || (quot.supplierResponses?.[0]?.totalPrice || 0),
+    totalValue: bestResponse?.totalPrice || quot.totalValue || (quot.supplierResponses?.[0]?.totalPrice || 0),
     pedidoData: body.pedidoData || '',
     dataEntrega: body.dataEntrega || '',
     observacoes: body.observacoes || '',
     status: 'pending_approval',
+    isImport,
     createdAt: new Date().toISOString(),
     userId,
     empresaId,
   }
-  if (!tenant.purchaseOrders) (tenant as any).purchaseOrders = []
   tenant.purchaseOrders.push(pedido)
   console.log(`[PEDIDO] ✅ Pedido criado: ${pedido.id}`)
   markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
       id, user_id: userId, empresa_id: empresaId, code,
+      quotation_id: quot.id,
       supplier_id: bestResponse?.supplierId || quot.supplierIds?.[0] || '',
       supplier_name: pedido.supplierName, status: 'pending_approval',
-      total_value: pedido.totalValue, currency: 'BRL', is_import: false,
+      total_value: pedido.totalValue, currency: 'BRL', is_import: isImport ? 1 : 0,
       notes: JSON.stringify({ items: pedido.items, pedidoData: pedido.pedidoData, dataEntrega: pedido.dataEntrega, observacoes: pedido.observacoes }),
     })
     if (!persistResult.success) {
@@ -1877,11 +1923,62 @@ app.post('/api/purchase-orders/:id/reject', async (c) => {
   return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
 })
 
+// ── API: POST /suprimentos/api/purchase-orders/:id/status ────────────────────
+// Transição de status: pending_approval → approved → in_transit → delivered → closed
+//                                       ↓ rejected
+app.post('/api/purchase-orders/:id/status', async (c) => {
+  const pedidoId = c.req.param('id')
+  const db = getCtxDB(c)
+  const tenant = getCtxTenant(c)
+  const userId = getCtxUserId(c)
+  const body = await c.req.json().catch(() => ({})) as any
+  const newStatus = body.newStatus as string
+
+  const validStatuses = ['pending_approval', 'approved', 'in_transit', 'delivered', 'closed', 'rejected']
+  if (!newStatus || !validStatuses.includes(newStatus)) {
+    return err(c, `Status inválido. Permitidos: ${validStatuses.join(', ')}`, 400)
+  }
+
+  const allowedTransitions: Record<string, string[]> = {
+    pending_approval: ['approved', 'rejected'],
+    approved: ['in_transit', 'rejected'],
+    in_transit: ['delivered'],
+    delivered: ['closed'],
+    closed: [],
+    rejected: [],
+  }
+
+  const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
+  if (pedidoIdx === -1) return err(c, 'Pedido não encontrado', 404)
+
+  const currentStatus = tenant.purchaseOrders[pedidoIdx].status
+  const allowed = allowedTransitions[currentStatus] || []
+  if (!allowed.includes(newStatus)) {
+    return err(c, `Transição inválida: ${currentStatus} → ${newStatus}`, 400)
+  }
+
+  tenant.purchaseOrders[pedidoIdx].status = newStatus
+  tenant.purchaseOrders[pedidoIdx].statusUpdatedAt = new Date().toISOString()
+  if (body.notes) tenant.purchaseOrders[pedidoIdx].statusNotes = body.notes
+  console.log(`[PEDIDO] Status atualizado: ${pedidoId} → ${newStatus}`)
+  markTenantModified(userId)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'purchase_orders', pedidoId, userId, {
+      status: newStatus,
+      status_updated_at: tenant.purchaseOrders[pedidoIdx].statusUpdatedAt,
+    })
+  }
+
+  return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
+})
+
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
 app.post('/api/imports/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.invoiceNumber) return err(c, 'Número da Invoice obrigatório')
+  if (!body.supplierId) return err(c, 'Fornecedor obrigatório')
   const id = genId('imp')
   const code = `IMP-${new Date().getFullYear()}-${String((tenant.imports?.length || 0) + 1).padStart(3,'0')}`
   const imp = {
@@ -1892,11 +1989,15 @@ app.post('/api/imports/create', async (c) => {
   }
   if (!tenant.imports) (tenant as any).imports = []
   tenant.imports.push(imp)
+  markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'imports', {
+    const persistResult = await dbInsertWithRetry(db, 'imports', {
       id, user_id: userId, empresa_id: empresaId, code, invoice_number: imp.invoiceNumber,
-      supplier_id: imp.supplierId, status: 'waiting_ship',
+      supplier_id: imp.supplierId, supplier_name: imp.supplierName, modality: imp.modality, status: 'waiting_ship',
     })
+    if (!persistResult.success) {
+      console.warn(`[IMPORT] Falha ao persistir importação ${id} em D1: ${persistResult.error}`)
+    }
   }
   return ok(c, { imp, code })
 })
