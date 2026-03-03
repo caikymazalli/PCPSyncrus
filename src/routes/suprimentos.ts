@@ -1665,8 +1665,9 @@ app.post('/api/quotations/create', async (c) => {
   
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'quotations', {
-      id, user_id: userId, empresa_id: empresaId, title: quotation.descricao, status: 'pending_approval',
-      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations }),
+      id, user_id: userId, empresa_id: empresaId, code: quotation.code,
+      tipo: quotation.tipo, creator: quotation.createdBy, status: 'pending_approval',
+      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations, descricao: quotation.descricao }),
     })
     if (!persistResult.success) {
       console.error(`[ERROR] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
