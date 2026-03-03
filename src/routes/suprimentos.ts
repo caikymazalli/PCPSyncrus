@@ -201,7 +201,7 @@ app.get('/', (c) => {
           <div style="font-size:12px;font-weight:700;color:#1B4F72;">${q.code}</div>
           <div style="font-size:11px;color:#6c757d;">${q.items.length} item(ns) · ${q.supplierResponses.length > 0 ? 'R$ ' + (q.supplierResponses[0]?.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'Sem respostas'}</div>
         </div>
-        <button class="btn btn-success btn-sm" onclick="approveQuotation('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}','${escapeJsStr(q.supplierResponses[0]?.supplierName||'fornecedor')}')">
+        <button class="btn btn-success btn-sm" data-action="approve-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" data-supplier="${escapeHtmlAttr(q.supplierResponses[0]?.supplierName||'fornecedor')}">
           <i class="fas fa-check"></i> Aprovar
         </button>
       </div>`).join('')}
@@ -340,13 +340,13 @@ app.get('/', (c) => {
                   <td style="font-size:12px;color:#9ca3af;">${new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR')}</td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                      <button class="btn btn-secondary btn-sm" onclick="openQuotationDetail('${q.id}')" title="Ver detalhes"><i class="fas fa-eye"></i></button>
+                      <button class="btn btn-secondary btn-sm" data-action="view-quotation" data-id="${escapeHtmlAttr(q.id)}" title="Ver detalhes"><i class="fas fa-eye"></i></button>
                       ${q.status === 'pending_approval' ? `
-                      <button class="btn btn-success btn-sm" onclick="approveQuotation('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}','${escapeJsStr(q.supplierResponses[0]?.supplierName||'fornecedor')}')" title="Aprovar"><i class="fas fa-check"></i></button>
-                      <button class="btn btn-danger btn-sm" onclick="recusarCotacao('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}')" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
+                      <button class="btn btn-success btn-sm" data-action="approve-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" data-supplier="${escapeHtmlAttr(q.supplierResponses[0]?.supplierName||'fornecedor')}" title="Aprovar"><i class="fas fa-check"></i></button>
+                      <button class="btn btn-danger btn-sm" data-action="reject-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
                       ${q.status === 'sent' || q.status === 'awaiting_responses' ? `
-                      <button class="btn btn-secondary btn-sm" onclick="reenviarCotacao('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}')" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
-                      <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;" onclick="copySupplierLink('${q.id}')" title="Copiar link fornecedor"><i class="fas fa-link"></i></button>
+                      <button class="btn btn-secondary btn-sm" data-action="resend-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
+                      <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;" data-action="copy-supplier-link" data-id="${escapeHtmlAttr(q.id)}" title="Copiar link fornecedor"><i class="fas fa-link"></i></button>
                     </div>
                   </td>
                 </tr>`
@@ -382,7 +382,7 @@ app.get('/', (c) => {
                   <td><span class="badge ${si.badge}">${si.label}</span></td>
                   <td>
                     <div style="display:flex;gap:4px;">
-                      <button class="btn btn-secondary btn-sm" onclick="abrirModalPedidoCompra('${pc.id}')" title="Ver detalhes"><i class="fas fa-eye"></i></button>
+                      <button class="btn btn-secondary btn-sm" data-action="view-pc" data-id="${escapeHtmlAttr(pc.id)}" title="Ver detalhes"><i class="fas fa-eye"></i></button>
                       ${pc.isImport ? `<button class="btn btn-sm" style="background:#e8f4fd;color:#2980B9;border:1px solid #bee3f8;" onclick="switchTab('tabImportacao','suprimentos')" title="Ver importação"><i class="fas fa-ship"></i></button>` : ''}
                     </div>
                   </td>
@@ -420,7 +420,7 @@ app.get('/', (c) => {
               </div>
               <div style="display:flex;gap:8px;">
                 <span class="badge" style="background:${ti.bg};color:${ti.color};">${ti.label}</span>
-                <button class="btn btn-sm" style="background:#F39C12;color:white;border:none;border-radius:6px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;" onclick="dispararCotacao('${escapeJsStr(sid)}','${escapeJsStr(sup.name)}','${escapeJsStr(sup.email)}')">
+                <button class="btn btn-sm" style="background:#F39C12;color:white;border:none;border-radius:6px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;" data-action="disparar-cotacao" data-supplier-id="${escapeHtmlAttr(sid)}" data-supplier-name="${escapeHtmlAttr(sup.name)}" data-supplier-email="${escapeHtmlAttr(sup.email)}">
                   <i class="fas fa-paper-plane"></i> Disparar Cotação
                 </button>
               </div>
@@ -1352,6 +1352,20 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Modal: Detalhes do Pedido de Compra -->
+  <div class="modal-overlay" id="pedidoCompraDetailModal">
+    <div class="modal" style="max-width:620px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 id="pedidoDetailTitle" style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-shopping-cart" style="margin-right:8px;"></i>Detalhes do Pedido de Compra</h3>
+        <button onclick="closeModal('pedidoCompraDetailModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div id="pedidoDetailBody" style="padding:24px;max-height:70vh;overflow-y:auto;"></div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('pedidoCompraDetailModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
   // ── Cotações ──────────────────────────────────────────────────────────────
   async function approveQuotation(id, code, supplierName) {
@@ -1475,21 +1489,38 @@ app.get('/', (c) => {
     if (negArea) negArea.style.display = 'none';
     if (negObs) negObs.value = '';
 
-    // Montar botões de ação
+    // Montar botões de ação usando DOM API (evita onclick inline)
     const actDiv = document.getElementById('quotDetailActions');
-    let actHtml = '<button onclick="closeModal(&quot;quotationDetailModal&quot;)" class="btn btn-secondary">Fechar</button>';
+    while (actDiv.firstChild) actDiv.removeChild(actDiv.firstChild);
     if (canAct) {
-      const supName = ((q.supplierResponses||[])[0]?.supplierName||'fornecedor').replace(/'/g,"'");
+      const supName = ((q.supplierResponses||[])[0]?.supplierName||'fornecedor');
       window._detailQuotId = q.id;
       window._detailQuotCode = q.code;
       window._detailQuotSup = supName;
-      actHtml =
-        '<button onclick="rejectQuotationFromDetail()" class="btn" style="background:#dc2626;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times"></i> Negar</button>' +
-        '<button onclick="negotiateQuotationFromDetail()" class="btn" style="background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-comments"></i> Negociar</button>' +
-        '<button onclick="approveQuotationFromDetail()" class="btn btn-success" style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check"></i> Aprovar</button>' +
-        actHtml;
+      const btnNegar = document.createElement('button');
+      btnNegar.className = 'btn';
+      btnNegar.style.cssText = 'background:#dc2626;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;';
+      btnNegar.innerHTML = '<i class="fas fa-times"></i> Negar';
+      btnNegar.addEventListener('click', function() { rejectQuotationFromDetail(); });
+      actDiv.appendChild(btnNegar);
+      const btnNegociar = document.createElement('button');
+      btnNegociar.className = 'btn';
+      btnNegociar.style.cssText = 'background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;';
+      btnNegociar.innerHTML = '<i class="fas fa-comments"></i> Negociar';
+      btnNegociar.addEventListener('click', function() { negotiateQuotationFromDetail(); });
+      actDiv.appendChild(btnNegociar);
+      const btnAprovar = document.createElement('button');
+      btnAprovar.className = 'btn btn-success';
+      btnAprovar.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+      btnAprovar.innerHTML = '<i class="fas fa-check"></i> Aprovar';
+      btnAprovar.addEventListener('click', function() { approveQuotationFromDetail(); });
+      actDiv.appendChild(btnAprovar);
     }
-    actDiv.innerHTML = actHtml;
+    const btnFechar = document.createElement('button');
+    btnFechar.className = 'btn btn-secondary';
+    btnFechar.textContent = 'Fechar';
+    btnFechar.addEventListener('click', function() { closeModal('quotationDetailModal'); });
+    actDiv.appendChild(btnFechar);
     openModal('quotationDetailModal');
   }
 
@@ -1516,10 +1547,19 @@ app.get('/', (c) => {
     if (!negArea) return;
     if (negArea.style.display === 'none') {
       negArea.style.display = 'block';
-      // Replace action buttons with Confirmar Negociação
-      actDiv.innerHTML =
-        '<button onclick="cancelNegotiationFromDetail()" class="btn btn-secondary">Cancelar</button>' +
-        '<button onclick="confirmNegotiateQuotation()" class="btn" style="background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-paper-plane"></i> Confirmar Negociação</button>';
+      // Replace action buttons with Confirmar Negociação using DOM API
+      while (actDiv.firstChild) actDiv.removeChild(actDiv.firstChild);
+      const btnCancelar = document.createElement('button');
+      btnCancelar.className = 'btn btn-secondary';
+      btnCancelar.textContent = 'Cancelar';
+      btnCancelar.addEventListener('click', function() { cancelNegotiationFromDetail(); });
+      actDiv.appendChild(btnCancelar);
+      const btnConfirmar = document.createElement('button');
+      btnConfirmar.className = 'btn';
+      btnConfirmar.style.cssText = 'background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;';
+      btnConfirmar.innerHTML = '<i class="fas fa-paper-plane"></i> Confirmar Negociação';
+      btnConfirmar.addEventListener('click', function() { confirmNegotiateQuotation(); });
+      actDiv.appendChild(btnConfirmar);
     }
   }
 
@@ -2192,11 +2232,27 @@ app.get('/', (c) => {
 
   // ── Event delegation for data-action buttons (avoids unsafe onclick inline) ─
   document.addEventListener('click', function(e) {
-    const btn = (e.target as Element).closest('[data-action="upload-doc"]') as HTMLElement | null;
-    if (btn) {
+    const btn = (e.target as Element).closest('[data-action]') as HTMLElement | null;
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'upload-doc') {
       const idx = parseInt(btn.dataset.slotIndex || '0', 10);
       const docName = btn.dataset.slotDoc || '';
       uploadDocSlot(idx, docName);
+    } else if (action === 'view-quotation') {
+      openQuotationDetail(btn.dataset.id || '');
+    } else if (action === 'approve-quotation') {
+      approveQuotation(btn.dataset.id || '', btn.dataset.code || '', btn.dataset.supplier || 'fornecedor');
+    } else if (action === 'reject-quotation') {
+      recusarCotacao(btn.dataset.id || '', btn.dataset.code || '');
+    } else if (action === 'resend-quotation') {
+      reenviarCotacao(btn.dataset.id || '', btn.dataset.code || '');
+    } else if (action === 'copy-supplier-link') {
+      copySupplierLink(btn.dataset.id || '');
+    } else if (action === 'view-pc') {
+      abrirModalPedidoCompra(btn.dataset.id || '');
+    } else if (action === 'disparar-cotacao') {
+      dispararCotacao(btn.dataset.supplierId || '', btn.dataset.supplierName || '', btn.dataset.supplierEmail || '');
     }
   });
   // Auto close popups after 12s
