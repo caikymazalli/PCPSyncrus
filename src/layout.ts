@@ -380,6 +380,8 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 </script>
 <script src="/static/pedido-modal.js"></script>
+<script src="/static/suprimentos-init.js"></script>
+<script src="/static/quotations-actions.js"></script>
 </body>
 </html>`;
 }
