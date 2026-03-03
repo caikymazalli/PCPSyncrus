@@ -761,6 +761,41 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar product_supplier_links:', (e as any).message)
       tenant.productSupplierLinks = []
     }
+    // Load purchase_orders
+    try {
+      const orders = await db.prepare(
+        `SELECT * FROM purchase_orders WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`
+      ).bind(...bindEmpresa([userId])).all()
+      if (orders.results && orders.results.length > 0) {
+        const existingIds = new Set((tenant.purchaseOrders || []).map((o: any) => o.id))
+        const fromDb: any[] = (orders.results as any[])
+          .filter((r: any) => !existingIds.has(r.id))
+          .map((r: any) => {
+            let notes: any = {}
+            try { notes = JSON.parse(r.notes || '{}') } catch { notes = {} }
+            return {
+              id: r.id,
+              code: r.code,
+              quotationId: r.quotation_id,
+              supplierName: r.supplier_name,
+              status: r.status,
+              totalValue: r.total_value,
+              items: notes.items || [],
+              pedidoData: notes.pedidoData || '',
+              dataEntrega: notes.dataEntrega || '',
+              observacoes: notes.observacoes || '',
+              createdAt: r.created_at,
+              approvedAt: r.approved_at || '',
+              approvedBy: r.approved_by || '',
+            }
+          })
+        tenant.purchaseOrders = [...(tenant.purchaseOrders || []), ...fromDb]
+        console.log(`[HYDRATION] ✅ ${tenant.purchaseOrders.length} purchase orders carregados de D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar purchase_orders:', (e as any).message)
+      if (!tenant.purchaseOrders) tenant.purchaseOrders = []
+    }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
     // Reset the hydration timestamp so the next request retries loading from D1.
