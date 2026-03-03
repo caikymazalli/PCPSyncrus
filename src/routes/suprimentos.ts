@@ -1911,14 +1911,23 @@ app.post('/api/purchase-orders/:id/approve', async (c) => {
   const userId = getCtxUserId(c)
   const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
   if (pedidoIdx === -1) return err(c, 'Pedido não encontrado', 404)
-  tenant.purchaseOrders[pedidoIdx].status = 'approved'
-  tenant.purchaseOrders[pedidoIdx].approvedAt = new Date().toISOString()
+  const pedido = tenant.purchaseOrders[pedidoIdx]
+  if (pedido.status === 'approved') return err(c, 'Pedido já foi aprovado', 409)
+  pedido.status = 'approved'
+  pedido.approvedAt = new Date().toISOString()
+  pedido.approvedBy = userId
   console.log(`[PEDIDO] ✅ Pedido aprovado: ${pedidoId}`)
   markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'purchase_orders', pedidoId, userId, { status: 'approved', approved_at: tenant.purchaseOrders[pedidoIdx].approvedAt })
+    await dbUpdate(db, 'purchase_orders', pedidoId, userId, { status: 'approved', approved_at: pedido.approvedAt, approved_by: userId })
   }
-  return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
+  // Determinar ação com base no tipo do pedido
+  const isImport = pedido.isImport === true
+  const action = isImport ? 'create_import_draft' : 'generate_pdf'
+  const message = isImport
+    ? 'Pedido aprovado. Gerando rascunho de importação...'
+    : 'Pedido aprovado. PDF disponível para impressão.'
+  return ok(c, { purchaseOrder: pedido, action, message })
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/reject ────────────────────
@@ -1927,16 +1936,20 @@ app.post('/api/purchase-orders/:id/reject', async (c) => {
   const db = getCtxDB(c)
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
+  const body = await c.req.json().catch(() => ({})) as any
   const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
   if (pedidoIdx === -1) return err(c, 'Pedido não encontrado', 404)
-  tenant.purchaseOrders[pedidoIdx].status = 'rejected'
-  tenant.purchaseOrders[pedidoIdx].rejectedAt = new Date().toISOString()
+  const pedido = tenant.purchaseOrders[pedidoIdx]
+  pedido.status = 'rejected'
+  pedido.rejectedAt = new Date().toISOString()
+  pedido.rejectedBy = userId
+  pedido.rejectionReason = body.reason || ''
   console.log(`[PEDIDO] ✅ Pedido recusado: ${pedidoId}`)
   markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'purchase_orders', pedidoId, userId, { status: 'rejected', rejected_at: tenant.purchaseOrders[pedidoIdx].rejectedAt })
+    await dbUpdate(db, 'purchase_orders', pedidoId, userId, { status: 'rejected', rejected_at: pedido.rejectedAt, rejected_by: userId, rejection_reason: pedido.rejectionReason })
   }
-  return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
+  return ok(c, { purchaseOrder: pedido, message: 'Pedido rejeitado' })
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/status ────────────────────
@@ -1950,14 +1963,15 @@ app.post('/api/purchase-orders/:id/status', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const newStatus = body.newStatus as string
 
-  const validStatuses = ['pending_approval', 'approved', 'in_transit', 'delivered', 'closed', 'rejected']
+  const validStatuses = ['pending_approval', 'approved', 'in_transit', 'delivered', 'closed', 'rejected', 'in_import_process']
   if (!newStatus || !validStatuses.includes(newStatus)) {
     return err(c, `Status inválido. Permitidos: ${validStatuses.join(', ')}`, 400)
   }
 
   const allowedTransitions: Record<string, string[]> = {
     pending_approval: ['approved', 'rejected'],
-    approved: ['in_transit', 'rejected'],
+    approved: ['in_transit', 'in_import_process', 'rejected'],
+    in_import_process: ['in_transit', 'closed'],
     in_transit: ['delivered'],
     delivered: ['closed'],
     closed: [],
@@ -1987,6 +2001,119 @@ app.post('/api/purchase-orders/:id/status', async (c) => {
   }
 
   return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
+})
+
+// ── API: POST /suprimentos/api/imports/from-purchase-order/:pedidoId ─────────
+app.post('/api/imports/from-purchase-order/:pedidoId', async (c) => {
+  const pedidoId = c.req.param('pedidoId')
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const pedido = (tenant.purchaseOrders || []).find((p: any) => p.id === pedidoId)
+  if (!pedido) return err(c, 'Pedido não encontrado', 404)
+  if (!pedido.isImport) return err(c, 'Pedido não é de importação', 400)
+
+  const importId = genId('imp')
+  const code = `IMP-${new Date().getFullYear()}-${String((tenant.imports?.length || 0) + 1).padStart(3,'0')}`
+  const importDraft: any = {
+    id: importId,
+    code,
+    purchaseOrderId: pedidoId,
+    invoiceNumber: '',
+    supplierId: pedido.supplierId || pedido.supplier_id || '',
+    supplierName: pedido.supplierName || '',
+    modality: '',
+    status: 'draft',
+    items: (pedido.items || []).map((item: any) => ({
+      productCode: item.productCode || item.code || '',
+      productName: item.productName || item.name || '',
+      quantity: item.quantity || 0,
+      unitPrice: item.unitPrice || item.unit_price || 0,
+      ncm: '',
+      descriptionPT: '',
+      descriptionEN: '',
+    })),
+    notes: `Gerado automaticamente a partir do Pedido ${pedido.code}`,
+    createdAt: new Date().toISOString(),
+  }
+  if (!tenant.imports) (tenant as any).imports = []
+  tenant.imports.push(importDraft)
+
+  // Atualizar status do pedido
+  pedido.status = 'in_import_process'
+  pedido.importProcessId = importId
+  markTenantModified(userId)
+
+  if (db && userId !== 'demo-tenant') {
+    const persistResult = await dbInsertWithRetry(db, 'imports', {
+      id: importId, user_id: userId, empresa_id: empresaId, code,
+      purchase_order_id: pedidoId,
+      invoice_number: '',
+      supplier_id: importDraft.supplierId,
+      supplier_name: importDraft.supplierName,
+      modality: '',
+      status: 'draft',
+      notes: JSON.stringify({ items: importDraft.items, notes: importDraft.notes }),
+    })
+    if (!persistResult.success) {
+      console.warn(`[IMPORT] Falha ao persistir rascunho de importação ${importId} em D1: ${persistResult.error}`)
+    }
+    await dbUpdate(db, 'purchase_orders', pedidoId, userId, {
+      status: 'in_import_process',
+      import_process_id: importId,
+    })
+  }
+
+  return ok(c, {
+    import: importDraft,
+    message: 'Rascunho de importação criado com sucesso',
+    redirectTo: `/suprimentos?tab=importacao&draft=${importId}`,
+  })
+})
+
+// ── API: GET /suprimentos/api/purchase-orders/:id/pdf ────────────────────────
+app.get('/api/purchase-orders/:id/pdf', async (c) => {
+  const tenant = getCtxTenant(c)
+  const pedidoId = c.req.param('id')
+  const pedido = (tenant.purchaseOrders || []).find((p: any) => p.id === pedidoId)
+  if (!pedido) return err(c, 'Pedido não encontrado', 404)
+
+  const itemsHtml = (pedido.items || []).map((item: any) => {
+    const total = ((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)
+    return `<tr>
+      <td style="padding:8px;border:1px solid #ddd;">${escapeJsonString(item.productCode || item.code || '—')}</td>
+      <td style="padding:8px;border:1px solid #ddd;">${escapeJsonString(item.productName || item.name || '—')}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center;">${item.quantity || 0}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:right;">R$ ${(item.unitPrice || 0).toFixed(2)}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:right;">R$ ${total}</td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Pedido ${escapeJsonString(pedido.code || pedidoId)}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:32px;color:#222;}
+    h1{color:#1B4F72;}
+    table{width:100%;border-collapse:collapse;margin-top:16px;}
+    th{background:#1B4F72;color:#fff;padding:8px;border:1px solid #ddd;text-align:left;}
+    .total{font-size:16px;font-weight:bold;text-align:right;margin-top:12px;}
+    .footer{margin-top:32px;font-size:12px;color:#666;border-top:1px solid #ddd;padding-top:12px;}
+    @media print{button{display:none;}}
+  </style></head><body>
+  <h1>Pedido de Compra — ${escapeJsonString(pedido.code || pedidoId)}</h1>
+  <p><strong>Fornecedor:</strong> ${escapeJsonString(pedido.supplierName || '—')}</p>
+  <p><strong>Data:</strong> ${pedido.pedidoData ? new Date(pedido.pedidoData).toLocaleDateString('pt-BR') : pedido.createdAt ? new Date(pedido.createdAt).toLocaleDateString('pt-BR') : '—'}</p>
+  <p><strong>Data de Entrega:</strong> ${pedido.dataEntrega ? new Date(pedido.dataEntrega + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</p>
+  <table><thead><tr><th>Código</th><th>Descrição</th><th>Qtd</th><th>Preço Unit.</th><th>Total</th></tr></thead>
+  <tbody>${itemsHtml}</tbody></table>
+  <div class="total">Valor Total: R$ ${(pedido.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+  ${pedido.observacoes ? `<p><strong>Observações:</strong> ${escapeJsonString(pedido.observacoes)}</p>` : ''}
+  <div class="footer">Gerado em ${new Date().toLocaleString('pt-BR')} · PCPSyncrus</div>
+  <script>window.onload = function(){ window.print(); }</script>
+  </body></html>`
+
+  return c.html(html)
 })
 
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
