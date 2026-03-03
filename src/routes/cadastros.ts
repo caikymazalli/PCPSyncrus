@@ -376,9 +376,9 @@ app.get('/', (c) => {
       </div>
       <div style="padding:24px;">
         <div class="form-group">
-          <label class="form-label">Produto / Item *</label>
-          <select class="form-control" id="vincProduto">
-            <option value="">Selecionar produto ou matéria-prima...</option>
+          <label class="form-label" for="vincProduto">Produtos / Itens *</label>
+          <small id="vincProdutoHint" style="font-size:11px;color:#9ca3af;display:block;margin-bottom:4px;">(Ctrl/Cmd para selecionar múltiplos)</small>
+          <select class="form-control" id="vincProduto" multiple size="5" style="height:auto;" aria-describedby="vincProdutoHint" aria-multiselectable="true">
             ${allItems.map((i: any) => `<option value="${i.code}">${i.name} (${i.code})</option>`).join('')}
           </select>
         </div>
@@ -595,30 +595,36 @@ app.post('/api/categories', async (c) => {
 app.post('/api/supplier/vinc', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
-  if (!body || !body.productCode) return err(c, 'Produto obrigatório')
+  // Accept productCodes (array) or legacy productCode (string)
+  const productCodes: string[] = Array.isArray(body?.productCodes)
+    ? body.productCodes.filter(Boolean)
+    : body?.productCode ? [body.productCode] : []
+  if (!body || productCodes.length === 0) return err(c, 'Produto obrigatório')
   // Guardar vinculação na lista de productSuppliers do tenant
   if (!tenant.productSuppliers) tenant.productSuppliers = []
-  // Remove vinculações anteriores do mesmo produto
-  tenant.productSuppliers = tenant.productSuppliers.filter((v: any) => v.productCode !== body.productCode)
-  if (body.type === 'external' && Array.isArray(body.suppliers)) {
-    const supplierIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean)
-    const priorities: Record<string, number> = {}
-    body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority || 1 })
-    tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds, priorities, internalProduction: false })
-  } else if (body.type === 'internal') {
-    tenant.productSuppliers.push({ id: genId('vinc'), productCode: body.productCode, supplierIds: [], priorities: {}, internalProduction: true })
-  }
-  // Atualizar supplier_id_1/2/3/4 no produto em memória
-  const product = tenant.products?.find((p: any) => p.code === body.productCode)
-  if (product && body.type === 'external' && Array.isArray(body.suppliers)) {
-    const sortedIds = body.suppliers
-      .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
-      .map((s: any) => s.supplierId)
-      .filter(Boolean)
-    product.supplier_id_1 = sortedIds[0] || ''
-    product.supplier_id_2 = sortedIds[1] || ''
-    product.supplier_id_3 = sortedIds[2] || ''
-    product.supplier_id_4 = sortedIds[3] || ''
+  for (const productCode of productCodes) {
+    // Remove vinculações anteriores do mesmo produto
+    tenant.productSuppliers = tenant.productSuppliers.filter((v: any) => v.productCode !== productCode)
+    if (body.type === 'external' && Array.isArray(body.suppliers)) {
+      const supplierIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean)
+      const priorities: Record<string, number> = {}
+      body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority || 1 })
+      tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds, priorities, internalProduction: false })
+    } else if (body.type === 'internal') {
+      tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds: [], priorities: {}, internalProduction: true })
+    }
+    // Atualizar supplier_id_1/2/3/4 no produto em memória
+    const product = tenant.products?.find((p: any) => p.code === productCode)
+    if (product && body.type === 'external' && Array.isArray(body.suppliers)) {
+      const sortedIds = body.suppliers
+        .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
+        .map((s: any) => s.supplierId)
+        .filter(Boolean)
+      product.supplier_id_1 = sortedIds[0] || ''
+      product.supplier_id_2 = sortedIds[1] || ''
+      product.supplier_id_3 = sortedIds[2] || ''
+      product.supplier_id_4 = sortedIds[3] || ''
+    }
   }
   // Persistir em D1
   if (db && userId !== 'demo-tenant') {
@@ -711,82 +717,86 @@ app.post('/api/supplier/vinc', async (c) => {
       } catch (e: any) {
         console.warn('[VINCULAÇÃO] Aviso ao criar índices:', e.message)
       }
-      // UPSERT: fetch existing links first to avoid unconditional DELETE
-      const existingRows = await db.prepare('SELECT id, supplier_id, priority, internal_production FROM product_suppliers WHERE product_code = ? AND user_id = ?')
-        .bind(body.productCode, userId).all()
-      const existingLinks: Array<{ id: string; supplier_id: string; priority: number; internal_production: number }> =
-        (existingRows.results ?? []) as any
-      if (body.type === 'external' && Array.isArray(body.suppliers)) {
-        const incomingIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean) as string[]
-        const existingExternalLinks = existingLinks.filter(r => !r.internal_production)
-        // DELETE suppliers that were removed and internal_production rows (switching to external)
-        const idsToDelete = [
-          ...existingExternalLinks.filter(r => !incomingIds.includes(r.supplier_id)),
-          ...existingLinks.filter(r => r.internal_production),
-        ].map(r => r.id)
-        if (idsToDelete.length > 0) {
-          const placeholders = idsToDelete.map(() => '?').join(', ')
-          await db.prepare(`DELETE FROM product_suppliers WHERE id IN (${placeholders})`)
-            .bind(...idsToDelete).run()
-        }
-        // INSERT new suppliers / UPDATE priority for existing
-        for (const sup of body.suppliers) {
-          if (!sup.supplierId) continue
-          const existingRow = existingExternalLinks.find(r => r.supplier_id === sup.supplierId)
-          if (existingRow) {
-            // UPDATE priority if changed
-            if (existingRow.priority !== (sup.priority || 1)) {
-              await db.prepare('UPDATE product_suppliers SET priority = ? WHERE id = ?')
-                .bind(sup.priority || 1, existingRow.id).run()
+      // Persist each product code
+      for (const productCode of productCodes) {
+        const product = tenant.products?.find((p: any) => p.code === productCode)
+        // UPSERT: fetch existing links first to avoid unconditional DELETE
+        const existingRows = await db.prepare('SELECT id, supplier_id, priority, internal_production FROM product_suppliers WHERE product_code = ? AND user_id = ?')
+          .bind(productCode, userId).all()
+        const existingLinks: Array<{ id: string; supplier_id: string; priority: number; internal_production: number }> =
+          (existingRows.results ?? []) as any
+        if (body.type === 'external' && Array.isArray(body.suppliers)) {
+          const incomingIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean) as string[]
+          const existingExternalLinks = existingLinks.filter(r => !r.internal_production)
+          // DELETE suppliers that were removed and internal_production rows (switching to external)
+          const idsToDelete = [
+            ...existingExternalLinks.filter(r => !incomingIds.includes(r.supplier_id)),
+            ...existingLinks.filter(r => r.internal_production),
+          ].map(r => r.id)
+          if (idsToDelete.length > 0) {
+            const placeholders = idsToDelete.map(() => '?').join(', ')
+            await db.prepare(`DELETE FROM product_suppliers WHERE id IN (${placeholders})`)
+              .bind(...idsToDelete).run()
+          }
+          // INSERT new suppliers / UPDATE priority for existing
+          for (const sup of body.suppliers) {
+            if (!sup.supplierId) continue
+            const existingRow = existingExternalLinks.find(r => r.supplier_id === sup.supplierId)
+            if (existingRow) {
+              // UPDATE priority if changed
+              if (existingRow.priority !== (sup.priority || 1)) {
+                await db.prepare('UPDATE product_suppliers SET priority = ? WHERE id = ?')
+                  .bind(sup.priority || 1, existingRow.id).run()
+              }
+            } else {
+              // INSERT new supplier link
+              const persistResult = await dbInsertWithRetry(db, 'product_suppliers', {
+                id: genId('ps'),
+                user_id: userId,
+                empresa_id: empresaId,
+                product_id: product?.id || '',
+                product_code: productCode,
+                supplier_id: sup.supplierId,
+                priority: sup.priority || 1,
+                internal_production: 0,
+              })
+              if (!persistResult.success) {
+                console.error(`[VINCULAÇÃO] Falha ao persistir ${productCode} x ${sup.supplierId}: ${persistResult.error}`)
+                return err(c, `Falha ao persistir vinculação em D1: ${persistResult.error}`, 500)
+              }
             }
-          } else {
-            // INSERT new supplier link
-            const persistResult = await dbInsertWithRetry(db, 'product_suppliers', {
+          }
+          // Atualizar colunas supplier_id_1/2/3/4 no produto em D1
+          const sortedIds = body.suppliers
+            .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
+            .map((s: any) => s.supplierId)
+            .filter(Boolean)
+          await db.prepare(
+            `UPDATE products SET supplier_id_1 = ?, supplier_id_2 = ?, supplier_id_3 = ?, supplier_id_4 = ? WHERE user_id = ? AND code = ?`
+          ).bind(sortedIds[0] || null, sortedIds[1] || null, sortedIds[2] || null, sortedIds[3] || null, userId, productCode).run()
+          console.log(`[VINCULAÇÃO] Fornecedores 1/2/3/4 atualizados em D1 para ${productCode}`)
+        } else if (body.type === 'internal') {
+          // DELETE external supplier rows if switching to internal
+          const externalIds = existingLinks.filter(r => !r.internal_production).map(r => r.id)
+          if (externalIds.length > 0) {
+            const placeholders = externalIds.map(() => '?').join(', ')
+            await db.prepare(`DELETE FROM product_suppliers WHERE id IN (${placeholders})`)
+              .bind(...externalIds).run()
+          }
+          // Only insert internal_production row if not already present
+          const hasInternal = existingLinks.some(r => r.internal_production)
+          if (!hasInternal) {
+            await dbInsertWithRetry(db, 'product_suppliers', {
               id: genId('ps'),
               user_id: userId,
               empresa_id: empresaId,
               product_id: product?.id || '',
-              product_code: body.productCode,
-              supplier_id: sup.supplierId,
-              priority: sup.priority || 1,
-              internal_production: 0,
+              product_code: productCode,
+              supplier_id: '',
+              priority: 1,
+              internal_production: 1,
             })
-            if (!persistResult.success) {
-              console.error(`[VINCULAÇÃO] Falha ao persistir ${body.productCode} x ${sup.supplierId}: ${persistResult.error}`)
-              return err(c, `Falha ao persistir vinculação em D1: ${persistResult.error}`, 500)
-            }
           }
-        }
-        // Atualizar colunas supplier_id_1/2/3/4 no produto em D1
-        const sortedIds = body.suppliers
-          .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
-          .map((s: any) => s.supplierId)
-          .filter(Boolean)
-        await db.prepare(
-          `UPDATE products SET supplier_id_1 = ?, supplier_id_2 = ?, supplier_id_3 = ?, supplier_id_4 = ? WHERE user_id = ? AND code = ?`
-        ).bind(sortedIds[0] || null, sortedIds[1] || null, sortedIds[2] || null, sortedIds[3] || null, userId, body.productCode).run()
-        console.log(`[VINCULAÇÃO] Fornecedores 1/2/3/4 atualizados em D1 para ${body.productCode}`)
-      } else if (body.type === 'internal') {
-        // DELETE external supplier rows if switching to internal
-        const externalIds = existingLinks.filter(r => !r.internal_production).map(r => r.id)
-        if (externalIds.length > 0) {
-          const placeholders = externalIds.map(() => '?').join(', ')
-          await db.prepare(`DELETE FROM product_suppliers WHERE id IN (${placeholders})`)
-            .bind(...externalIds).run()
-        }
-        // Only insert internal_production row if not already present
-        const hasInternal = existingLinks.some(r => r.internal_production)
-        if (!hasInternal) {
-          await dbInsertWithRetry(db, 'product_suppliers', {
-            id: genId('ps'),
-            user_id: userId,
-            empresa_id: empresaId,
-            product_id: product?.id || '',
-            product_code: body.productCode,
-            supplier_id: '',
-            priority: 1,
-            internal_production: 1,
-          })
         }
       }
     } catch (e) {
