@@ -711,24 +711,50 @@ app.post('/api/supplier/vinc', async (c) => {
       } catch (e: any) {
         console.warn('[VINCULAÇÃO] Aviso ao criar índices:', e.message)
       }
-      await db.prepare('DELETE FROM product_suppliers WHERE product_code = ? AND user_id = ?')
-        .bind(body.productCode, userId).run()
+      // UPSERT: fetch existing links first to avoid unconditional DELETE
+      const existingRows = await db.prepare('SELECT id, supplier_id, priority, internal_production FROM product_suppliers WHERE product_code = ? AND user_id = ?')
+        .bind(body.productCode, userId).all()
+      const existingLinks: Array<{ id: string; supplier_id: string; priority: number; internal_production: number }> =
+        (existingRows.results ?? []) as any
       if (body.type === 'external' && Array.isArray(body.suppliers)) {
+        const incomingIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean) as string[]
+        const existingExternalLinks = existingLinks.filter(r => !r.internal_production)
+        // DELETE suppliers that were removed and internal_production rows (switching to external)
+        const idsToDelete = [
+          ...existingExternalLinks.filter(r => !incomingIds.includes(r.supplier_id)),
+          ...existingLinks.filter(r => r.internal_production),
+        ].map(r => r.id)
+        if (idsToDelete.length > 0) {
+          const placeholders = idsToDelete.map(() => '?').join(', ')
+          await db.prepare(`DELETE FROM product_suppliers WHERE id IN (${placeholders})`)
+            .bind(...idsToDelete).run()
+        }
+        // INSERT new suppliers / UPDATE priority for existing
         for (const sup of body.suppliers) {
           if (!sup.supplierId) continue
-          const persistResult = await dbInsertWithRetry(db, 'product_suppliers', {
-            id: genId('ps'),
-            user_id: userId,
-            empresa_id: empresaId,
-            product_id: product?.id || '',
-            product_code: body.productCode,
-            supplier_id: sup.supplierId,
-            priority: sup.priority || 1,
-            internal_production: 0,
-          })
-          if (!persistResult.success) {
-            console.error(`[VINCULAÇÃO] Falha ao persistir ${body.productCode} x ${sup.supplierId}: ${persistResult.error}`)
-            return err(c, `Falha ao persistir vinculação em D1: ${persistResult.error}`, 500)
+          const existingRow = existingExternalLinks.find(r => r.supplier_id === sup.supplierId)
+          if (existingRow) {
+            // UPDATE priority if changed
+            if (existingRow.priority !== (sup.priority || 1)) {
+              await db.prepare('UPDATE product_suppliers SET priority = ? WHERE id = ?')
+                .bind(sup.priority || 1, existingRow.id).run()
+            }
+          } else {
+            // INSERT new supplier link
+            const persistResult = await dbInsertWithRetry(db, 'product_suppliers', {
+              id: genId('ps'),
+              user_id: userId,
+              empresa_id: empresaId,
+              product_id: product?.id || '',
+              product_code: body.productCode,
+              supplier_id: sup.supplierId,
+              priority: sup.priority || 1,
+              internal_production: 0,
+            })
+            if (!persistResult.success) {
+              console.error(`[VINCULAÇÃO] Falha ao persistir ${body.productCode} x ${sup.supplierId}: ${persistResult.error}`)
+              return err(c, `Falha ao persistir vinculação em D1: ${persistResult.error}`, 500)
+            }
           }
         }
         // Atualizar colunas supplier_id_1/2/3/4 no produto em D1
@@ -741,16 +767,27 @@ app.post('/api/supplier/vinc', async (c) => {
         ).bind(sortedIds[0] || null, sortedIds[1] || null, sortedIds[2] || null, sortedIds[3] || null, userId, body.productCode).run()
         console.log(`[VINCULAÇÃO] Fornecedores 1/2/3/4 atualizados em D1 para ${body.productCode}`)
       } else if (body.type === 'internal') {
-        await dbInsertWithRetry(db, 'product_suppliers', {
-          id: genId('ps'),
-          user_id: userId,
-          empresa_id: empresaId,
-          product_id: product?.id || '',
-          product_code: body.productCode,
-          supplier_id: '',
-          priority: 1,
-          internal_production: 1,
-        })
+        // DELETE external supplier rows if switching to internal
+        const externalIds = existingLinks.filter(r => !r.internal_production).map(r => r.id)
+        if (externalIds.length > 0) {
+          const placeholders = externalIds.map(() => '?').join(', ')
+          await db.prepare(`DELETE FROM product_suppliers WHERE id IN (${placeholders})`)
+            .bind(...externalIds).run()
+        }
+        // Only insert internal_production row if not already present
+        const hasInternal = existingLinks.some(r => r.internal_production)
+        if (!hasInternal) {
+          await dbInsertWithRetry(db, 'product_suppliers', {
+            id: genId('ps'),
+            user_id: userId,
+            empresa_id: empresaId,
+            product_id: product?.id || '',
+            product_code: body.productCode,
+            supplier_id: '',
+            priority: 1,
+            internal_production: 1,
+          })
+        }
       }
     } catch (e) {
       console.error('[VINCULAÇÃO] Erro ao persistir em D1:', e)
