@@ -1449,17 +1449,17 @@ app.get('/', (c) => {
     const canAct = !finalStatuses.includes(q.status);
 
     const si = statusInfoData[q.status] || statusInfoData.sent;
-    document.getElementById('quotDetailTitle').innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>' + q.code;
+    document.getElementById('quotDetailTitle').innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>' + escHtml(q.code);
     let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">' +
-      detRow('Código', q.code) + detRow('Status', '<span class="badge" style="background:'+si.bg+';color:'+si.color+';">'+si.label+'</span>') +
-      detRow('Criado por', q.createdBy || '—') + detRow('Data', new Date((q.createdAt||new Date().toISOString())+'T12:00:00').toLocaleDateString('pt-BR')) +
-      (q.approvedBy ? detRow('Aprovado por', q.approvedBy) + detRow('Aprovação', new Date((q.approvedAt||'')+'T12:00:00').toLocaleDateString('pt-BR')) : '') +
-      (q.rejectionReason ? detRow('Motivo Negação', q.rejectionReason) : '') +
-      (q.negotiationObs ? detRow('Obs. Negociação', q.negotiationObs) : '') +
+      detRow('Código', escHtml(q.code)) + detRow('Status', '<span class="badge" style="background:'+escHtml(si.bg)+';color:'+escHtml(si.color)+';">'+escHtml(si.label)+'</span>') +
+      detRow('Criado por', escHtml(q.createdBy || '—')) + detRow('Data', new Date((q.createdAt||new Date().toISOString())+'T12:00:00').toLocaleDateString('pt-BR')) +
+      (q.approvedBy ? detRow('Aprovado por', escHtml(q.approvedBy)) + detRow('Aprovação', new Date((q.approvedAt||'')+'T12:00:00').toLocaleDateString('pt-BR')) : '') +
+      (q.rejectionReason ? detRow('Motivo Negação', escHtml(q.rejectionReason)) : '') +
+      (q.negotiationObs ? detRow('Obs. Negociação', escHtml(q.negotiationObs)) : '') +
       '</div>';
     html += '<div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Itens Solicitados</div>';
     html += '<div class="table-wrapper" style="margin-bottom:16px;"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Unidade</th></tr></thead><tbody>';
-    for (const it of (q.items||[])) html += '<tr><td>'+(it.productName||'')+'</td><td><strong>'+(it.quantity||0)+'</strong></td><td>'+(it.unit||'un')+'</td></tr>';
+    for (const it of (q.items||[])) html += '<tr><td>'+escHtml(it.productName||'')+'</td><td><strong>'+(it.quantity||0)+'</strong></td><td>'+escHtml(it.unit||'un')+'</td></tr>';
     html += '</tbody></table></div>';
     if ((q.supplierResponses||[]).length > 0) {
       const best = q.supplierResponses.reduce(function(b, r) { return (!b || r.totalPrice < b.totalPrice) ? r : b; }, null);
@@ -1469,14 +1469,14 @@ app.get('/', (c) => {
         const isBest = r.supplierName === best.supplierName;
         html += '<div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid '+(isBest?'#27AE60':'#d1d5db')+';">' +
           '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">' +
-          '<div style="font-size:13px;font-weight:700;color:#374151;">' + r.supplierName + '</div>' +
+          '<div style="font-size:13px;font-weight:700;color:#374151;">' + escHtml(r.supplierName) + '</div>' +
           (isBest ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-crown" style="font-size:9px;"></i> Melhor Preço</span>' : '') +
           '</div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">' +
           '<div><div style="font-size:10px;color:#9ca3af;">PREÇO UNIT.</div><div style="font-size:14px;font-weight:800;color:#27AE60;">R$ '+(r.unitPrice||0).toFixed(2)+'</div></div>' +
           '<div><div style="font-size:10px;color:#9ca3af;">TOTAL</div><div style="font-size:14px;font-weight:800;color:#1B4F72;">R$ '+(r.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>' +
           '<div><div style="font-size:10px;color:#9ca3af;">PRAZO</div><div style="font-size:14px;font-weight:800;color:#2980B9;">'+(r.deliveryDays||0)+'d</div></div>' +
-          '</div>' + (r.notes ? '<div style="font-size:12px;color:#6c757d;margin-top:6px;">'+r.notes+'</div>' : '') +
+          '</div>' + (r.notes ? '<div style="font-size:12px;color:#6c757d;margin-top:6px;">'+escHtml(r.notes)+'</div>' : '') +
           '</div>';
       }
       html += '</div>';
@@ -2059,8 +2059,8 @@ app.get('/', (c) => {
         html += '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f5;">' +
           '<div style="width:32px;height:32px;border-radius:50%;background:'+(ev.tipo==='doc'?'#e8f4fd':'#f0fdf4')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
           '<i class="fas '+(ev.tipo==='doc'?'fa-file-upload':'fa-check')+'" style="font-size:12px;color:'+(ev.tipo==='doc'?'#2980B9':'#16a34a')+';"></i></div>' +
-          '<div style="flex:1;"><div style="font-size:13px;color:#374151;font-weight:600;">'+ev.desc+'</div>' +
-          '<div style="font-size:11px;color:#9ca3af;">'+ev.date+' · '+ev.user+'</div></div></div>';
+          '<div style="flex:1;"><div style="font-size:13px;color:#374151;font-weight:600;">'+escHtml(ev.desc)+'</div>' +
+          '<div style="font-size:11px;color:#9ca3af;">'+escHtml(ev.date)+' · '+escHtml(ev.user)+'</div></div></div>';
       });
       html += '</div>';
     }
@@ -2078,7 +2078,7 @@ app.get('/', (c) => {
     let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
     html += '<thead><tr style="background:#f1f3f5;"><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ação</th><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Data/Hora</th><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Usuário</th><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Observação</th></tr></thead><tbody>';
     auditRows.forEach(r => {
-      html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px 10px;font-weight:600;color:#374151;">'+r.acao+'</td><td style="padding:8px 10px;color:#6c757d;">'+r.data+'</td><td style="padding:8px 10px;color:#374151;">'+r.user+'</td><td style="padding:8px 10px;color:#6c757d;">'+r.obs+'</td></tr>';
+      html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px 10px;font-weight:600;color:#374151;">'+escHtml(r.acao)+'</td><td style="padding:8px 10px;color:#6c757d;">'+escHtml(r.data)+'</td><td style="padding:8px 10px;color:#374151;">'+escHtml(r.user)+'</td><td style="padding:8px 10px;color:#6c757d;">'+escHtml(r.obs)+'</td></tr>';
     });
     html += '</tbody></table>';
     const el = document.getElementById('fechAuditoriaBody');
