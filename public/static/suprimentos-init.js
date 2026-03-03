@@ -330,18 +330,37 @@ async function salvarNovoPedidoCompra() {
   }
 }
 
+/**
+ * Abrir e exibir detalhes do pedido de compra
+ */
 function abrirModalPedidoCompra(pedidoId) {
   if (!pedidoId) {
-    showToastSup('Pedido não encontrado', 'error')
+    showToastSup('⚠️ Pedido não encontrado', 'error')
     return
   }
+
   console.log('[PEDIDO] Abrindo modal para:', pedidoId)
+
   const purchaseOrders = window.purchaseOrdersData || []
   const pedido = purchaseOrders.find((p) => p.id === pedidoId)
+
   if (!pedido) {
-    showToastSup('Pedido não encontrado', 'error')
+    showToastSup('⚠️ Pedido não encontrado', 'error')
     return
   }
+
+  // Escapar HTML para segurança
+  function esc(text) {
+    if (!text) return ''
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+  }
+
+  // Cores de status
   const statusColors = {
     pending_approval: '#fff3cd',
     approved: '#d4edda',
@@ -352,60 +371,116 @@ function abrirModalPedidoCompra(pedidoId) {
     delivered: '#d4edda',
     cancelled: '#e2e3e5',
   }
-  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
-  html += '<div><label class="form-label">Código</label><input class="form-control" value="' + escHtml(pedido.code || pedido.id) + '" readonly></div>'
-  html += '<div><label class="form-label">Status</label><input class="form-control" value="' + escHtml(pedido.status || 'pending') + '" readonly style="background:' + (statusColors[pedido.status] || '#fff3cd') + ';"></div>'
-  html += '<div><label class="form-label">Data Pedido</label><input class="form-control" value="' + escHtml(pedido.pedidoData ? new Date(pedido.pedidoData).toLocaleDateString('pt-BR') : (pedido.createdAt ? new Date(pedido.createdAt).toLocaleDateString('pt-BR') : '—')) + '" readonly></div>'
-  html += '<div><label class="form-label">Data Entrega</label><input class="form-control" value="' + escHtml((pedido.dataEntrega || pedido.expectedDelivery) ? new Date((pedido.dataEntrega || pedido.expectedDelivery) + 'T12:00:00').toLocaleDateString('pt-BR') : '—') + '" readonly></div>'
+
+  // Construir HTML
+  let html = ''
+
+  // 1. Dados principais (2 colunas)
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+  
+  // Código
+  html += '<div>'
+  html += '<label class="form-label">Código</label>'
+  html += '<input class="form-control" value="' + esc(pedido.code || pedido.id) + '" readonly>'
   html += '</div>'
+
+  // Status
+  const bgColor = statusColors[pedido.status] || '#fff3cd'
+  html += '<div>'
+  html += '<label class="form-label">Status</label>'
+  html += '<input class="form-control" value="' + esc(pedido.status || 'pending') + '" readonly style="background-color:' + bgColor + ';">'
+  html += '</div>'
+
+  // Data Pedido
+  const pedidoDataFormatada = pedido.pedidoData 
+    ? new Date(pedido.pedidoData).toLocaleDateString('pt-BR')
+    : (pedido.createdAt ? new Date(pedido.createdAt).toLocaleDateString('pt-BR') : '—')
+  
+  html += '<div>'
+  html += '<label class="form-label">Data Pedido</label>'
+  html += '<input class="form-control" value="' + esc(pedidoDataFormatada) + '" readonly>'
+  html += '</div>'
+
+  // Data Entrega
+  const entregaDataFormatada = (pedido.dataEntrega || pedido.expectedDelivery)
+    ? new Date((pedido.dataEntrega || pedido.expectedDelivery) + 'T12:00:00').toLocaleDateString('pt-BR')
+    : '—'
+  
+  html += '<div>'
+  html += '<label class="form-label">Data Entrega</label>'
+  html += '<input class="form-control" value="' + esc(entregaDataFormatada) + '" readonly>'
+  html += '</div>'
+
+  html += '</div>'
+
+  // 2. Informações de cotação e fornecedor
   html += '<div style="background:#f8f9fa;padding:12px;border-radius:6px;margin-bottom:16px;border-left:3px solid #2980B9;">'
-  html += '<div><strong>Cotação Ref:</strong> ' + escHtml(pedido.quotationCode || (pedido.quotationId ? pedido.quotationId : '—')) + '</div>'
-  html += '<div><strong>Fornecedor:</strong> ' + escHtml(pedido.supplierName || '—') + '</div>'
-  html += '<div><strong>Valor Total:</strong> R$ ' + ((pedido.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</div>'
+  html += '<div style="margin-bottom:8px;"><strong>Cotação Ref.:</strong> ' + esc(pedido.quotationCode || pedido.quotationId || '—') + '</div>'
+  html += '<div style="margin-bottom:8px;"><strong>Fornecedor:</strong> ' + esc(pedido.supplierName || '—') + '</div>'
+  html += '<div><strong>Valor Total:</strong> <span style="color:#27AE60;font-weight:700;">R$ ' + (pedido.totalValue || 0).toLocaleString('pt-BR', {minimumFractionDigits:2}) + '</span></div>'
   html += '</div>'
+
+  // 3. Itens do pedido
   if (pedido.items && pedido.items.length > 0) {
-    html += '<div style="margin-bottom:16px;"><label class="form-label" style="font-weight:700;">Itens do Pedido</label>'
-    html += '<div class="table-wrapper" style="margin-top:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f8f9fa;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e9ecef;">Produto</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e9ecef;">Qtd</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e9ecef;">Un.Valor</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e9ecef;">Total</th></tr></thead><tbody>'
-    for (const item of pedido.items) {
+    html += '<div style="margin-bottom:16px;">'
+    html += '<label class="form-label" style="font-weight:700;">Itens do Pedido</label>'
+    html += '<div style="background:#f8f9fa;border-radius:6px;overflow:hidden;">'
+
+    pedido.items.forEach((item, idx) => {
       const itemTotal = (item.quantity || 0) * (item.unitPrice || 0)
-      html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:8px;">' + escHtml(item.productName || '—') + '</td><td style="padding:8px;text-align:right;"><strong>' + escHtml(item.quantity || 0) + '</strong></td><td style="padding:8px;text-align:right;">R$ ' + ((item.unitPrice || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</td><td style="padding:8px;text-align:right;"><strong>R$ ' + (itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })) + '</strong></td></tr>'
-    }
-    html += '</tbody></table></div></div>'
-  }
-  if (pedido.observacoes || pedido.notes) {
-    html += '<div style="background:#f0f4f8;padding:12px;border-radius:6px;margin-bottom:16px;">'
-    html += '<strong>Observações:</strong><br>'
-    html += '<span style="white-space:pre-wrap;color:#555;">' + escHtml(pedido.observacoes || pedido.notes) + '</span>'
+      const isLast = idx === pedido.items.length - 1
+      
+      html += '<div style="padding:10px 12px;' + (isLast ? '' : 'border-bottom:1px solid #e9ecef;') + 'display:grid;grid-template-columns:2fr 80px 80px 1fr;gap:10px;align-items:center;">'
+      
+      html += '<div>'
+      html += '<div style="font-weight:600;color:#374151;font-size:12px;">' + esc(item.productName || item.productCode || '—') + '</div>'
+      html += '<div style="font-size:11px;color:#9ca3af;">Cód: ' + esc(item.productCode || '—') + '</div>'
+      html += '</div>'
+      
+      html += '<div style="text-align:center;font-size:12px;">'
+      html += '<div style="font-size:10px;color:#9ca3af;">Qtd</div>'
+      html += '<div style="font-weight:600;">' + (item.quantity || 0) + '</div>'
+      html += '</div>'
+      
+      html += '<div style="text-align:center;font-size:12px;">'
+      html += '<div style="font-size:10px;color:#9ca3af;">Unit.</div>'
+      html += '<div style="font-weight:600;color:#27AE60;">R$ ' + (item.unitPrice || 0).toFixed(2) + '</div>'
+      html += '</div>'
+      
+      html += '<div style="text-align:right;font-size:12px;">'
+      html += '<div style="font-size:10px;color:#9ca3af;">Total</div>'
+      html += '<div style="font-weight:700;color:#1B4F72;">R$ ' + itemTotal.toFixed(2) + '</div>'
+      html += '</div>'
+      
+      html += '</div>'
+    })
+
+    html += '</div>'
     html += '</div>'
   }
-  if (pedido.status === 'pending_approval') {
-    html += '<div style="display:flex;gap:8px;margin-top:16px;">'
-    html += '<button class="btn-aprovar-pc" data-pedido-id="' + escHtml(pedidoId) + '" data-pedido-code="' + escHtml(pedido.code || pedidoId) + '" style="flex:1;background:#28a745;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Aprovar</button>'
-    html += '<button class="btn-recusar-pc" data-pedido-id="' + escHtml(pedidoId) + '" data-pedido-code="' + escHtml(pedido.code || pedidoId) + '" style="flex:1;background:#dc3545;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Recusar</button>'
+
+  // 4. Observações
+  if (pedido.observacoes) {
+    html += '<div style="background:#fffbeb;border-radius:6px;padding:12px;margin-bottom:16px;border-left:3px solid #f59e0b;">'
+    html += '<div style="font-size:11px;color:#9ca3af;font-weight:700;margin-bottom:6px;">OBSERVAÇÕES</div>'
+    html += '<div style="font-size:12px;color:#374151;">' + esc(pedido.observacoes) + '</div>'
     html += '</div>'
   }
-  const titleEl = document.getElementById('pedidoDetailTitle')
-  if (titleEl) {
-    titleEl.innerHTML = '<i class="fas fa-shopping-cart" style="margin-right:8px;"></i>' + escHtml(pedido.code || 'Pedido de Compra')
-  }
+
+  // Inserir no modal
   const bodyEl = document.getElementById('pedidoDetailBody')
   if (bodyEl) {
     bodyEl.innerHTML = html
-    const btnAprovar = bodyEl.querySelector('.btn-aprovar-pc')
-    if (btnAprovar) {
-      btnAprovar.addEventListener('click', () => {
-        aprovarPedidoCompra(btnAprovar.dataset.pedidoId, btnAprovar.dataset.pedidoCode)
-      })
-    }
-    const btnRecusar = bodyEl.querySelector('.btn-recusar-pc')
-    if (btnRecusar) {
-      btnRecusar.addEventListener('click', () => {
-        recusarPedidoCompra(btnRecusar.dataset.pedidoId, btnRecusar.dataset.pedidoCode)
-      })
-    }
   }
+
+  // Atualizar título
+  const titleEl = document.getElementById('pedidoDetailTitle')
+  if (titleEl) {
+    titleEl.textContent = (pedido.code || 'Pedido') + ' — ' + (pedido.supplierName || 'Fornecedor')
+  }
+
+  // Abrir modal
   openModal('pedidoCompraDetailModal')
-  console.log('[PEDIDO] Modal aberto com sucesso')
 }
 
 async function aprovarPedidoCompra(pedidoId, pedidoCode) {
