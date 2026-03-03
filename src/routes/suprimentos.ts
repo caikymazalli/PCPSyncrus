@@ -1352,6 +1352,7 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <script>
   // ── Cotações ──────────────────────────────────────────────────────────────
   async function approveQuotation(id, code, supplierName) {
     if (!confirm('Aprovar cotação ' + code + '?\nUm Pedido de Compra será gerado automaticamente.')) return;
