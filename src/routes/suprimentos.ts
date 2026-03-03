@@ -38,6 +38,32 @@ function safeJsonStringify(obj: any): string {
 }
 
 /**
+ * Escape string for use in HTML attribute values (double-quoted)
+ */
+function escapeHtmlAttr(str: string): string {
+  if (typeof str !== 'string') return ''
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * Escape string for use as a JS argument (single-quoted) inside an HTML onclick attribute
+ */
+function escapeJsStr(str: string): string {
+  if (typeof str !== 'string') return ''
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/</g, '&lt;')
+}
+
+/**
  * Serializar quotations para JSON de forma segura
  */
 function safeStringifyQuotations(quotations: any[]): string {
@@ -175,7 +201,7 @@ app.get('/', (c) => {
           <div style="font-size:12px;font-weight:700;color:#1B4F72;">${q.code}</div>
           <div style="font-size:11px;color:#6c757d;">${q.items.length} item(ns) · ${q.supplierResponses.length > 0 ? 'R$ ' + (q.supplierResponses[0]?.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'Sem respostas'}</div>
         </div>
-        <button class="btn btn-success btn-sm" onclick="approveQuotation('${q.id}','${q.code}','${(q.supplierResponses[0]?.supplierName||'fornecedor')}')">
+        <button class="btn btn-success btn-sm" onclick="approveQuotation('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}','${escapeJsStr(q.supplierResponses[0]?.supplierName||'fornecedor')}')">
           <i class="fas fa-check"></i> Aprovar
         </button>
       </div>`).join('')}
@@ -316,7 +342,7 @@ app.get('/', (c) => {
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
                       <button class="btn btn-secondary btn-sm" onclick="openQuotationDetail('${q.id}')" title="Ver detalhes"><i class="fas fa-eye"></i></button>
                       ${q.status === 'pending_approval' ? `
-                      <button class="btn btn-success btn-sm" onclick="approveQuotation('${q.id}','${q.code}','${(q.supplierResponses[0]?.supplierName||'fornecedor')}')" title="Aprovar"><i class="fas fa-check"></i></button>
+                      <button class="btn btn-success btn-sm" onclick="approveQuotation('${escapeJsStr(q.id)}','${escapeJsStr(q.code)}','${escapeJsStr(q.supplierResponses[0]?.supplierName||'fornecedor')}')" title="Aprovar"><i class="fas fa-check"></i></button>
                       <button class="btn btn-danger btn-sm" onclick="recusarCotacao('${q.id}','${q.code}')" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
                       ${q.status === 'sent' || q.status === 'awaiting_responses' ? `
                       <button class="btn btn-secondary btn-sm" onclick="reenviarCotacao('${q.id}','${q.code}')" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
@@ -394,7 +420,7 @@ app.get('/', (c) => {
               </div>
               <div style="display:flex;gap:8px;">
                 <span class="badge" style="background:${ti.bg};color:${ti.color};">${ti.label}</span>
-                <button class="btn btn-sm" style="background:#F39C12;color:white;border:none;border-radius:6px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;" onclick="dispararCotacao('${sid}','${sup.name}','${sup.email}')">
+                <button class="btn btn-sm" style="background:#F39C12;color:white;border:none;border-radius:6px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;" onclick="dispararCotacao('${escapeJsStr(sid)}','${escapeJsStr(sup.name)}','${escapeJsStr(sup.email)}')">
                   <i class="fas fa-paper-plane"></i> Disparar Cotação
                 </button>
               </div>
@@ -645,29 +671,29 @@ app.get('/', (c) => {
                       <tr class="imp-prod-row" data-code="${item.code}" style="border-bottom:1px solid #f1f3f5;" onmouseenter="this.style.background='#f0f9ff'" onmouseleave="this.style.background='white'">
                         <td style="padding:8px 12px;font-family:monospace;font-size:11px;background:#e8f4fd;color:#1B4F72;font-weight:700;white-space:nowrap;">${item.code}</td>
                         <td style="padding:8px 12px;font-weight:600;color:#374151;max-width:180px;">
-                          <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.name}">${item.name}</div>
+                          <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(item.name)}">${item.name}</div>
                           <div style="font-size:10px;color:#9ca3af;">${item.unit}</div>
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescPT','${item.code}','descPT')">
                           <div class="imp-inline-view" style="font-size:12px;color:${item.descPT?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
                             ${item.descPT || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
                           </div>
-                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${item.descPT||''}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${escapeHtmlAttr(item.descPT||'')}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescEN','${item.code}','descEN')">
                           <div class="imp-inline-view" style="font-size:12px;color:${item.descEN||autoDescEN?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;font-style:italic;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
                             ${item.descEN || autoDescEN || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
                           </div>
-                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descEN" data-code="${item.code}" value="${item.descEN||autoDescEN||''}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Description in English...">
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descEN" data-code="${item.code}" value="${escapeHtmlAttr(item.descEN||autoDescEN||'')}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Description in English...">
                         </td>
                         <td style="padding:6px 10px;min-width:100px;" ondblclick="startInlineEdit(this,'impNCM','${item.code}','ncm')">
                           <div class="imp-inline-view" style="font-size:12px;font-weight:700;color:${ncm!=='—'?'#7c3aed':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;font-family:monospace;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#ddd6fe'" onmouseleave="this.style.borderColor='transparent'">
                             ${ncm !== '—' ? ncm : '<span style=&quot;font-style:italic;font-size:11px;font-family:sans-serif;&quot;>— preencher —</span>'}
                           </div>
-                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;font-family:monospace;" data-field="ncm" data-code="${item.code}" value="${ncm!=='—'?ncm:''}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="0000.00.00">
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;font-family:monospace;" data-field="ncm" data-code="${item.code}" value="${escapeHtmlAttr(ncm!=='—'?ncm:'')}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="0000.00.00">
                         </td>
                         <td style="padding:8px 12px;max-width:120px;">
-                          <div style="font-size:11px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sup?.name||'—'}">${sup?.name||'—'}</div>
+                          <div style="font-size:11px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(sup?.name||'—')}">${sup?.name||'—'}</div>
                         </td>
                         <td style="padding:8px 12px;white-space:nowrap;">
                           <span class="badge" style="background:${st.bg};color:${st.c};font-size:10px;">${st.l}</span>
@@ -2337,7 +2363,7 @@ app.get('/cotacao/:id/responder', (c) => {
         </div>
         <div>
           <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;"><i class="fas fa-credit-card" style="margin-right:4px;color:#2980B9;"></i>Condições de Pagamento</label>
-          <input type="text" id="paymentTerms" class="form-control" placeholder="Ex: 30 dias" value="${supplier?.paymentTerms||''}">
+          <input type="text" id="paymentTerms" class="form-control" placeholder="Ex: 30 dias" value="${escapeHtmlAttr(supplier?.paymentTerms||'')}">
         </div>
         <div style="grid-column:span 2;">
           <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Observações / Condições Especiais</label>
