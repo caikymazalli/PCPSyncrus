@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
@@ -1752,6 +1753,7 @@ app.post('/api/item/create', async (c) => {
     createdAt: new Date().toISOString(),
   }
   tenant.stockItems.push(item)
+  markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'stock_items', {
       id, user_id: userId, empresa_id: empresaId, name: item.name, code: item.code,
@@ -1770,6 +1772,7 @@ app.put('/api/item/:id', async (c) => {
   const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Item não encontrado', 404)
   Object.assign(tenant.stockItems[idx], body)
+  markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'stock_items', id, userId, {
       name: body.name, current_qty: body.currentQty,
@@ -1785,6 +1788,7 @@ app.delete('/api/item/:id', async (c) => {
   const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Item não encontrado', 404)
   tenant.stockItems.splice(idx, 1)
+  markTenantModified(userId)
   if (db && userId !== 'demo-tenant') await dbDelete(db, 'stock_items', id, userId)
   return ok(c)
 })

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxSession, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
@@ -458,6 +459,7 @@ app.post('/plantas', async (c) => {
     status: body.status || 'active', notes: body.notes || ''
   }
   tenant.plants.push(planta)
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo planta em D1:', { id, empresaId, name: planta.name })
@@ -489,6 +491,7 @@ app.put('/plantas/:id', async (c) => {
     totalCapacity: body.cap || 0, contact: body.contact || '',
     status: body.status || 'active', notes: body.notes || ''
   }
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'plants', id, userId, {
@@ -509,6 +512,7 @@ app.delete('/plantas/:id', async (c) => {
   const idx = tenant.plants.findIndex((p: any) => p.id === id)
   if (idx === -1) return err(c, 'Planta não encontrada', 404)
   tenant.plants.splice(idx, 1)
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'plants', id, userId)
@@ -537,11 +541,12 @@ app.post('/maquinas', async (c) => {
     status: body.status || 'operational', specs: body.specs || ''
   }
   tenant.machines.push(maquina)
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo maquina em D1:', { id, empresaId, name: maquina.name })
     await dbInsert(db, 'machines', {
-      id, user_id: userId,
+      id, user_id: userId, empresa_id: empresaId,
       name: maquina.name, type: maquina.type,
       capacity: maquina.capacity, plant_id: maquina.plantId,
       plant_name: maquina.plantName, status: maquina.status,
@@ -570,6 +575,7 @@ app.put('/maquinas/:id', async (c) => {
     plantName: planta?.name || '',
     status: body.status || 'operational', specs: body.specs || ''
   }
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'machines', id, userId, {
@@ -591,6 +597,7 @@ app.delete('/maquinas/:id', async (c) => {
   const idx = tenant.machines.findIndex((m: any) => m.id === id)
   if (idx === -1) return err(c, 'Máquina não encontrada', 404)
   tenant.machines.splice(idx, 1)
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'machines', id, userId)
@@ -618,11 +625,12 @@ app.post('/bancadas', async (c) => {
     status: body.status || 'available'
   }
   tenant.workbenches.push(bancada)
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo bancada em D1:', { id, empresaId, name: bancada.name })
     await dbInsert(db, 'workbenches', {
-      id, user_id: userId,
+      id, user_id: userId, empresa_id: empresaId,
       name: bancada.name, function: bancada.function,
       plant_id: bancada.plantId, plant_name: bancada.plantName,
       status: bancada.status, created_at: new Date().toISOString(),
@@ -649,6 +657,7 @@ app.put('/bancadas/:id', async (c) => {
     plantId: body.plantaId || '', plantName: planta?.name || '',
     status: body.status || 'available'
   }
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'workbenches', id, userId, {
@@ -669,6 +678,7 @@ app.delete('/bancadas/:id', async (c) => {
   const idx = tenant.workbenches.findIndex((wb: any) => wb.id === id)
   if (idx === -1) return err(c, 'Bancada não encontrada', 404)
   tenant.workbenches.splice(idx, 1)
+  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'workbenches', id, userId)
