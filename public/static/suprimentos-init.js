@@ -96,16 +96,16 @@ function openQuotationDetail(quotId) {
       html += '</div></div>'
     }
     html += '<div style="display:flex;gap:8px;margin-top:20px;border-top:1px solid #f1f3f5;padding-top:16px;">'
-    html += '<button onclick="aprovarCotacao(\'' + quotId + '\')" style="flex:1;background:#28a745;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">✅ Aprovar</button>'
-    html += '<button onclick="toggleNegociacao(\'' + quotId + '\')" style="flex:1;background:#2980B9;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">🤝 Negociar</button>'
-    html += '<button onclick="negarCotacao(\'' + quotId + '\')" style="flex:1;background:#dc3545;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">❌ Negar</button>'
+    html += '<button data-action="quot-aprovar" data-quot-id="' + escHtml(quotId) + '" style="flex:1;background:#28a745;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">✅ Aprovar</button>'
+    html += '<button data-action="quot-negociar" data-quot-id="' + escHtml(quotId) + '" style="flex:1;background:#2980B9;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">🤝 Negociar</button>'
+    html += '<button data-action="quot-negar" data-quot-id="' + escHtml(quotId) + '" style="flex:1;background:#dc3545;color:white;padding:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;">❌ Negar</button>'
     html += '</div>'
-    html += '<div id="negociacao-' + quotId + '" style="display:none;margin-top:16px;border:1px solid #e9ecef;padding:12px;border-radius:6px;background:#f8f9fa;">'
+    html += '<div id="negociacao-' + escHtml(quotId) + '" style="display:none;margin-top:16px;border:1px solid #e9ecef;padding:12px;border-radius:6px;background:#f8f9fa;">'
     html += '<label class="form-label" style="font-weight:600;">Observações para Negociação *</label>'
-    html += '<textarea id="obs-' + quotId + '" placeholder="Informe sugestões de preço, prazo, etc... (mínimo 10 caracteres)" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-family:inherit;resize:vertical;height:80px;"></textarea>'
+    html += '<textarea id="obs-' + escHtml(quotId) + '" placeholder="Informe sugestões de preço, prazo, etc... (mínimo 10 caracteres)" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-family:inherit;resize:vertical;height:80px;"></textarea>'
     html += '<div style="display:flex;gap:8px;margin-top:8px;">'
-    html += '<button onclick="enviarNegociacao(\'' + quotId + '\')" style="flex:1;background:#2980B9;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">📤 Enviar Negociação</button>'
-    html += '<button onclick="cancelarNegociacao(\'' + quotId + '\')" style="flex:1;background:#6c757d;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Cancelar</button>'
+    html += '<button data-action="quot-enviar-neg" data-quot-id="' + escHtml(quotId) + '" style="flex:1;background:#2980B9;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">📤 Enviar Negociação</button>'
+    html += '<button data-action="quot-cancelar-neg" data-quot-id="' + escHtml(quotId) + '" style="flex:1;background:#6c757d;color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Cancelar</button>'
     html += '</div>'
     html += '</div>'
     const titleEl = document.getElementById('quotDetailTitle')
@@ -679,3 +679,16 @@ function enviarNegociacao(quotId) {
 }
 
 console.log('[SUPRIMENTOS-INIT] ✅ Todas as funções de cotação carregadas')
+
+// ── Event delegation for data-action quotation buttons ──────────────────────
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('[data-action^="quot-"]')
+  if (!btn) return
+  const quotId = btn.dataset.quotId || ''
+  const action = btn.dataset.action
+  if (action === 'quot-aprovar') aprovarCotacao(quotId)
+  else if (action === 'quot-negociar') toggleNegociacao(quotId)
+  else if (action === 'quot-negar') negarCotacao(quotId)
+  else if (action === 'quot-enviar-neg') enviarNegociacao(quotId)
+  else if (action === 'quot-cancelar-neg') cancelarNegociacao(quotId)
+})
