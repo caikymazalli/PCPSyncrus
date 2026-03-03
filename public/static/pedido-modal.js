@@ -174,27 +174,41 @@ function abrirModalPedidoCompra(pedidoId) {
   const buttonsDiv = document.createElement('div')
   buttonsDiv.style.cssText = 'display:flex;gap:8px;margin-top:16px;'
 
-  const approveBtn = document.createElement('button')
-  approveBtn.className = 'btn btn-success btn-sm'
-  approveBtn.style.flex = '1'
-  approveBtn.innerHTML = '<i class="fas fa-check"></i> Aprovar'
-  approveBtn.onclick = () => {
-    console.log('[PEDIDO] Aprovando:', pedidoId)
-    showToastSup('✅ Pedido aprovado', 'success')
-    closeModal('pedidoCompraDetailModal')
-  }
-  buttonsDiv.appendChild(approveBtn)
+  if (pedido.status === 'pending_approval') {
+    const approveBtn = document.createElement('button')
+    approveBtn.className = 'btn btn-success btn-sm'
+    approveBtn.style.flex = '1'
+    approveBtn.innerHTML = '<i class="fas fa-check"></i> Aprovar'
+    approveBtn.addEventListener('click', () => {
+      closeModal('pedidoCompraDetailModal')
+      approvePurchaseOrder(pedidoId)
+    })
+    buttonsDiv.appendChild(approveBtn)
 
-  const rejectBtn = document.createElement('button')
-  rejectBtn.className = 'btn btn-danger btn-sm'
-  rejectBtn.style.flex = '1'
-  rejectBtn.innerHTML = '<i class="fas fa-times"></i> Rejeitar'
-  rejectBtn.onclick = () => {
-    console.log('[PEDIDO] Rejeitando:', pedidoId)
-    showToastSup('❌ Pedido rejeitado', 'error')
-    closeModal('pedidoCompraDetailModal')
+    const rejectBtn = document.createElement('button')
+    rejectBtn.className = 'btn btn-danger btn-sm'
+    rejectBtn.style.flex = '1'
+    rejectBtn.innerHTML = '<i class="fas fa-times"></i> Rejeitar'
+    rejectBtn.addEventListener('click', () => {
+      closeModal('pedidoCompraDetailModal')
+      rejectPurchaseOrder(pedidoId)
+    })
+    buttonsDiv.appendChild(rejectBtn)
+  } else if (pedido.status === 'approved' && !pedido.isImport) {
+    const printBtn = document.createElement('button')
+    printBtn.className = 'btn btn-primary btn-sm'
+    printBtn.style.flex = '1'
+    printBtn.innerHTML = '<i class="fas fa-print"></i> Imprimir'
+    printBtn.addEventListener('click', () => printPurchaseOrder(pedidoId))
+    buttonsDiv.appendChild(printBtn)
+
+    const pdfBtn = document.createElement('button')
+    pdfBtn.className = 'btn btn-secondary btn-sm'
+    pdfBtn.style.flex = '1'
+    pdfBtn.innerHTML = '<i class="fas fa-download"></i> PDF'
+    pdfBtn.addEventListener('click', () => downloadPDFPurchaseOrder(pedidoId))
+    buttonsDiv.appendChild(pdfBtn)
   }
-  buttonsDiv.appendChild(rejectBtn)
 
   const editBtn = document.createElement('button')
   editBtn.className = 'btn btn-secondary btn-sm'
