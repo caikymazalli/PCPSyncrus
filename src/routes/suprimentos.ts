@@ -2812,6 +2812,7 @@ app.post('/api/quotations/:id/negotiate', async (c) => {
 })
 // ── API: POST /suprimentos/api/purchase-orders/create ────────────────────────
 app.post('/api/purchase-orders/create', async (c) => {
+  const db = getCtxDB(c)
   const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.quotationId) return err(c, 'Cotação obrigatória', 400)
@@ -2841,12 +2842,25 @@ app.post('/api/purchase-orders/create', async (c) => {
   tenant.purchaseOrders.push(pedido)
   console.log(`[PEDIDO] ✅ Pedido criado: ${pedido.id}`)
   markTenantModified(userId)
+  if (db && userId !== 'demo-tenant') {
+    const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
+      id, user_id: userId, empresa_id: empresaId, code,
+      supplier_id: bestResponse?.supplierId || quot.supplierIds?.[0] || '',
+      supplier_name: pedido.supplierName, status: 'pending_approval',
+      total_value: pedido.totalValue, currency: 'BRL', is_import: false,
+      notes: JSON.stringify({ items: pedido.items, pedidoData: pedido.pedidoData, dataEntrega: pedido.dataEntrega, observacoes: pedido.observacoes }),
+    })
+    if (!persistResult.success) {
+      console.warn(`[PEDIDO] Falha ao persistir pedido ${id} em D1: ${persistResult.error}`)
+    }
+  }
   return ok(c, { purchaseOrder: pedido, message: 'Pedido de compra criado com sucesso' })
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/approve ───────────────────
 app.post('/api/purchase-orders/:id/approve', async (c) => {
   const pedidoId = c.req.param('id')
+  const db = getCtxDB(c)
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
   const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
@@ -2855,12 +2869,16 @@ app.post('/api/purchase-orders/:id/approve', async (c) => {
   tenant.purchaseOrders[pedidoIdx].approvedAt = new Date().toISOString()
   console.log(`[PEDIDO] ✅ Pedido aprovado: ${pedidoId}`)
   markTenantModified(userId)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'purchase_orders', pedidoId, userId, { status: 'approved', approved_at: tenant.purchaseOrders[pedidoIdx].approvedAt })
+  }
   return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
 })
 
 // ── API: POST /suprimentos/api/purchase-orders/:id/reject ────────────────────
 app.post('/api/purchase-orders/:id/reject', async (c) => {
   const pedidoId = c.req.param('id')
+  const db = getCtxDB(c)
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
   const pedidoIdx = (tenant.purchaseOrders || []).findIndex((p: any) => p.id === pedidoId)
@@ -2869,6 +2887,9 @@ app.post('/api/purchase-orders/:id/reject', async (c) => {
   tenant.purchaseOrders[pedidoIdx].rejectedAt = new Date().toISOString()
   console.log(`[PEDIDO] ✅ Pedido recusado: ${pedidoId}`)
   markTenantModified(userId)
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'purchase_orders', pedidoId, userId, { status: 'rejected', rejected_at: tenant.purchaseOrders[pedidoIdx].rejectedAt })
+  }
   return ok(c, { purchaseOrder: tenant.purchaseOrders[pedidoIdx] })
 })
 
