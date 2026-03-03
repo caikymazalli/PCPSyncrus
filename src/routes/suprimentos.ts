@@ -1352,23 +1352,6 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <!-- Modal: Detalhes Pedido de Compra -->
-  <div class="modal-overlay" id="pedidoCompraDetailModal">
-    <div class="modal" style="max-width:700px;max-height:80vh;overflow-y:auto;display:flex;flex-direction:column;">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;background:white;position:sticky;top:0;z-index:10;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="pedidoDetailTitle">
-          <i class="fas fa-shopping-cart" style="margin-right:8px;"></i>Detalhes do Pedido
-        </h3>
-        <button onclick="closeModal('pedidoCompraDetailModal')" style="background:none;border:none;font-size:24px;cursor:pointer;color:#9ca3af;padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;">×</button>
-      </div>
-      <div style="padding:20px 24px;flex:1;overflow-y:auto;" id="pedidoDetailBody">
-        <p style="text-align:center;color:#9ca3af;">Carregando detalhes...</p>
-      </div>
-    </div>
-  </div>
-
-  <script>
-
   // ── Cotações ──────────────────────────────────────────────────────────────
   async function approveQuotation(id, code, supplierName) {
     if (!confirm('Aprovar cotação ' + code + '?\nUm Pedido de Compra será gerado automaticamente.')) return;
