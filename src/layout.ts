@@ -44,7 +44,6 @@ export function layout(title: string, content: string, activePage: string = '', 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — PCP Planner</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -379,10 +378,6 @@ function switchTab(tabId, groupId) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 </script>
-<script src="/static/purchase-order-actions.js"></script>
-<script src="/static/pedido-modal.js"></script>
-<script src="/static/suprimentos-init.js"></script>
-<script src="/static/quotations-actions.js"></script>
 </body>
 </html>`;
 }

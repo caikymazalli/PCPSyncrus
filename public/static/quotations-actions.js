@@ -465,11 +465,16 @@ function addCotItem() {
     const destLabels = { aereo:'Aeroporto de Destino', terrestre:'Cidade de Destino', maritimo:'Porto de Destino' };
     Object.keys(labels).forEach(m => {
       const el = document.getElementById(labels[m]);
+      if (!el) { console.warn('[selectModalidade] Element not found:', labels[m]); return; }
       if (m===mode) { el.style.border='2px solid '+colors[mode]; el.style.background=colors[mode]+'15'; }
       else { el.style.border='2px solid #e9ecef'; el.style.background='white'; }
     });
-    document.getElementById('impOrigemLabel').textContent = origemLabels[mode];
-    document.getElementById('impDestinoLabel').textContent = destLabels[mode];
+    const origemEl = document.getElementById('impOrigemLabel');
+    const destEl = document.getElementById('impDestinoLabel');
+    if (origemEl) origemEl.textContent = origemLabels[mode];
+    else console.warn('[selectModalidade] Element not found: impOrigemLabel');
+    if (destEl) destEl.textContent = destLabels[mode];
+    else console.warn('[selectModalidade] Element not found: impDestinoLabel');
   }
   // Inicializa marítimo
   setTimeout(() => selectModalidade('maritimo'), 100);
