@@ -104,6 +104,80 @@ app.get('/', (c) => {
   </div>
 
   <script>
+  function openModal(id) {
+    const modal = document.getElementById(id)
+    if (modal) {
+      modal.classList.add('open')
+      console.log('[MODAL] Aberto:', id)
+    }
+  }
+
+  function closeModal(id) {
+    const modal = document.getElementById(id)
+    if (modal) {
+      modal.classList.remove('open')
+      console.log('[MODAL] Fechado:', id)
+    }
+  }
+
+  async function saveInstruction() {
+    const code = document.getElementById('instrCode').value.trim()
+    const title = document.getElementById('instrTitle').value.trim()
+    const desc = document.getElementById('instrDesc').value.trim()
+
+    if (!title) {
+      alert('❌ Título é obrigatório')
+      return
+    }
+
+    console.log('[INSTR] Salvando:', { code, title, desc })
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, title, description: desc })
+      })
+
+      const data = await res.json()
+      console.log('[INSTR] Response:', data)
+
+      if (data.ok) {
+        alert('✅ Instrução criada com sucesso!')
+        document.getElementById('instrCode').value = ''
+        document.getElementById('instrTitle').value = ''
+        document.getElementById('instrDesc').value = ''
+        closeModal('novaInstrucaoModal')
+        setTimeout(() => location.reload(), 800)
+      } else {
+        alert('❌ Erro: ' + (data.error || 'Desconhecido'))
+      }
+    } catch (e) {
+      console.error('[INSTR] Erro de conexão:', e)
+      alert('❌ Erro de conexão: ' + e.message)
+    }
+  }
+
+  function filterInstructions() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase()
+    const rows = document.querySelectorAll('#instructionsBody tr')
+    
+    rows.forEach(row => {
+      const searchText = row.getAttribute('data-search') || ''
+      if (searchText.includes(searchValue)) {
+        row.style.display = ''
+      } else {
+        row.style.display = 'none'
+      }
+    })
+  }
+
+  function viewInstruction(id) {
+    console.log('[INSTR] Visualizar:', id)
+    alert('Função "Visualizar" em breve')
+  }
+  </script>
+`
   function filterInstructions() {
     const search = document.getElementById('searchInput').value.toLowerCase();
     const rows = document.querySelectorAll('#instructionsBody tr');
