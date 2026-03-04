@@ -118,12 +118,14 @@ app.get('/', (c) => {
     const code = document.getElementById('instrCode').value.trim();
     const description = document.getElementById('instrDesc').value.trim();
     if (!title) { alert('Título é obrigatório'); return; }
+    console.log('[Instruções] Salvando:', { title, code, description });
     const res = await fetch('/instrucoes/api/instructions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, code, description })
     });
     const data = await res.json();
+    console.log('[Instruções] Resposta:', data);
     if (data.ok) { closeModal('novaInstrucaoModal'); location.reload(); }
     else { alert(data.error || 'Erro ao salvar'); }
   }

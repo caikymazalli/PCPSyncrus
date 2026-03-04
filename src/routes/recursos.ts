@@ -642,15 +642,20 @@ app.post('/bancadas', async (c) => {
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo bancada em D1:', { id, empresaId, name: bancada.name })
-    const inserted = await dbInsert(db, 'workbenches', {
-      id, user_id: userId, empresa_id: empresaId,
-      name: bancada.name, function: bancada.function,
-      plant_id: bancada.plantId, plant_name: bancada.plantName,
-      status: bancada.status, created_at: new Date().toISOString(),
-    })
-    if (!inserted) {
-      console.error(`[CRÍTICO] Falha ao inserir bancada ${id} em D1`)
-      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    try {
+      const result = await dbInsert(db, 'workbenches', {
+        id, user_id: userId, empresa_id: empresaId || '',
+        name: bancada.name, function: bancada.function || '',
+        plant_id: bancada.plantId || '', plant_name: bancada.plantName || '',
+        status: bancada.status, created_at: new Date().toISOString(),
+      })
+      if (!result) {
+        console.error(`[CRÍTICO] Falha ao inserir bancada ${id} em D1`)
+        return err(c, 'Falha ao salvar bancada em D1. Tente novamente.', 500)
+      }
+    } catch (dbErr) {
+      console.error(`[ERRO DB] Inserir bancada ${id}:`, dbErr instanceof Error ? dbErr.message : String(dbErr))
+      return err(c, 'Erro ao conectar com banco de dados.', 500)
     }
   }
   tenant.workbenches.push(bancada)
@@ -672,14 +677,19 @@ app.put('/bancadas/:id', async (c) => {
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
 
   if (db && userId !== 'demo-tenant') {
-    const updated = await dbUpdate(db, 'workbenches', id, userId, {
-      name: body.nome, function: body.func || '',
-      plant_id: body.plantaId || '', plant_name: planta?.name || '',
-      status: body.status || 'available',
-    })
-    if (!updated) {
-      console.error(`[CRÍTICO] Falha ao atualizar bancada ${id} em D1`)
-      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    try {
+      const updated = await dbUpdate(db, 'workbenches', id, userId, {
+        name: body.nome, function: body.func || '',
+        plant_id: body.plantaId || '', plant_name: planta?.name || '',
+        status: body.status || 'available',
+      })
+      if (!updated) {
+        console.error(`[CRÍTICO] Falha ao atualizar bancada ${id} em D1`)
+        return err(c, 'Falha ao salvar bancada em D1. Tente novamente.', 500)
+      }
+    } catch (dbErr) {
+      console.error(`[ERRO DB] Atualizar bancada ${id}:`, dbErr instanceof Error ? dbErr.message : String(dbErr))
+      return err(c, 'Erro ao conectar com banco de dados.', 500)
     }
   }
   tenant.workbenches[idx] = {
