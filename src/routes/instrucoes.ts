@@ -210,8 +210,7 @@ app.get('/', (c) => {
     if (data.ok) { console.log('Instruction details:', data); }
   }
   </script>
-  `
-  
+`
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
 
