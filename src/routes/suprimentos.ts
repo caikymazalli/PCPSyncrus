@@ -692,10 +692,10 @@ app.get('/', (c) => {
                           <div style="font-size:10px;color:#9ca3af;">${item.unit}</div>
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescPT','${item.code}','descPT')">
-                          <div class="imp-inline-view" style="font-size:12px;color:${item.descPT?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
-                            ${item.descPT || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
+                          <div class="imp-inline-view" style="font-size:12px;color:${(item.descPT||item.description)?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
+                            ${item.descPT || item.description || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
                           </div>
-                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${escapeHtmlAttr(item.descPT||'')}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${escapeHtmlAttr(item.descPT||item.description||'')}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescEN','${item.code}','descEN')">
                           <div class="imp-inline-view" style="font-size:12px;color:${item.descEN||autoDescEN?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;font-style:italic;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
