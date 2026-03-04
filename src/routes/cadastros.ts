@@ -485,7 +485,6 @@ app.post('/api/supplier/create', async (c) => {
     rating: 0, paymentTerms: body.paymentTerms || '', deliveryLeadDays: parseInt(body.deliveryLeadDays) || 0,
     notes: body.notes || '', createdAt: new Date().toISOString(),
   }
-  tenant.suppliers.push(supplier)
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'suppliers', {
       id, user_id: userId, empresa_id: empresaId, name: supplier.name, cnpj: supplier.cnpj,
@@ -498,13 +497,11 @@ app.post('/api/supplier/create', async (c) => {
       notes: supplier.notes,
     })
     if (!persistResult.success) {
-      console.error(`[ERROR] Falha ao persistir fornecedor ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
-      return ok(c, {
-        supplier,
-        warning: 'Fornecedor salvo localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
-      })
+      console.error(`[CRÍTICO] Falha ao persistir fornecedor ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return err(c, `Falha ao salvar fornecedor no banco de dados. Tente novamente. Erro: ${persistResult.error}`, 500)
     }
   }
+  tenant.suppliers.push(supplier)
   markTenantModified(userId)
   return ok(c, { supplier })
 })
@@ -515,35 +512,43 @@ app.put('/api/supplier/:id', async (c) => {
   if (!body) return err(c, 'Dados inválidos')
   const idx = tenant.suppliers.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Fornecedor não encontrado', 404)
-  // Persistir todos os campos editáveis
+  // Build the updated supplier fields
   const s = tenant.suppliers[idx]
-  s.name = body.name ?? s.name
-  s.fantasia = body.fantasia ?? s.fantasia
-  s.tradeName = body.fantasia ?? s.tradeName
-  s.cnpj = body.cnpj ?? s.cnpj
-  s.email = body.email ?? s.email
-  s.phone = body.phone ?? s.phone
-  s.tel = body.phone ?? s.tel
-  s.contact = body.contact ?? s.contact
-  s.city = body.city ?? s.city
-  s.state = body.state ?? s.state
-  s.category = body.category ?? s.category
-  s.paymentTerms = body.paymentTerms ?? s.paymentTerms
-  s.deliveryLeadDays = body.deliveryLeadDays ?? s.deliveryLeadDays
-  s.notes = body.notes ?? s.notes
-  s.obs = body.notes ?? s.obs
-  s.type = body.type ?? s.type
-  if (body.active !== undefined) s.active = body.active === true || body.active === 1
-  if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'suppliers', id, userId, {
-      name: s.name, cnpj: s.cnpj, email: s.email, phone: s.phone,
-      contact: s.contact, city: s.city, state: s.state,
-      category: s.category, payment_terms: s.paymentTerms,
-      lead_days: s.deliveryLeadDays, notes: s.notes,
-      type: s.type, active: s.active ? 1 : 0,
-      trade_name: s.tradeName || s.fantasia || '',
-    })
+  const merged = {
+    name: body.name ?? s.name,
+    fantasia: body.fantasia ?? s.fantasia,
+    tradeName: body.fantasia ?? s.tradeName,
+    cnpj: body.cnpj ?? s.cnpj,
+    email: body.email ?? s.email,
+    phone: body.phone ?? s.phone,
+    tel: body.phone ?? s.tel,
+    contact: body.contact ?? s.contact,
+    city: body.city ?? s.city,
+    state: body.state ?? s.state,
+    category: body.category ?? s.category,
+    paymentTerms: body.paymentTerms ?? s.paymentTerms,
+    deliveryLeadDays: body.deliveryLeadDays ?? s.deliveryLeadDays,
+    notes: body.notes ?? s.notes,
+    obs: body.notes ?? s.obs,
+    type: body.type ?? s.type,
+    active: body.active !== undefined ? (body.active === true || body.active === 1) : s.active,
   }
+  if (db && userId !== 'demo-tenant') {
+    const updated = await dbUpdate(db, 'suppliers', id, userId, {
+      name: merged.name, cnpj: merged.cnpj, email: merged.email, phone: merged.phone,
+      contact: merged.contact, city: merged.city, state: merged.state,
+      category: merged.category, payment_terms: merged.paymentTerms,
+      lead_days: merged.deliveryLeadDays, notes: merged.notes,
+      type: merged.type, active: merged.active ? 1 : 0,
+      trade_name: merged.tradeName || merged.fantasia || '',
+    })
+    if (!updated) {
+      console.error(`[CRÍTICO] Falha ao atualizar fornecedor ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
+  }
+  Object.assign(s, merged)
+  markTenantModified(userId)
   return ok(c, { supplier: s })
 })
 

@@ -458,19 +458,23 @@ app.post('/plantas', async (c) => {
     totalCapacity: body.cap || 0, contact: body.contact || '',
     status: body.status || 'active', notes: body.notes || ''
   }
-  tenant.plants.push(planta)
-  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo planta em D1:', { id, empresaId, name: planta.name })
-    await dbInsert(db, 'plants', {
+    const inserted = await dbInsert(db, 'plants', {
       id, user_id: userId, empresa_id: empresaId,
       name: planta.name, location: planta.location,
       total_capacity: planta.totalCapacity, contact: planta.contact,
       status: planta.status, notes: planta.notes,
       created_at: new Date().toISOString(),
     })
+    if (!inserted) {
+      console.error(`[CRÍTICO] Falha ao inserir planta ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
   }
+  tenant.plants.push(planta)
+  markTenantModified(userId)
   return ok(c, { id, plant: planta })
 })
 
@@ -485,6 +489,17 @@ app.put('/plantas/:id', async (c) => {
   const idx = tenant.plants.findIndex((p: any) => p.id === id)
   if (idx === -1) return err(c, 'Planta não encontrada', 404)
 
+  if (db && userId !== 'demo-tenant') {
+    const updated = await dbUpdate(db, 'plants', id, userId, {
+      name: body.nome, location: body.loc,
+      total_capacity: body.cap || 0, contact: body.contact || '',
+      status: body.status || 'active', notes: body.notes || '',
+    })
+    if (!updated) {
+      console.error(`[CRÍTICO] Falha ao atualizar planta ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
+  }
   tenant.plants[idx] = {
     ...tenant.plants[idx],
     name: body.nome, location: body.loc,
@@ -492,14 +507,6 @@ app.put('/plantas/:id', async (c) => {
     status: body.status || 'active', notes: body.notes || ''
   }
   markTenantModified(userId)
-
-  if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'plants', id, userId, {
-      name: body.nome, location: body.loc,
-      total_capacity: body.cap || 0, contact: body.contact || '',
-      status: body.status || 'active', notes: body.notes || '',
-    })
-  }
   return ok(c, { plant: tenant.plants[idx] })
 })
 
@@ -540,19 +547,23 @@ app.post('/maquinas', async (c) => {
     plantName: planta?.name || '',
     status: body.status || 'operational', specs: body.specs || ''
   }
-  tenant.machines.push(maquina)
-  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo maquina em D1:', { id, empresaId, name: maquina.name })
-    await dbInsert(db, 'machines', {
+    const inserted = await dbInsert(db, 'machines', {
       id, user_id: userId, empresa_id: empresaId,
       name: maquina.name, type: maquina.type,
       capacity: maquina.capacity, plant_id: maquina.plantId,
       plant_name: maquina.plantName, status: maquina.status,
       specs: maquina.specs, created_at: new Date().toISOString(),
     })
+    if (!inserted) {
+      console.error(`[CRÍTICO] Falha ao inserir máquina ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
   }
+  tenant.machines.push(maquina)
+  markTenantModified(userId)
   return ok(c, { id, machine: maquina })
 })
 
@@ -568,6 +579,19 @@ app.put('/maquinas/:id', async (c) => {
   if (idx === -1) return err(c, 'Máquina não encontrada', 404)
 
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
+
+  if (db && userId !== 'demo-tenant') {
+    const updated = await dbUpdate(db, 'machines', id, userId, {
+      name: body.nome, type: body.tipo,
+      capacity: body.cap || '', plant_id: body.plantaId || '',
+      plant_name: planta?.name || '',
+      status: body.status || 'operational', specs: body.specs || '',
+    })
+    if (!updated) {
+      console.error(`[CRÍTICO] Falha ao atualizar máquina ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
+  }
   tenant.machines[idx] = {
     ...tenant.machines[idx],
     name: body.nome, type: body.tipo,
@@ -576,15 +600,6 @@ app.put('/maquinas/:id', async (c) => {
     status: body.status || 'operational', specs: body.specs || ''
   }
   markTenantModified(userId)
-
-  if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'machines', id, userId, {
-      name: body.nome, type: body.tipo,
-      capacity: body.cap || '', plant_id: body.plantaId || '',
-      plant_name: planta?.name || '',
-      status: body.status || 'operational', specs: body.specs || '',
-    })
-  }
   return ok(c, { machine: tenant.machines[idx] })
 })
 
@@ -624,18 +639,22 @@ app.post('/bancadas', async (c) => {
     plantId: body.plantaId || '', plantName: planta?.name || '',
     status: body.status || 'available'
   }
-  tenant.workbenches.push(bancada)
-  markTenantModified(userId)
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo bancada em D1:', { id, empresaId, name: bancada.name })
-    await dbInsert(db, 'workbenches', {
+    const inserted = await dbInsert(db, 'workbenches', {
       id, user_id: userId, empresa_id: empresaId,
       name: bancada.name, function: bancada.function,
       plant_id: bancada.plantId, plant_name: bancada.plantName,
       status: bancada.status, created_at: new Date().toISOString(),
     })
+    if (!inserted) {
+      console.error(`[CRÍTICO] Falha ao inserir bancada ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
   }
+  tenant.workbenches.push(bancada)
+  markTenantModified(userId)
   return ok(c, { id, workbench: bancada })
 })
 
@@ -651,6 +670,18 @@ app.put('/bancadas/:id', async (c) => {
   if (idx === -1) return err(c, 'Bancada não encontrada', 404)
 
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
+
+  if (db && userId !== 'demo-tenant') {
+    const updated = await dbUpdate(db, 'workbenches', id, userId, {
+      name: body.nome, function: body.func || '',
+      plant_id: body.plantaId || '', plant_name: planta?.name || '',
+      status: body.status || 'available',
+    })
+    if (!updated) {
+      console.error(`[CRÍTICO] Falha ao atualizar bancada ${id} em D1`)
+      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    }
+  }
   tenant.workbenches[idx] = {
     ...tenant.workbenches[idx],
     name: body.nome, function: body.func || '',
@@ -658,14 +689,6 @@ app.put('/bancadas/:id', async (c) => {
     status: body.status || 'available'
   }
   markTenantModified(userId)
-
-  if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'workbenches', id, userId, {
-      name: body.nome, function: body.func || '',
-      plant_id: body.plantaId || '', plant_name: planta?.name || '',
-      status: body.status || 'available',
-    })
-  }
   return ok(c, { workbench: tenant.workbenches[idx] })
 })
 
