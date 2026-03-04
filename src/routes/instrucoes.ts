@@ -229,7 +229,8 @@ app.post('/api/instructions', async (c) => {
 
   const instruction = {
     id,
-    code: body.code || `INSTR-${Date.now()}`,
+    
+    code: body.code || 'INSTR-' + Date.now(),
     title: body.title,
     description: body.description || '',
     current_version: '1.0',
