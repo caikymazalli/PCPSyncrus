@@ -22,7 +22,7 @@ import masterApp from './routes/master'
 import authApp from './routes/auth'
 import testApp from './routes/test'
 import { newUserDashboard } from './newuser'
-import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getEffectiveTenantId } from './userStore'
+import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getEffectiveTenantId, resetTenantHydrationCache } from './userStore'
 
 type Bindings = {
   DB: D1Database
@@ -40,6 +40,12 @@ const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"
 app.get('/favicon.svg', (c) => c.body(FAVICON_SVG, 200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' }))
 app.get('/favicon.ico', (c) => c.redirect('/favicon.svg', 301))
 
+// Track which tenants have already had their hydration cache reset in this
+// worker instance.  Resets happen only once per tenant on the first request
+// after the worker starts (i.e. after a deploy), guaranteeing a fresh D1 load
+// without the cost of resetting on every single request.
+const tenantStartupResetDone = new Set<string>()
+
 // ── Middleware: load session from D1 if not in memory + hydrate tenant ─────────
 app.use('*', async (c, next) => {
   const token = getCookie(c, SESSION_COOKIE)
@@ -48,9 +54,14 @@ app.use('*', async (c, next) => {
     if (!session) {
       session = await getSessionAsync(token, c.env.DB)
     }
-    // Hydrate tenant data from D1 (cached 30s per worker instance)
+    // Hydrate tenant data from D1
     if (session && !session.isDemo) {
       const tenantId = getEffectiveTenantId(session)
+      // 🔥 Force re-hydration on first request per worker instance (after deploy)
+      if (!tenantStartupResetDone.has(tenantId)) {
+        tenantStartupResetDone.add(tenantId)
+        resetTenantHydrationCache(tenantId)
+      }
       await loadTenantFromDB(tenantId, c.env.DB, session.empresaId)
     }
   }

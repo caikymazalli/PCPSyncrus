@@ -521,6 +521,17 @@ export function markTenantModified(userId: string): void {
 }
 
 /**
+ * Reset hydration cache for a tenant, forcing a full re-load from D1 on the
+ * next call to loadTenantFromDB.  Call this at worker startup (middleware) so
+ * that a fresh deploy always re-reads the authoritative D1 state.
+ */
+export function resetTenantHydrationCache(userId: string): void {
+  tenantHydratedAt[userId] = 0
+  tenantLastWriteAt[userId] = 0
+  console.log(`[HYDRATION] Cache limpo para ${userId} - forçará re-load de D1`)
+}
+
+/**
  * Log a work instruction audit event to D1 and in-memory.
  * Always updates in-memory (including demo mode); only writes to D1 for real tenants.
  */
@@ -593,14 +604,13 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
   const now = Date.now()
   if (tenantHydratedAt[userId] && now - tenantHydratedAt[userId] < HYDRATION_TTL) return
 
-  // Skip re-hydration if in-memory data was modified after the last hydration.
-  // This prevents D1 (which may lack a recent failed insert) from overwriting
-  // newer in-memory data within the same worker instance.
+  // Skip re-hydration only when a write happened very recently (< 2s) to avoid
+  // overwriting data that may not have propagated to D1 yet.  Longer windows
+  // are no longer skipped so that D1 remains the authoritative source of truth
+  // and new worker instances (after a deploy) always load fresh data.
   const lastWrite = tenantLastWriteAt[userId] || 0
-  const lastHydration = tenantHydratedAt[userId] || 0
-  if (lastWrite > lastHydration) {
-  console.log(`[HYDRATION] Skipping re-hydration for ${userId}: in-memory data is more recent (written ${Math.round((lastWrite - lastHydration) / 1000)}s after last hydration)`)
-    tenantHydratedAt[userId] = now
+  if (lastWrite && now - lastWrite < 2000) {
+    console.log(`[HYDRATION] Skipping re-hydration for ${userId}: recent write ${now - lastWrite}ms ago, will retry after 2s`)
     return
   }
 
