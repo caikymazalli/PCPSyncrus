@@ -62,6 +62,11 @@ export interface TenantData {
   productSupplierLinks: any[] // Vínculos fornecedor-produto persistidos em D1
   quotationNegotiations: any[] // Negociações de cotações
   impProdDesc?: Record<string, Record<string, string>> // Mapa de descrições de produtos importados
+  workInstructions: any[]           // Instruções raiz
+  workInstructionVersions: any[]    // Versões
+  workInstructionSteps: any[]       // Etapas
+  workInstructionPhotos: any[]      // Fotos
+  workInstructionAuditLog: any[]    // Histórico auditoria
 }
 
 export interface RegisteredUser {
@@ -241,6 +246,11 @@ export function getTenantData(userId: string): TenantData {
       supplierCategories: [],
       productSupplierLinks: [],
       quotationNegotiations: [],
+      workInstructions: [],
+      workInstructionVersions: [],
+      workInstructionSteps: [],
+      workInstructionPhotos: [],
+      workInstructionAuditLog: [],
     }
   }
   return tenants[userId]
@@ -799,6 +809,116 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     } catch (e) {
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar purchase_orders:', (e as any).message)
       if (!tenant.purchaseOrders) tenant.purchaseOrders = []
+    }
+
+    // Load work instructions
+    try {
+      const instrs = await db.prepare(`SELECT * FROM work_instructions WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (instrs.results && instrs.results.length > 0) {
+        tenant.workInstructions = (instrs.results as any[]).map(r => ({
+          id: r.id,
+          code: r.code,
+          title: r.title,
+          description: r.description || '',
+          current_version: r.current_version,
+          status: r.status || 'draft',
+          created_at: r.created_at,
+          created_by: r.created_by,
+          updated_at: r.updated_at,
+          updated_by: r.updated_by,
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.workInstructions.length} instruções de trabalho carregadas`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instructions:', (e as any).message)
+      tenant.workInstructions = []
+    }
+
+    // Load work instruction versions
+    try {
+      const versions = await db.prepare(`SELECT * FROM work_instruction_versions WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (versions.results && versions.results.length > 0) {
+        tenant.workInstructionVersions = (versions.results as any[]).map(r => ({
+          id: r.id,
+          instruction_id: r.instruction_id,
+          version: r.version,
+          title: r.title,
+          description: r.description || '',
+          is_current: r.is_current === 1,
+          status: r.status || 'draft',
+          created_at: r.created_at,
+          created_by: r.created_by,
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.workInstructionVersions.length} versões carregadas`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_versions:', (e as any).message)
+      tenant.workInstructionVersions = []
+    }
+
+    // Load work instruction steps
+    try {
+      const steps = await db.prepare(`SELECT * FROM work_instruction_steps WHERE user_id = ?${byEmpresa} ORDER BY step_number ASC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (steps.results && steps.results.length > 0) {
+        tenant.workInstructionSteps = (steps.results as any[]).map(r => ({
+          id: r.id,
+          version_id: r.version_id,
+          step_number: r.step_number,
+          title: r.title,
+          description: r.description || '',
+          observation: r.observation || '',
+          created_at: r.created_at,
+          created_by: r.created_by,
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.workInstructionSteps.length} etapas carregadas`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_steps:', (e as any).message)
+      tenant.workInstructionSteps = []
+    }
+
+    // Load work instruction photos
+    try {
+      const photos = await db.prepare(`SELECT * FROM work_instruction_photos WHERE user_id = ?${byEmpresa} ORDER BY uploaded_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (photos.results && photos.results.length > 0) {
+        tenant.workInstructionPhotos = (photos.results as any[]).map(r => ({
+          id: r.id,
+          step_id: r.step_id,
+          photo_url: r.photo_url,
+          file_name: r.file_name,
+          uploaded_at: r.uploaded_at,
+          uploaded_by: r.uploaded_by,
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.workInstructionPhotos.length} fotos carregadas`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_photos:', (e as any).message)
+      tenant.workInstructionPhotos = []
+    }
+
+    // Load work instruction audit log
+    try {
+      const auditLog = await db.prepare(`SELECT * FROM work_instruction_audit_log WHERE user_id = ?${byEmpresa} ORDER BY changed_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (auditLog.results && auditLog.results.length > 0) {
+        tenant.workInstructionAuditLog = (auditLog.results as any[]).map(r => ({
+          id: r.id,
+          instruction_id: r.instruction_id,
+          action: r.action,
+          details: r.details,
+          changed_by: r.changed_by,
+          changed_at: r.changed_at,
+          ip_address: r.ip_address,
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.workInstructionAuditLog.length} registros de auditoria carregados`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_audit_log:', (e as any).message)
+      tenant.workInstructionAuditLog = []
     }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)

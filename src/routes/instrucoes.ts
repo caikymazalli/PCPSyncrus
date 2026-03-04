@@ -1,13 +1,41 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
+import { ok, err, dbInsert, dbUpdate, dbDelete, genId } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
+// ── HELPER: Log de Auditoria ──
+async function logAudit(db: any, userId: string, empresaId: string, instructionId: string, action: string, details: any, tenant: any) {
+  const auditId = genId('audit')
+  const auditEntry = {
+    id: auditId,
+    user_id: userId,
+    empresa_id: empresaId,
+    instruction_id: instructionId,
+    action,
+    details: JSON.stringify(details),
+    changed_by: userId,
+    changed_at: new Date().toISOString(),
+    ip_address: '',
+  }
+
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instruction_audit_log', auditEntry)
+  }
+
+  // Adicionar em memória
+  if (!tenant.workInstructionAuditLog) tenant.workInstructionAuditLog = []
+  tenant.workInstructionAuditLog.push(auditEntry)
+  markTenantModified(userId)
+}
+
+// ── UI: GET /instrucoes ──
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const instructions = tenant.instructions || []
+  const instructions = tenant.workInstructions || []
 
   const content = `
   <!-- Header -->
@@ -24,7 +52,7 @@ app.get('/', (c) => {
   <div class="card" style="padding:14px 20px;margin-bottom:16px;">
     <div class="search-box" style="max-width:400px;">
       <i class="fas fa-search icon"></i>
-      <input class="form-control" type="text" id="searchInput" placeholder="Buscar instrução por título, produto ou operação..." oninput="filterInstructions()">
+      <input class="form-control" type="text" id="searchInput" placeholder="Buscar instrução por título, código ou descrição..." oninput="filterInstructions()">
     </div>
   </div>
 
@@ -41,28 +69,27 @@ app.get('/', (c) => {
     <div class="table-wrapper">
       <table id="instructionsTable">
         <thead><tr>
+          <th>Código</th>
           <th>Título</th>
-          <th>Produto / Operação</th>
-          <th>Revisão</th>
+          <th>Versão</th>
+          <th>Status</th>
           <th>Atualizado em</th>
           <th>Ações</th>
         </tr></thead>
         <tbody id="instructionsBody">
           ${instructions.map((inst: any) => `
-          <tr data-search="${(inst.title || '').toLowerCase()} ${(inst.product || '').toLowerCase()} ${(inst.operation || '').toLowerCase()}">
+          <tr data-search="${(inst.title || '').toLowerCase()} ${(inst.code || '').toLowerCase()} ${(inst.description || '').toLowerCase()}">
+            <td><span class="badge badge-secondary">${inst.code || '—'}</span></td>
             <td>
               <div style="font-weight:700;color:#1B4F72;">${inst.title || '—'}</div>
               ${inst.description ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;">${inst.description}</div>` : ''}
             </td>
-            <td>
-              ${inst.product ? `<div style="font-size:12px;font-weight:600;color:#374151;"><i class="fas fa-box" style="color:#2980B9;margin-right:4px;"></i>${inst.product}</div>` : ''}
-              ${inst.operation ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;"><i class="fas fa-cog" style="margin-right:4px;"></i>${inst.operation}</div>` : '<div style="font-size:11px;color:#9ca3af;">—</div>'}
-            </td>
-            <td><span class="badge badge-secondary">${inst.revision || 'Rev. 1'}</span></td>
-            <td style="font-size:12px;color:#6c757d;">${inst.updatedAt ? new Date(inst.updatedAt).toLocaleDateString('pt-BR') : '—'}</td>
+            <td><span class="badge badge-secondary">v${inst.current_version || '1.0'}</span></td>
+            <td><span class="badge badge-${inst.status === 'active' ? 'success' : 'secondary'}">${inst.status || 'draft'}</span></td>
+            <td style="font-size:12px;color:#6c757d;">${inst.updated_at ? new Date(inst.updated_at).toLocaleDateString('pt-BR') : '—'}</td>
             <td>
               <div style="display:flex;gap:4px;">
-                <button class="btn btn-secondary btn-sm" title="Visualizar"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-secondary btn-sm" title="Visualizar" onclick="viewInstruction('${inst.id}')"><i class="fas fa-eye"></i></button>
                 <button class="btn btn-secondary btn-sm" title="Editar"><i class="fas fa-edit"></i></button>
               </div>
             </td>
@@ -82,6 +109,10 @@ app.get('/', (c) => {
       </div>
       <div style="padding:20px 24px;">
         <div class="form-group">
+          <label class="form-label">Código</label>
+          <input class="form-control" id="instrCode" type="text" placeholder="Ex: INSTR-001">
+        </div>
+        <div class="form-group">
           <label class="form-label">Título *</label>
           <input class="form-control" id="instrTitle" type="text" placeholder="Ex: Procedimento de Torneamento CNC">
         </div>
@@ -89,20 +120,10 @@ app.get('/', (c) => {
           <label class="form-label">Descrição</label>
           <textarea class="form-control" id="instrDesc" rows="3" placeholder="Breve descrição do procedimento..."></textarea>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <div class="form-group">
-            <label class="form-label">Produto</label>
-            <input class="form-control" id="instrProduct" type="text" placeholder="Nome do produto">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Operação</label>
-            <input class="form-control" id="instrOperation" type="text" placeholder="Ex: Torneamento, Soldagem...">
-          </div>
-        </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novaInstrucaoModal')" class="btn btn-secondary">Cancelar</button>
-        <button class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+        <button class="btn btn-primary" onclick="saveInstruction()"><i class="fas fa-save"></i> Salvar</button>
       </div>
     </div>
   </div>
@@ -116,16 +137,382 @@ app.get('/', (c) => {
       row.style.display = !search || text.includes(search) ? '' : 'none';
     });
   }
+
+  async function saveInstruction() {
+    const title = document.getElementById('instrTitle').value.trim();
+    const code = document.getElementById('instrCode').value.trim();
+    const description = document.getElementById('instrDesc').value.trim();
+    if (!title) { alert('Título é obrigatório'); return; }
+    const res = await fetch('/instrucoes/api/instructions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, code, description })
+    });
+    const data = await res.json();
+    if (data.ok) { closeModal('novaInstrucaoModal'); location.reload(); }
+    else { alert(data.error || 'Erro ao salvar'); }
+  }
+
+  async function viewInstruction(id) {
+    const res = await fetch('/instrucoes/api/instructions/' + id);
+    const data = await res.json();
+    if (data.ok) { console.log('Instruction details:', data); }
+  }
   </script>
   `
 
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
 
-app.get('/api/instrucoes', (c) => {
+// ── API: POST /api/instructions (Criar Instrução) ──
+app.post('/api/instructions', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const tenant = getCtxTenant(c)
-  const instructions = tenant.instructions || []
-  return c.json(instructions)
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.title) return err(c, 'Título é obrigatório')
+
+  const id = genId('instr')
+  const versionId = genId('instrv')
+
+  const instruction = {
+    id,
+    code: body.code || `INSTR-${Date.now()}`,
+    title: body.title,
+    description: body.description || '',
+    current_version: '1.0',
+    status: 'draft',
+    created_at: new Date().toISOString(),
+    created_by: userId,
+    updated_at: new Date().toISOString(),
+    updated_by: userId,
+  }
+
+  const version = {
+    id: versionId,
+    instruction_id: id,
+    version: '1.0',
+    title: body.title,
+    description: body.description || '',
+    is_current: true,
+    status: 'draft',
+    created_at: new Date().toISOString(),
+    created_by: userId,
+  }
+
+  // Memória
+  if (!tenant.workInstructions) tenant.workInstructions = []
+  if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
+  tenant.workInstructions.push(instruction)
+  tenant.workInstructionVersions.push(version)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
+    await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
+    await logAudit(db, userId, empresaId, id, 'CREATED', { title: body.title }, tenant)
+  }
+
+  return ok(c, { instruction, version })
+})
+
+// ── API: POST /api/instructions/:id/steps (Adicionar Etapa) ──
+app.post('/api/instructions/:id/steps', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.step_number || !body.title) return err(c, 'Dados inválidos')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+
+  const currentVersion = (tenant.workInstructionVersions || []).find((v: any) => v.instruction_id === instructionId && v.is_current)
+  if (!currentVersion) return err(c, 'Versão atual não encontrada', 404)
+
+  const stepId = genId('step')
+  const step = {
+    id: stepId,
+    version_id: currentVersion.id,
+    step_number: body.step_number,
+    title: body.title,
+    description: body.description || '',
+    observation: body.observation || '',
+    created_at: new Date().toISOString(),
+    created_by: userId,
+  }
+
+  // Memória
+  if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
+  tenant.workInstructionSteps.push(step)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instruction_steps', { ...step, user_id: userId, empresa_id: empresaId })
+    await logAudit(db, userId, empresaId, instructionId, 'STEP_ADDED', {
+      step_number: body.step_number,
+      title: body.title
+    }, tenant)
+  }
+
+  return ok(c, { step })
+})
+
+// ── API: PUT /api/instructions/:id/steps/:stepId (Editar Etapa) ──
+app.put('/api/instructions/:id/steps/:stepId', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const stepId = c.req.param('stepId')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body) return err(c, 'Dados inválidos')
+
+  const steps = tenant.workInstructionSteps || []
+  const stepIdx = steps.findIndex((s: any) => s.id === stepId)
+  if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
+
+  const oldStep = steps[stepIdx]
+  steps[stepIdx] = {
+    ...oldStep,
+    title: body.title || oldStep.title,
+    description: body.description !== undefined ? body.description : oldStep.description,
+    observation: body.observation !== undefined ? body.observation : oldStep.observation,
+  }
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'work_instruction_steps', stepId, userId, {
+      title: steps[stepIdx].title,
+      description: steps[stepIdx].description,
+      observation: steps[stepIdx].observation,
+    })
+    await logAudit(db, userId, empresaId, instructionId, 'STEP_EDITED', {
+      stepId,
+      whatChanged: Object.keys(body).filter((k: string) => body[k] !== undefined && body[k] !== oldStep[k])
+    }, tenant)
+  }
+
+  return ok(c, { step: steps[stepIdx] })
+})
+
+// ── API: DELETE /api/instructions/:id/steps/:stepId (Deletar Etapa) ──
+app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const stepId = c.req.param('stepId')
+
+  const steps = tenant.workInstructionSteps || []
+  const stepIdx = steps.findIndex((s: any) => s.id === stepId)
+  if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
+
+  const step = steps[stepIdx]
+  steps.splice(stepIdx, 1)
+
+  // Remover fotos associadas
+  tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => p.step_id !== stepId)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbDelete(db, 'work_instruction_steps', stepId, userId)
+    const photos = await db.prepare('SELECT id FROM work_instruction_photos WHERE step_id = ?').bind(stepId).all()
+    for (const photo of photos.results || []) {
+      await dbDelete(db, 'work_instruction_photos', (photo as any).id, userId)
+    }
+    await logAudit(db, userId, empresaId, instructionId, 'STEP_DELETED', {
+      stepId,
+      stepNumber: step.step_number,
+      title: step.title
+    }, tenant)
+  }
+
+  return ok(c, { message: 'Etapa removida' })
+})
+
+// ── API: POST /api/instructions/:id/photos (Upload Foto) ──
+app.post('/api/instructions/:id/photos', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.step_id || !body.photo_url) return err(c, 'Dados inválidos')
+
+  const stepExists = (tenant.workInstructionSteps || []).find((s: any) => s.id === body.step_id)
+  if (!stepExists) return err(c, 'Etapa não encontrada', 404)
+
+  const photoId = genId('photo')
+  const photo = {
+    id: photoId,
+    step_id: body.step_id,
+    photo_url: body.photo_url,
+    file_name: body.file_name || `photo_${photoId}.jpg`,
+    uploaded_at: new Date().toISOString(),
+    uploaded_by: userId,
+  }
+
+  // Memória
+  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
+  tenant.workInstructionPhotos.push(photo)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+    await logAudit(db, userId, empresaId, instructionId, 'PHOTO_ADDED', {
+      stepId: body.step_id,
+      fileName: photo.file_name
+    }, tenant)
+  }
+
+  return ok(c, { photo })
+})
+
+// ── API: DELETE /api/instructions/:id/photos/:photoId (Deletar Foto) ──
+app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const photoId = c.req.param('photoId')
+
+  const photos = tenant.workInstructionPhotos || []
+  const photoIdx = photos.findIndex((p: any) => p.id === photoId)
+  if (photoIdx === -1) return err(c, 'Foto não encontrada', 404)
+
+  const photo = photos[photoIdx]
+  photos.splice(photoIdx, 1)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbDelete(db, 'work_instruction_photos', photoId, userId)
+    await logAudit(db, userId, empresaId, instructionId, 'PHOTO_DELETED', {
+      photoId,
+      fileName: photo.file_name
+    }, tenant)
+  }
+
+  return ok(c, { message: 'Foto removida' })
+})
+
+// ── API: POST /api/instructions/:id/versions (Criar Nova Versão) ──
+app.post('/api/instructions/:id/versions', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.new_version) return err(c, 'Nova versão não especificada')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+
+  const currentVersion = (tenant.workInstructionVersions || []).find((v: any) => v.instruction_id === instructionId && v.is_current)
+  if (!currentVersion) return err(c, 'Versão atual não encontrada', 404)
+
+  // Marcar versão anterior como não-atual
+  currentVersion.is_current = false
+  markTenantModified(userId)
+
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 0 })
+  }
+
+  // Criar nova versão
+  const newVersionId = genId('instrv')
+  const newVersion = {
+    id: newVersionId,
+    instruction_id: instructionId,
+    version: body.new_version,
+    title: instruction.title,
+    description: instruction.description,
+    is_current: true,
+    status: 'draft',
+    created_at: new Date().toISOString(),
+    created_by: userId,
+  }
+
+  // Memória
+  if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
+  tenant.workInstructionVersions.push(newVersion)
+  instruction.current_version = body.new_version
+  instruction.updated_at = new Date().toISOString()
+  instruction.updated_by = userId
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instruction_versions', { ...newVersion, is_current: 1, user_id: userId, empresa_id: empresaId })
+    await dbUpdate(db, 'work_instructions', instructionId, userId, {
+      current_version: body.new_version,
+      updated_at: instruction.updated_at,
+      updated_by: userId,
+    })
+    await logAudit(db, userId, empresaId, instructionId, 'VERSION_CREATED', {
+      versionBefore: currentVersion.version,
+      versionAfter: body.new_version
+    }, tenant)
+  }
+
+  return ok(c, { instruction, version: newVersion })
+})
+
+// ── API: GET /api/instructions/:id/audit-log (Obter Histórico) ──
+app.get('/api/instructions/:id/audit-log', async (c) => {
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+
+  const auditLog = (tenant.workInstructionAuditLog || [])
+    .filter((a: any) => a.instruction_id === instructionId)
+    .sort((a: any, b: any) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime())
+
+  return ok(c, { auditLog })
+})
+
+// ── API: GET /api/instructions (Listar todas) ──
+app.get('/api/instructions', async (c) => {
+  const tenant = getCtxTenant(c)
+  const instructions = tenant.workInstructions || []
+  return ok(c, { instructions })
+})
+
+// ── API: GET /api/instructions/:id (Obter detalhes) ──
+app.get('/api/instructions/:id', async (c) => {
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+
+  const versions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id === instructionId)
+  const currentVersion = versions.find((v: any) => v.is_current)
+  const steps = (tenant.workInstructionSteps || []).filter((s: any) => s.version_id === currentVersion?.id)
+  const photos = (tenant.workInstructionPhotos || []).filter((p: any) =>
+    steps.some((s: any) => s.id === p.step_id)
+  )
+
+  return ok(c, { instruction, currentVersion, versions, steps, photos })
 })
 
 export default app
+
