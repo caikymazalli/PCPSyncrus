@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
-import { markTenantModified } from '../userStore'
+import { markTenantModified, syncSupplierPrioritiesToProduct } from '../userStore'
 
 const app = new Hono()
 
@@ -614,16 +614,8 @@ app.post('/api/supplier/vinc', async (c) => {
       tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds: [], priorities: {}, internalProduction: true })
     }
     // Atualizar supplier_id_1/2/3/4 no produto em memória
-    const product = tenant.products?.find((p: any) => p.code === productCode)
-    if (product && body.type === 'external' && Array.isArray(body.suppliers)) {
-      const sortedIds = body.suppliers
-        .sort((a: any, b: any) => (a.priority || 1) - (b.priority || 1))
-        .map((s: any) => s.supplierId)
-        .filter(Boolean)
-      product.supplier_id_1 = sortedIds[0] || ''
-      product.supplier_id_2 = sortedIds[1] || ''
-      product.supplier_id_3 = sortedIds[2] || ''
-      product.supplier_id_4 = sortedIds[3] || ''
+    if (body.type === 'external' && Array.isArray(body.suppliers)) {
+      syncSupplierPrioritiesToProduct(tenant, productCode, body.suppliers)
     }
   }
   // Persistir em D1

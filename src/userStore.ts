@@ -511,13 +511,80 @@ export async function cleanExpiredSessions(db: D1Database): Promise<void> {
 const tenantHydratedAt: Record<string, number> = {}
 // Track when in-memory data was last written (to avoid re-hydration overwriting newer data)
 export const tenantLastWriteAt: Record<string, number> = {}
-const HYDRATION_TTL = 30 * 1000 // 30 seconds TTL
+const HYDRATION_TTL = 10 * 1000 // 10 seconds TTL
 
 /** Mark tenant in-memory data as modified (call after any write to memory) */
 export function markTenantModified(userId: string): void {
   if (userId && userId !== 'demo-tenant') {
     tenantLastWriteAt[userId] = Date.now()
   }
+}
+
+/**
+ * Log a work instruction audit event to D1 and in-memory.
+ * Always updates in-memory (including demo mode); only writes to D1 for real tenants.
+ */
+export async function logWorkInstructionEvent(
+  db: D1Database | null,
+  userId: string,
+  empresaId: string,
+  instructionId: string,
+  action: string,
+  details: any,
+  tenant: TenantData
+): Promise<void> {
+  const auditId = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  const auditEntry = {
+    id: auditId,
+    user_id: userId,
+    empresa_id: empresaId || '1',
+    instruction_id: instructionId,
+    action,
+    details: JSON.stringify(details),
+    changed_by: userId,
+    changed_at: new Date().toISOString(),
+    ip_address: '',
+  }
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const keys = Object.keys(auditEntry)
+      const vals = Object.values(auditEntry)
+      const placeholders = keys.map(() => '?').join(', ')
+      await db.prepare(`INSERT INTO work_instruction_audit_log (${keys.join(', ')}) VALUES (${placeholders})`)
+        .bind(...vals).run()
+    } catch (e) {
+      console.error('[AUDIT] Erro ao inserir log de auditoria:', (e as any).message)
+    }
+  }
+
+  if (!tenant.workInstructionAuditLog) tenant.workInstructionAuditLog = []
+  tenant.workInstructionAuditLog.push(auditEntry)
+  markTenantModified(userId)
+}
+
+/**
+ * Sync supplier priority columns (supplier_id_1/2/3/4) on a product in memory.
+ * Call after creating or updating product-supplier links.
+ * The D1 update must be performed separately in the route.
+ */
+export function syncSupplierPrioritiesToProduct(
+  tenant: TenantData,
+  productCode: string,
+  suppliers: Array<{ supplierId: string; priority: number }>
+): void {
+  const product = (tenant.products || []).find((p: any) => p.code === productCode)
+  if (!product) return
+  const sortedIds = suppliers
+    .sort((a, b) => (a.priority || 1) - (b.priority || 1))
+    .map(s => s.supplierId)
+    .filter(Boolean)
+  product.supplier_id_1 = sortedIds[0] || ''
+  product.supplier_id_2 = sortedIds[1] || ''
+  product.supplier_id_3 = sortedIds[2] || ''
+  product.supplier_id_4 = sortedIds[3] || ''
+  // supplierId is the legacy single-supplier field kept in sync with the primary supplier
+  product.supplierId = sortedIds[0] || ''
 }
 
 /** Load a tenant's data from D1 into memory. Cached for 30s per worker instance. */

@@ -2,34 +2,9 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { ok, err, dbInsert, dbUpdate, dbDelete, genId } from '../dbHelpers'
-import { markTenantModified } from '../userStore'
+import { markTenantModified, logWorkInstructionEvent } from '../userStore'
 
 const app = new Hono()
-
-// ── HELPER: Log de Auditoria ──
-async function logAudit(db: any, userId: string, empresaId: string, instructionId: string, action: string, details: any, tenant: any) {
-  const auditId = genId('audit')
-  const auditEntry = {
-    id: auditId,
-    user_id: userId,
-    empresa_id: empresaId,
-    instruction_id: instructionId,
-    action,
-    details: JSON.stringify(details),
-    changed_by: userId,
-    changed_at: new Date().toISOString(),
-    ip_address: '',
-  }
-
-  if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instruction_audit_log', auditEntry)
-  }
-
-  // Adicionar em memória
-  if (!tenant.workInstructionAuditLog) tenant.workInstructionAuditLog = []
-  tenant.workInstructionAuditLog.push(auditEntry)
-  markTenantModified(userId)
-}
 
 // ── UI: GET /instrucoes ──
 app.get('/', (c) => {
@@ -213,8 +188,8 @@ app.post('/api/instructions', async (c) => {
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
     await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
-    await logAudit(db, userId, empresaId, id, 'CREATED', { title: body.title }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, id, 'CREATED', { title: body.title }, tenant)
 
   return ok(c, { instruction, version })
 })
@@ -256,11 +231,11 @@ app.post('/api/instructions/:id/steps', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instruction_steps', { ...step, user_id: userId, empresa_id: empresaId })
-    await logAudit(db, userId, empresaId, instructionId, 'STEP_ADDED', {
-      step_number: body.step_number,
-      title: body.title
-    }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STEP_ADDED', {
+    step_number: body.step_number,
+    title: body.title
+  }, tenant)
 
   return ok(c, { step })
 })
@@ -297,11 +272,11 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
       description: steps[stepIdx].description,
       observation: steps[stepIdx].observation,
     })
-    await logAudit(db, userId, empresaId, instructionId, 'STEP_EDITED', {
-      stepId,
-      whatChanged: Object.keys(body).filter((k: string) => body[k] !== undefined && body[k] !== oldStep[k])
-    }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STEP_EDITED', {
+    stepId,
+    whatChanged: Object.keys(body).filter((k: string) => body[k] !== undefined && body[k] !== oldStep[k])
+  }, tenant)
 
   return ok(c, { step: steps[stepIdx] })
 })
@@ -333,12 +308,12 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
     for (const photo of photos.results || []) {
       await dbDelete(db, 'work_instruction_photos', (photo as any).id, userId)
     }
-    await logAudit(db, userId, empresaId, instructionId, 'STEP_DELETED', {
-      stepId,
-      stepNumber: step.step_number,
-      title: step.title
-    }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STEP_DELETED', {
+    stepId,
+    stepNumber: step.step_number,
+    title: step.title
+  }, tenant)
 
   return ok(c, { message: 'Etapa removida' })
 })
@@ -375,11 +350,11 @@ app.post('/api/instructions/:id/photos', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
-    await logAudit(db, userId, empresaId, instructionId, 'PHOTO_ADDED', {
-      stepId: body.step_id,
-      fileName: photo.file_name
-    }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_ADDED', {
+    stepId: body.step_id,
+    fileName: photo.file_name
+  }, tenant)
 
   return ok(c, { photo })
 })
@@ -404,11 +379,11 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'work_instruction_photos', photoId, userId)
-    await logAudit(db, userId, empresaId, instructionId, 'PHOTO_DELETED', {
-      photoId,
-      fileName: photo.file_name
-    }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_DELETED', {
+    photoId,
+    fileName: photo.file_name
+  }, tenant)
 
   return ok(c, { message: 'Foto removida' })
 })
@@ -468,13 +443,62 @@ app.post('/api/instructions/:id/versions', async (c) => {
       updated_at: instruction.updated_at,
       updated_by: userId,
     })
-    await logAudit(db, userId, empresaId, instructionId, 'VERSION_CREATED', {
-      versionBefore: currentVersion.version,
-      versionAfter: body.new_version
-    }, tenant)
   }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'VERSION_CREATED', {
+    versionBefore: currentVersion.version,
+    versionAfter: body.new_version
+  }, tenant)
 
   return ok(c, { instruction, version: newVersion })
+})
+
+// ── API: DELETE /api/instructions/:id (Deletar Instrução) ──
+app.delete('/api/instructions/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+
+  const idx = (tenant.workInstructions || []).findIndex((i: any) => i.id === instructionId)
+  if (idx === -1) return err(c, 'Instrução não encontrada', 404)
+
+  const instruction = tenant.workInstructions[idx]
+
+  // Collect version/step IDs before removal for cascade cleanup
+  const versionIds = (tenant.workInstructionVersions || [])
+    .filter((v: any) => v.instruction_id === instructionId)
+    .map((v: any) => v.id)
+  const stepIds = (tenant.workInstructionSteps || [])
+    .filter((s: any) => versionIds.includes(s.version_id))
+    .map((s: any) => s.id)
+
+  // Remove from memory (cascade)
+  tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => !stepIds.includes(p.step_id))
+  tenant.workInstructionSteps = (tenant.workInstructionSteps || []).filter((s: any) => !versionIds.includes(s.version_id))
+  tenant.workInstructionVersions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id !== instructionId)
+  tenant.workInstructions.splice(idx, 1)
+  markTenantModified(userId)
+
+  // D1 (cascade delete — use IN clauses to reduce round trips)
+  if (db && userId !== 'demo-tenant') {
+    if (stepIds.length > 0) {
+      const stepPlaceholders = stepIds.map(() => '?').join(', ')
+      await db.prepare(`DELETE FROM work_instruction_photos WHERE step_id IN (${stepPlaceholders}) AND user_id = ?`)
+        .bind(...stepIds, userId).run()
+      await db.prepare(`DELETE FROM work_instruction_steps WHERE id IN (${stepPlaceholders}) AND user_id = ?`)
+        .bind(...stepIds, userId).run()
+    }
+    if (versionIds.length > 0) {
+      const versionPlaceholders = versionIds.map(() => '?').join(', ')
+      await db.prepare(`DELETE FROM work_instruction_versions WHERE id IN (${versionPlaceholders}) AND user_id = ?`)
+        .bind(...versionIds, userId).run()
+    }
+    await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
+  }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'DELETED', { title: instruction.title }, tenant)
+
+  return ok(c, { deleted: true })
 })
 
 // ── API: GET /api/instructions/:id/audit-log (Obter Histórico) ──
