@@ -661,6 +661,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         notes: r.notes || '', active: r.active !== 0, rating: r.rating || 0,
         createdAt: r.created_at || new Date().toISOString(),
       }))
+      console.log(`[HYDRATION] ✅ ${tenant.suppliers.length} fornecedores carregados`)
+    } else {
+      console.log(`[HYDRATION] ⚠️ Nenhum fornecedor encontrado em D1 para ${userId}`)
     }
     // Load stock items
     const items = await db.prepare(`SELECT * FROM stock_items WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
@@ -706,6 +709,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         status: r.status || 'active', notes: r.notes || '',
         createdAt: r.created_at || new Date().toISOString(),
       }))
+      console.log(`[HYDRATION] ✅ ${tenant.plants.length} plantas carregadas`)
+    } else {
+      console.log(`[HYDRATION] ⚠️ Nenhuma planta encontrada em D1 para ${userId}`)
     }
     // Load machines
     const machinesRes = await db.prepare(`SELECT * FROM machines WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
@@ -718,6 +724,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         specs: r.specs || '',
         createdAt: r.created_at || new Date().toISOString(),
       }))
+      console.log(`[HYDRATION] ✅ ${tenant.machines.length} máquinas carregadas`)
+    } else {
+      console.log(`[HYDRATION] ⚠️ Nenhuma máquina encontrada em D1 para ${userId}`)
     }
     // Load workbenches
     const wbRes = await db.prepare(`SELECT * FROM workbenches WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
@@ -729,6 +738,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         status: r.status || 'available',
         createdAt: r.created_at || new Date().toISOString(),
       }))
+      console.log(`[HYDRATION] ✅ ${tenant.workbenches.length} bancadas carregadas`)
+    } else {
+      console.log(`[HYDRATION] ⚠️ Nenhuma bancada encontrada em D1 para ${userId}`)
     }
     // Load supplier categories
     const cats = await db.prepare('SELECT * FROM supplier_categories WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all()
