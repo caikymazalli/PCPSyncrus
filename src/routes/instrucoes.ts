@@ -209,7 +209,7 @@ app.get('/', (c) => {
     const data = await res.json();
     if (data.ok) { console.log('Instruction details:', data); }
   }
-  </script>
+  <script>
 `
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
