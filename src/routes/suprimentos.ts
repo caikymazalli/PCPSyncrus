@@ -1269,6 +1269,10 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <script src="/static/purchase-order-actions.js"></script>
+  <script src="/static/pedido-modal.js"></script>
+  <script src="/static/suprimentos-init.js"></script>
+  <script src="/static/quotations-actions.js"></script>
   `
 
   return c.html(layout('Suprimentos', content, 'suprimentos', userInfo))
