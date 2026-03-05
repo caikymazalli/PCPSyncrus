@@ -560,21 +560,17 @@ app.delete('/api/instructions/:id', async (c) => {
   if (db && userId !== 'demo-tenant') {
     if (stepIds.length > 0) {
       const stepPlaceholders = stepIds.map(() => '?').join(', ')
-      await db.prepare(`DELETE FROM work_instruction_photos WHERE step_id IN (${stepPlaceholders}) AND user_id = ?`)
+      await db.prepare('DELETE FROM work_instruction_photos WHERE step_id IN (' + stepPlaceholders + ') AND user_id = ?')
         .bind(...stepIds, userId).run()
-      await db.prepare(`DELETE FROM work_instruction_steps WHERE id IN (${stepPlaceholders}) AND user_id = ?`)
+      await db.prepare('DELETE FROM work_instruction_steps WHERE id IN (' + stepPlaceholders + ') AND user_id = ?')
         .bind(...stepIds, userId).run()
     }
     if (versionIds.length > 0) {
-      const versionPlaceholders = versionIds.map(() => '?').join(', ')
-      await db.prepare(`DELETE FROM work_instruction_versions WHERE id IN (${versionPlaceholders}) AND user_id = ?`)
-        .bind(...versionIds, userId).run()
-    }
-    await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
-  }
-  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'DELETED', { title: instruction.title }, tenant)
-
-  return ok(c, { deleted: true })
+  const versionPlaceholders = versionIds.map(() => '?').join(', ')
+  await db.prepare('DELETE FROM work_instruction_versions WHERE id IN (' + versionPlaceholders + ') AND user_id = ?')
+    .bind(...versionIds, userId).run()
+}
+await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
 })
 
 // ── API: GET /api/instructions/:id/audit-log (Obter Histórico) ──
