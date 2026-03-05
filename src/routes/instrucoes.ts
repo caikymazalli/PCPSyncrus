@@ -571,7 +571,7 @@ app.delete('/api/instructions/:id', async (c) => {
     .bind(...versionIds, userId).run()
 }
 await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
-})
+})  // ← FECHA o app.delete()
 
 // ── API: GET /api/instructions/:id/audit-log (Obter Histórico) ──
 app.get('/api/instructions/:id/audit-log', async (c) => {
@@ -583,14 +583,14 @@ app.get('/api/instructions/:id/audit-log', async (c) => {
     .sort((a: any, b: any) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime())
 
   return ok(c, { auditLog })
-})
+})  // ← FECHA o app.get('/api/instructions/:id/audit-log')
 
 // ── API: GET /api/instructions (Listar todas) ──
 app.get('/api/instructions', async (c) => {
   const tenant = getCtxTenant(c)
   const instructions = tenant.workInstructions || []
   return ok(c, { instructions })
-})
+})  // ← FECHA o app.get('/api/instructions')
 
 // ── API: GET /api/instructions/:id (Obter detalhes) ──
 app.get('/api/instructions/:id', async (c) => {
@@ -608,7 +608,6 @@ app.get('/api/instructions/:id', async (c) => {
   )
 
   return ok(c, { instruction, currentVersion, versions, steps, photos })
-})
+})  // ← FECHA o app.get('/api/instructions/:id')
 
 export default app
-
