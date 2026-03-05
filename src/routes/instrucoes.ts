@@ -758,7 +758,7 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
     objectKey,
   }, tenant)
 
-  return ok(c, { photo, view_url: \`/instrucoes/api/photos/\${photoId}\` })
+  return ok(c, { photo, view_url: '/instrucoes/api/photos/' + photoId })
 })
 
 // ── API: GET /api/photos/:photoId (Servir Foto do R2) ──
