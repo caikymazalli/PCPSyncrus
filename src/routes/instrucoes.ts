@@ -8,6 +8,16 @@ const app = new Hono()
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Escape user-provided strings for safe HTML interpolation. */
+function esc(str: unknown): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -206,13 +216,190 @@ app.get('/', (c) => {
 
   function viewInstruction(id) {
     console.log('[INSTR] Visualizar:', id)
-    alert('Função "Visualizar" em breve')
+    window.location.href = '/instrucoes/' + encodeURIComponent(id)
   }
   </script>
   `
 
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
+
+// ── UI: GET /instrucoes/:id (Detalhes da Instrução) ──
+app.get('/:id', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const instructionId = c.req.param('id')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) {
+    return c.html(layout('Instrução não encontrada', `
+      <div class="card" style="padding:48px;text-align:center;margin-top:32px;">
+        <div style="font-size:48px;margin-bottom:16px;">📋</div>
+        <div style="font-size:18px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Instrução não encontrada</div>
+        <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+      </div>`, 'instrucoes', userInfo))
+  }
+
+  const versions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id === instructionId)
+  const currentVersion = versions.find((v: any) => v.is_current)
+  const steps = (tenant.workInstructionSteps || [])
+    .filter((s: any) => s.version_id === currentVersion?.id)
+    .sort((a: any, b: any) => a.step_number - b.step_number)
+  const photos = (tenant.workInstructionPhotos || []).filter((p: any) =>
+    steps.some((s: any) => s.id === p.step_id)
+  )
+
+  const statusBadge = instruction.status === 'active'
+    ? `<span class="badge badge-success">Ativo</span>`
+    : `<span class="badge badge-secondary">${esc(instruction.status || 'draft')}</span>`
+
+  const stepsHtml = steps.length === 0
+    ? `<div style="padding:32px;text-align:center;color:#6c757d;font-size:14px;">Nenhuma etapa cadastrada nesta instrução.</div>`
+    : steps.map((step: any) => {
+        const stepPhotos = photos.filter((p: any) => p.step_id === step.id)
+        const photosHtml = stepPhotos.length === 0
+          ? ''
+          : `<div class="step-photos" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;">${
+              stepPhotos.map((p: any) => `
+                <div class="step-photo-wrapper" style="position:relative;">
+                  <img src="/instrucoes/api/photos/${esc(p.id)}" alt="${esc(p.file_name)}"
+                    style="max-width:180px;max-height:140px;border-radius:8px;border:1px solid #dee2e6;object-fit:cover;cursor:pointer;"
+                    onclick="openPhotoModal(${JSON.stringify(p.id)},${JSON.stringify(p.file_name || '')})"
+                    onerror="this.style.display='none'">
+                </div>`).join('')
+            }</div>`
+
+        return `
+        <div class="step-card" data-step-id="${esc(step.id)}" style="border:1px solid #e9ecef;border-radius:10px;padding:20px;margin-bottom:16px;background:#fff;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">${esc(step.step_number)}</div>
+            <div style="font-weight:700;font-size:15px;color:#1B4F72;">${esc(step.title)}</div>
+          </div>
+          ${step.description ? `<div style="font-size:14px;color:#495057;margin-bottom:8px;white-space:pre-line;">${esc(step.description)}</div>` : ''}
+          ${step.observation ? `<div style="font-size:13px;color:#856404;background:#fff3cd;border-radius:6px;padding:8px 12px;margin-bottom:8px;"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>${esc(step.observation)}</div>` : ''}
+          ${photosHtml}
+          <div class="no-print" style="margin-top:12px;">
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer;">
+              <i class="fas fa-camera"></i> Adicionar Foto
+              <input type="file" accept="image/png,image/jpeg" style="display:none;"
+                onchange="uploadPhoto(${JSON.stringify(instruction.id)},${JSON.stringify(step.id)},this)">
+            </label>
+            <span class="upload-status" style="margin-left:8px;font-size:12px;"></span>
+          </div>
+        </div>`
+      }).join('')
+
+  const content = `
+  <style>
+    @media print {
+      .no-print, .sidebar, .sidebar-overlay, .main-topbar { display: none !important; }
+      .main-content { margin-left: 0 !important; }
+      .step-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; border: 1px solid #ccc !important; }
+      .step-photo-wrapper img { max-width: 140px !important; max-height: 110px !important; }
+      body { background: white !important; }
+      .card { box-shadow: none !important; }
+    }
+  </style>
+
+  <!-- Header -->
+  <div class="section-header no-print">
+    <div>
+      <div style="font-size:14px;color:#6c757d;margin-bottom:4px;">
+        <a href="/instrucoes" style="color:#6c757d;text-decoration:none;"><i class="fas fa-arrow-left"></i> Instruções de Trabalho</a>
+        &nbsp;/&nbsp; ${esc(instruction.title)}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+    </div>
+  </div>
+
+  <!-- Info Card -->
+  <div class="card" style="padding:20px 24px;margin-bottom:20px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:20px;font-weight:700;color:#1B4F72;margin-bottom:6px;">${esc(instruction.title)}</div>
+        ${instruction.description ? `<div style="font-size:14px;color:#6c757d;margin-bottom:10px;">${esc(instruction.description)}</div>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="badge badge-secondary"><i class="fas fa-barcode"></i> ${esc(instruction.code || '—')}</span>
+          <span class="badge badge-primary"><i class="fas fa-code-branch"></i> v${esc(instruction.current_version || '1.0')}</span>
+          ${statusBadge}
+        </div>
+      </div>
+      <div style="font-size:12px;color:#6c757d;text-align:right;">
+        <div>Atualizado em: ${instruction.updated_at ? new Date(instruction.updated_at).toLocaleDateString('pt-BR') : '—'}</div>
+        ${currentVersion ? `<div style="margin-top:4px;">Versão: ${esc(currentVersion.version)}</div>` : ''}
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div style="margin-bottom:8px;font-weight:700;font-size:15px;color:#1B4F72;">
+    <i class="fas fa-list-ol"></i> Etapas (${steps.length})
+  </div>
+  ${stepsHtml}
+
+  <!-- Photo Lightbox -->
+  <div id="photoModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;align-items:center;justify-content:center;" onclick="closePhotoModal()">
+    <div onclick="event.stopPropagation()" style="max-width:90vw;max-height:90vh;position:relative;">
+      <button onclick="closePhotoModal()" style="position:absolute;top:-36px;right:0;background:none;border:none;color:white;font-size:24px;cursor:pointer;">×</button>
+      <img id="photoModalImg" src="" alt="" style="max-width:90vw;max-height:85vh;border-radius:8px;object-fit:contain;">
+      <div id="photoModalCaption" style="color:white;font-size:13px;margin-top:8px;text-align:center;"></div>
+    </div>
+  </div>
+
+  <script>
+  function openPhotoModal(photoId, caption) {
+    const src = '/instrucoes/api/photos/' + encodeURIComponent(photoId)
+    const modal = document.getElementById('photoModal')
+    document.getElementById('photoModalImg').src = src
+    document.getElementById('photoModalCaption').textContent = caption || ''
+    modal.style.display = 'flex'
+  }
+
+  function closePhotoModal() {
+    document.getElementById('photoModal').style.display = 'none'
+    document.getElementById('photoModalImg').src = ''
+  }
+
+  async function uploadPhoto(instructionId, stepId, input) {
+    const file = input.files && input.files[0]
+    if (!file) return
+
+    const card = input.closest('[data-step-id]')
+    const statusEl = card ? card.querySelector('.upload-status') : null
+    if (statusEl) { statusEl.textContent = '⏳ Enviando...'; statusEl.style.color = '#6c757d'; }
+
+    const fd = new FormData()
+    fd.append('step_id', stepId)
+    fd.append('file', file)
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/photos/upload', {
+        method: 'POST',
+        body: fd,
+      })
+      const data = await res.json()
+      if (data.ok) {
+        if (statusEl) { statusEl.textContent = '✅ Foto enviada!'; statusEl.style.color = '#27AE60'; }
+        // Short delay so the user can read the success message before the page reloads
+        setTimeout(() => location.reload(), 900)
+      } else {
+        if (statusEl) { statusEl.textContent = '❌ ' + (data.error || 'Erro ao enviar'); statusEl.style.color = '#E74C3C'; }
+      }
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = '❌ Erro de conexão'; statusEl.style.color = '#E74C3C'; }
+    }
+
+    input.value = ''
+  }
+  </script>
+  `
+
+  return c.html(layout(esc(instruction.title) + ' — Instrução', content, 'instrucoes', userInfo))
+})
+
 
 // ── API: POST /api/instructions (Criar Instrução) ──
 app.post('/api/instructions', async (c) => {
