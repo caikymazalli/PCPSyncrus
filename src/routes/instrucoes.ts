@@ -1,10 +1,42 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { ok, err, dbInsert, dbUpdate, dbDelete, genId } from '../dbHelpers'
 import { markTenantModified, logWorkInstructionEvent } from '../userStore'
 
 const app = new Hono()
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+}
+
+/** Resolve the Content-Type for an image file, only allowing jpg/jpeg/png. */
+function guessImageContentType(fileName: string, contentType?: string): string | null {
+  if (contentType) {
+    const ct = contentType.toLowerCase().split(';')[0].trim()
+    if (Object.values(ALLOWED_IMAGE_TYPES).includes(ct)) return ct
+  }
+  const ext = (fileName.split('.').pop() || '').toLowerCase()
+  return ALLOWED_IMAGE_TYPES[ext] || null
+}
+
+/** Remove path separators and dangerous characters from a file name. */
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_').slice(0, 200)
+}
+
+/** Return a 401 JSON response if the user is not authenticated (no session or demo). */
+async function ensureAuthenticatedOr401(c: any): Promise<Response | null> {
+  const session = getCtxSession(c)
+  if (!session || session.isDemo) {
+    return c.json({ error: 'Não autenticado' }, 401)
+  }
+  return null
+}
 
 // ── UI: GET /instrucoes ──
 app.get('/', (c) => {
@@ -361,7 +393,127 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   return ok(c, { message: 'Etapa removida' })
 })
 
-// ── API: POST /api/instructions/:id/photos (Upload Foto) ──
+// ── API: POST /api/instructions/:id/photos/upload (R2 Upload) ──
+app.post('/api/instructions/:id/photos/upload', async (c) => {
+  const unauthorized = await ensureAuthenticatedOr401(c)
+  if (unauthorized) return unauthorized
+
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+
+  const formData = await c.req.formData().catch(() => null)
+  if (!formData) return err(c, 'Dados inválidos')
+
+  const stepId = formData.get('step_id')
+  const file = formData.get('file')
+
+  if (!stepId || typeof stepId !== 'string') return err(c, 'step_id obrigatório')
+  if (!file || !(file instanceof File)) return err(c, 'Arquivo obrigatório')
+
+  // Validate step exists
+  const stepExists = (tenant.workInstructionSteps || []).find((s: any) => s.id === stepId)
+  if (!stepExists) return err(c, 'Etapa não encontrada', 404)
+
+  // Validate file type
+  const resolvedContentType = guessImageContentType(file.name, file.type)
+  if (!resolvedContentType) return err(c, 'Tipo de arquivo não permitido. Use jpg, jpeg ou png.')
+
+  // Validate file size (~8MB)
+  if (file.size > 8 * 1024 * 1024) return err(c, 'Arquivo muito grande. Limite: 8MB')
+
+  const photoId = genId('photo')
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const safeFileName = sanitizeFileName(file.name)
+  const objectKey = `work-instructions/${instructionId}/steps/${stepId}/${photoId}.${ext}`
+
+  // Upload to R2
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (!bucket) return err(c, 'Bucket R2 não configurado', 503)
+
+  const arrayBuffer = await file.arrayBuffer()
+  await bucket.put(objectKey, arrayBuffer, { httpMetadata: { contentType: resolvedContentType } })
+
+  const photo: Record<string, any> = {
+    id: photoId,
+    step_id: stepId,
+    photo_url: '',
+    file_name: safeFileName,
+    uploaded_at: new Date().toISOString(),
+    uploaded_by: userId,
+    object_key: objectKey,
+    content_type: resolvedContentType,
+  }
+
+  // Memória
+  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
+  tenant.workInstructionPhotos.push(photo)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+  }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_UPLOADED', {
+    stepId,
+    photoId,
+    fileName: safeFileName,
+    objectKey,
+  }, tenant)
+
+  return ok(c, { photo, view_url: `/instrucoes/api/photos/${photoId}` })
+})
+
+// ── API: GET /api/photos/:photoId (Servir Foto do R2) ──
+app.get('/api/photos/:photoId', async (c) => {
+  const unauthorized = await ensureAuthenticatedOr401(c)
+  if (unauthorized) return unauthorized
+
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const photoId = c.req.param('photoId')
+
+  // Lookup photo in memory first
+  let photo: any = (tenant.workInstructionPhotos || []).find((p: any) => p.id === photoId)
+
+  // Fallback to D1 if not in memory
+  if (!photo && db && userId !== 'demo-tenant') {
+    try {
+      const row = await db.prepare('SELECT * FROM work_instruction_photos WHERE id = ? AND user_id = ?')
+        .bind(photoId, userId).first()
+      if (row) photo = row
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!photo) return err(c, 'Foto não encontrada', 404)
+
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+
+  // Serve from R2 if object_key exists and bucket is configured
+  if (photo.object_key && bucket) {
+    const obj = await bucket.get(photo.object_key)
+    if (!obj) return err(c, 'Objeto não encontrado no storage', 404)
+    const contentType = photo.content_type || obj.httpMetadata?.contentType || 'image/jpeg'
+    return c.body(obj.body as any, 200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'private, max-age=300',
+    })
+  }
+
+  // Fallback: redirect to photo_url for legacy data
+  if (photo.photo_url) {
+    return c.redirect(photo.photo_url, 302)
+  }
+
+  return err(c, 'Foto não disponível', 404)
+})
+
+// ── API: POST /api/instructions/:id/photos (Upload Foto — legado) ──
 app.post('/api/instructions/:id/photos', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
@@ -370,19 +522,21 @@ app.post('/api/instructions/:id/photos', async (c) => {
   const instructionId = c.req.param('id')
   const body = await c.req.json().catch(() => null)
 
-  if (!body || !body.step_id || !body.photo_url) return err(c, 'Dados inválidos')
+  if (!body || !body.step_id || (!body.photo_url && !body.object_key)) return err(c, 'step_id e (photo_url ou object_key) são obrigatórios')
 
   const stepExists = (tenant.workInstructionSteps || []).find((s: any) => s.id === body.step_id)
   if (!stepExists) return err(c, 'Etapa não encontrada', 404)
 
   const photoId = genId('photo')
-  const photo = {
+  const photo: Record<string, any> = {
     id: photoId,
     step_id: body.step_id,
-    photo_url: body.photo_url,
+    photo_url: body.photo_url || '',
     file_name: body.file_name || 'photo_' + photoId + '.jpg',
     uploaded_at: new Date().toISOString(),
     uploaded_by: userId,
+    object_key: body.object_key || '',
+    content_type: body.content_type || '',
   }
 
   // Memória
@@ -418,6 +572,16 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
   const photo = photos[photoIdx]
   photos.splice(photoIdx, 1)
   markTenantModified(userId)
+
+  // Delete from R2 if object_key exists
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (photo.object_key && bucket) {
+    try {
+      await bucket.delete(photo.object_key)
+    } catch (e) {
+      console.warn('[R2][DELETE] Falha ao remover objeto do R2:', (e as any)?.message)
+    }
+  }
 
   // D1
   if (db && userId !== 'demo-tenant') {
@@ -516,12 +680,29 @@ app.delete('/api/instructions/:id', async (c) => {
     .filter((s: any) => versionIds.includes(s.version_id))
     .map((s: any) => s.id)
 
+  // Collect photos to delete from R2 before removing from memory
+  const photosToDelete = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.includes(p.step_id))
+
   // Remove from memory (cascade)
   tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => !stepIds.includes(p.step_id))
   tenant.workInstructionSteps = (tenant.workInstructionSteps || []).filter((s: any) => !versionIds.includes(s.version_id))
   tenant.workInstructionVersions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id !== instructionId)
   tenant.workInstructions.splice(idx, 1)
   markTenantModified(userId)
+
+  // Delete R2 objects for photos that have object_key
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (bucket) {
+    for (const p of photosToDelete) {
+      if (p.object_key) {
+        try {
+          await bucket.delete(p.object_key)
+        } catch (e) {
+          console.warn('[R2][DELETE] Falha ao remover objeto do R2:', (e as any)?.message)
+        }
+      }
+    }
+  }
 
   // D1 (cascade delete — use IN clauses to reduce round trips)
   if (db && userId !== 'demo-tenant') {

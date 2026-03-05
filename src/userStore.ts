@@ -981,6 +981,8 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           file_name: r.file_name,
           uploaded_at: r.uploaded_at,
           uploaded_by: r.uploaded_by,
+          object_key: r.object_key || '',
+          content_type: r.content_type || '',
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructionPhotos.length} fotos carregadas`)
       }
