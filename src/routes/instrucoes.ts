@@ -602,6 +602,22 @@ app.post('/api/instructions/:id/steps', async (c) => {
   return ok(c, { step })
 })
 
+// ── API: GET /api/instructions/:id/steps/:stepId (Obter Etapa) ──
+app.get('/api/instructions/:id/steps/:stepId', async (c) => {
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const stepId = c.req.param('stepId')
+
+  // (Opcional) valida instrução existe
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+
+  const step = (tenant.workInstructionSteps || []).find((s: any) => s.id === stepId)
+  if (!step) return err(c, 'Etapa não encontrada', 404)
+
+  return ok(c, { step })
+})
+
 // ── API: PUT /api/instructions/:id/steps/:stepId (Editar Etapa) ──
 app.put('/api/instructions/:id/steps/:stepId', async (c) => {
   const db = getCtxDB(c)
