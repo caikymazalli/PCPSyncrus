@@ -8,6 +8,16 @@ const app = new Hono()
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Escape HTML special characters to prevent XSS in SSR-rendered output. */
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -205,13 +215,149 @@ app.get('/', (c) => {
   }
 
   function viewInstruction(id) {
-    console.log('[INSTR] Visualizar:', id)
-    alert('Função "Visualizar" em breve')
+    window.location.href = '/instrucoes/' + id
   }
   </script>
   `
 
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
+})
+
+// ── UI: GET /:id ──
+app.get('/:id', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const instructionId = c.req.param('id')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) {
+    const notFound = `
+    <div style="padding:48px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">📋</div>
+      <div style="font-size:18px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Instrução não encontrada</div>
+      <div style="font-size:14px;color:#6c757d;margin-bottom:20px;">O ID informado não corresponde a nenhuma instrução cadastrada.</div>
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar à listagem</a>
+    </div>`
+    return c.html(layout('Instrução não encontrada', notFound, 'instrucoes', userInfo))
+  }
+
+  const currentVersion = (tenant.workInstructionVersions || []).find(
+    (v: any) => v.instruction_id === instructionId && v.is_current
+  )
+  const steps = (tenant.workInstructionSteps || []).filter(
+    (s: any) => s.version_id === currentVersion?.id
+  ).sort((a: any, b: any) => a.step_number - b.step_number)
+  const stepIds = new Set(steps.map((s: any) => s.id))
+  const photos = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.has(p.step_id))
+
+  const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado' }
+  const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary' }
+  const status = instruction.status || 'draft'
+
+  const stepsHtml = steps.length === 0
+    ? `<div class="card" style="padding:48px;text-align:center;">
+        <div style="font-size:32px;margin-bottom:12px;">📋</div>
+        <div style="font-size:16px;color:#6c757d;">Nenhuma etapa cadastrada para esta instrução.</div>
+      </div>`
+    : steps.map((step: any) => {
+        const stepPhotos = photos.filter((p: any) => p.step_id === step.id)
+        return `
+        <div class="card" style="margin-bottom:16px;overflow:hidden;">
+          <div style="padding:16px 20px;background:#f8f9fa;border-bottom:1px solid #e9ecef;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:32px;height:32px;border-radius:50%;background:#1B4F72;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">${step.step_number}</div>
+              <h3 style="margin:0;font-size:16px;font-weight:700;color:#1B4F72;">${escapeHtml(step.title || '')}</h3>
+            </div>
+          </div>
+          <div style="padding:20px;">
+            ${step.description ? `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Descrição</div><p style="margin:0;color:#344;line-height:1.6;">${escapeHtml(step.description)}</p></div>` : ''}
+            ${step.observation ? `<div style="margin-bottom:12px;padding:12px;background:#fff8e1;border-left:3px solid #F39C12;border-radius:4px;"><div style="font-size:12px;font-weight:600;color:#F39C12;margin-bottom:4px;">⚠️ Observação</div><p style="margin:0;color:#555;line-height:1.6;">${escapeHtml(step.observation)}</p></div>` : ''}
+            ${stepPhotos.length > 0 ? `
+            <div style="margin-bottom:16px;">
+              <div style="font-size:12px;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Fotos</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                ${stepPhotos.map((p: any) => `<img src="/instrucoes/api/photos/${escapeHtml(p.id)}" alt="${escapeHtml(p.file_name || 'foto')}" style="max-width:200px;max-height:200px;object-fit:cover;border-radius:6px;border:1px solid #e9ecef;">`).join('')}
+              </div>
+            </div>` : ''}
+            <div class="no-print" style="border-top:1px solid #f1f3f5;padding-top:16px;margin-top:4px;">
+              <div style="font-size:12px;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Upload de Foto</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <input type="file" id="file-${escapeHtml(step.id)}" accept="image/png,image/jpeg" style="font-size:13px;">
+                <button class="btn btn-secondary btn-sm" onclick="uploadPhoto('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-upload"></i> Enviar foto</button>
+              </div>
+              <div id="upload-status-${escapeHtml(step.id)}" style="font-size:12px;margin-top:6px;"></div>
+            </div>
+          </div>
+        </div>`
+      }).join('')
+
+  const content = `
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      .sidebar, .nav-sidebar, .topbar { display: none !important; }
+      .main-content, body { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+      .card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
+      img { max-width: 180px !important; max-height: 180px !important; }
+      h1 { font-size: 16px !important; }
+    }
+  </style>
+
+  <!-- Header -->
+  <div class="section-header">
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+        <span class="badge badge-secondary">${escapeHtml(instruction.code || '—')}</span>
+        <h1 style="margin:0;font-size:20px;font-weight:700;color:#1B4F72;">${escapeHtml(instruction.title || '—')}</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:13px;color:#6c757d;flex-wrap:wrap;">
+        <span>Versão: <strong>v${escapeHtml(instruction.current_version || '1.0')}</strong></span>
+        <span class="badge badge-${statusBadge[status] || 'secondary'}">${statusLabel[status] || escapeHtml(status)}</span>
+        ${instruction.description ? `<span>— ${escapeHtml(instruction.description)}</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;" class="no-print">
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+      <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  ${stepsHtml}
+
+  <script>
+  async function uploadPhoto(instructionId, stepId) {
+    const fileInput = document.getElementById('file-' + stepId)
+    const statusEl = document.getElementById('upload-status-' + stepId)
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      if (statusEl) statusEl.textContent = '⚠️ Selecione um arquivo antes de enviar.'
+      return
+    }
+    const file = fileInput.files[0]
+    const formData = new FormData()
+    formData.append('step_id', stepId)
+    formData.append('file', file)
+    if (statusEl) statusEl.textContent = '⏳ Enviando...'
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + instructionId + '/photos/upload', {
+        method: 'POST',
+        body: formData
+      })
+      const data = await res.json()
+      if (data.ok) {
+        if (statusEl) statusEl.textContent = '✅ Foto enviada! Recarregando...'
+        setTimeout(() => location.reload(), 1000)
+      } else {
+        if (statusEl) statusEl.textContent = '❌ Erro: ' + (data.error || 'Desconhecido')
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '❌ Erro de conexão. Tente novamente.'
+    }
+  }
+  </script>
+  `
+
+  return c.html(layout('Instrução: ' + instruction.title, content, 'instrucoes', userInfo))
 })
 
 // ── API: POST /api/instructions (Criar Instrução) ──
