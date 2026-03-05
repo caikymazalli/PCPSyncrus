@@ -143,6 +143,28 @@ describe('instrucoes.ts source-code safeguards', () => {
     expect(src).toContain("'/instrucoes/' + encodeURIComponent(id)")
   })
 
+  it('viewOnlyInstruction uses encodeURIComponent and /view suffix', () => {
+    expect(src).toContain("viewOnlyInstruction")
+    const fnStart = src.indexOf('function viewOnlyInstruction')
+    const fnBody = src.slice(fnStart, fnStart + 200)
+    expect(fnBody).toContain("encodeURIComponent(id)")
+    expect(fnBody).toContain("'/view'")
+  })
+
+  it('transitionStatus fetch uses /instrucoes/api/instructions/ prefix', () => {
+    const fnStart = src.indexOf('async function transitionStatus')
+    const fnBody = src.slice(fnStart, fnStart + 500)
+    expect(fnBody).toContain("'/instrucoes/api/instructions/'")
+    expect(fnBody).toContain("'/status'")
+  })
+
+  it('createVersion fetch uses /instrucoes/api/instructions/ prefix', () => {
+    const fnStart = src.indexOf('async function createVersion')
+    const fnBody = src.slice(fnStart, fnStart + 500)
+    expect(fnBody).toContain("'/instrucoes/api/instructions/'")
+    expect(fnBody).toContain("'/versions'")
+  })
+
   it('view_url is built with string concatenation, not template literal', () => {
     // The line must contain string concatenation for view_url, NOT a backtick template literal
     const match = src.match(/view_url:\s*(.+)/)
@@ -288,5 +310,146 @@ describe('DELETE /instrucoes/api/instructions/:id/steps/:stepId', () => {
       { method: 'DELETE' }
     )
     expect(res.status).toBe(404)
+  })
+})
+
+// ── Read-only view route ──────────────────────────────────────────────────────
+
+describe('GET /instrucoes/:id/view (read-only view)', () => {
+  beforeEach(() => { setupSession(); setupTenant(true, true) })
+  afterEach(cleanup)
+
+  it('returns 200 with read-only HTML (no input/textarea elements)', async () => {
+    const res = await authedRequest('/' + TEST_INSTR_ID + '/view')
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('wi-text')
+    // Read-only view should not contain editable step inputs
+    expect(html).not.toContain('data-field="step_number"')
+    expect(html).not.toContain('data-field="title"')
+  })
+
+  it('shows step content in read-only divs', async () => {
+    const res = await authedRequest('/' + TEST_INSTR_ID + '/view')
+    const html = await res.text()
+    expect(html).toContain('Step One')
+  })
+
+  it('includes print and edit links', async () => {
+    const res = await authedRequest('/' + TEST_INSTR_ID + '/view')
+    const html = await res.text()
+    expect(html).toContain('window.print()')
+    expect(html).toContain('/instrucoes/' + TEST_INSTR_ID + '"')
+  })
+
+  it('returns not-found page for unknown instruction ID', async () => {
+    const res = await authedRequest('/non-existent-id/view')
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('não encontrada')
+  })
+})
+
+// ── Status transition API ─────────────────────────────────────────────────────
+
+describe('PUT /instrucoes/api/instructions/:id/status', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('transitions draft → active successfully', async () => {
+    const res = await authedRequest(
+      '/api/instructions/' + TEST_INSTR_ID + '/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active' }),
+      }
+    )
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ status: string }>
+    expect(data.ok).toBe(true)
+  })
+
+  it('rejects invalid transition (draft → obsolete)', async () => {
+    const res = await authedRequest(
+      '/api/instructions/' + TEST_INSTR_ID + '/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'obsolete' }),
+      }
+    )
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+
+  it('returns 404 for unknown instruction', async () => {
+    const res = await authedRequest(
+      '/api/instructions/nonexistent/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active' }),
+      }
+    )
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 when status is missing', async () => {
+    const res = await authedRequest(
+      '/api/instructions/' + TEST_INSTR_ID + '/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }
+    )
+    expect(res.status).toBe(400)
+  })
+})
+
+// ── List page button behaviour ────────────────────────────────────────────────
+
+describe('GET /instrucoes list page button behaviour', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('Visualizar button calls viewOnlyInstruction (opens /view)', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    expect(html).toContain('viewOnlyInstruction')
+  })
+
+  it('Editar button calls viewInstruction', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    expect(html).toContain('viewInstruction')
+    // Ensure edit button still navigates to /instrucoes/:id (not /view)
+    expect(html).not.toMatch(/onclick="viewInstruction[^"]*\/view"/)
+  })
+})
+
+// ── Versions section on detail page ──────────────────────────────────────────
+
+describe('GET /instrucoes/:id versions section', () => {
+  beforeEach(() => { setupSession(); setupTenant(true, true) })
+  afterEach(cleanup)
+
+  it('detail page includes Versões section', async () => {
+    const res = await authedRequest('/' + TEST_INSTR_ID)
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Versões')
+    expect(html).toContain('novaVersaoModal')
+    expect(html).toContain('Nova versão')
+  })
+
+  it('detail page includes status transition buttons for draft status', async () => {
+    const res = await authedRequest('/' + TEST_INSTR_ID)
+    const html = await res.text()
+    // The instruction in test setup has status 'draft', so Aprovar button should appear
+    expect(html).toContain('Aprovar')
+    expect(html).toContain('transitionStatus')
   })
 })

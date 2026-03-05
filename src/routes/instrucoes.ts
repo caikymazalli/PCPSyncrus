@@ -106,8 +106,8 @@ app.get('/', (c) => {
             <td style="font-size:12px;color:#6c757d;">${inst.updated_at ? new Date(inst.updated_at).toLocaleDateString('pt-BR') : '—'}</td>
             <td>
               <div style="display:flex;gap:4px;">
-                <button class="btn btn-secondary btn-sm" title="Visualizar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-eye"></i></button>
-                <button class="btn btn-secondary btn-sm" title="Editar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-secondary btn-sm" title="Visualizar (somente leitura, nova aba)" onclick="viewOnlyInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-eye"></i> Visualizar</button>
+                <button class="btn btn-primary btn-sm" title="Editar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-edit"></i> Editar</button>
               </div>
             </td>
           </tr>`).join('')}
@@ -201,6 +201,9 @@ app.get('/', (c) => {
   function viewInstruction(id) {
     window.location.href = '/instrucoes/' + encodeURIComponent(id)
   }
+  function viewOnlyInstruction(id) {
+    window.open('/instrucoes/' + encodeURIComponent(id) + '/view', '_blank')
+  }
   </script>
   `
 
@@ -241,9 +244,20 @@ app.get('/:id', (c) => {
 
   const nextStepNumber = steps.length ? Math.max(...steps.map((s: any) => Number(s.step_number) || 0)) + 1 : 1
 
-  const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado' }
-  const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary' }
+  const allVersions = (tenant.workInstructionVersions || [])
+    .filter((v: any) => v.instruction_id === instructionId)
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado', obsolete: 'Obsoleto' }
+  const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary', obsolete: 'secondary' }
   const status = instruction.status || 'draft'
+
+  const statusButtons = status === 'draft'
+    ? '<button class="btn btn-success no-print" onclick="transitionStatus(\'' + escapeHtml(instructionId) + '\', \'active\')"><i class="fas fa-check"></i> Aprovar</button>'
+    : status === 'active'
+      ? '<button class="btn btn-warning no-print" onclick="transitionStatus(\'' + escapeHtml(instructionId) + '\', \'obsolete\')"><i class="fas fa-archive"></i> Arquivar</button>' +
+        ' <button class="btn btn-secondary no-print" onclick="transitionStatus(\'' + escapeHtml(instructionId) + '\', \'draft\')"><i class="fas fa-undo"></i> Rascunho</button>'
+      : ''
 
   const content = `
   <style>
@@ -260,6 +274,8 @@ app.get('/:id', (c) => {
       .card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
       img { max-width: 180px !important; max-height: 180px !important; }
       h1 { font-size: 16px !important; }
+      textarea.form-control { border: none !important; background: transparent !important; resize: none !important; overflow: visible !important; height: auto !important; min-height: unset !important; padding: 2px 0 !important; }
+      .wi-table td { word-break: break-word; overflow: hidden; }
     }
   </style>
 
@@ -277,7 +293,9 @@ app.get('/:id', (c) => {
     </div>
     <div class="wi-actions no-print">
       <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+      <a href="/instrucoes/${escapeHtml(instructionId)}/view" target="_blank" class="btn btn-secondary"><i class="fas fa-eye"></i> Visualizar</a>
       <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+      ${statusButtons}
       <button class="btn btn-primary" onclick="openModal('novaEtapaModal')"><i class="fas fa-plus"></i> Nova etapa</button>
     </div>
   </div>
@@ -371,6 +389,55 @@ app.get('/:id', (c) => {
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novaEtapaModal')" class="btn btn-secondary">Cancelar</button>
         <button class="btn btn-primary" onclick="createStep('${escapeHtml(instructionId)}')"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Versões -->
+  <div class="card no-print" style="margin-top:16px;padding:20px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-code-branch" style="margin-right:8px;"></i>Versões</h3>
+      <button class="btn btn-secondary btn-sm" onclick="openModal('novaVersaoModal')"><i class="fas fa-plus"></i> Nova versão</button>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr>
+          <th>Versão</th>
+          <th>Status</th>
+          <th>Criado em</th>
+        </tr></thead>
+        <tbody>
+          ${allVersions.length === 0 ? `
+            <tr><td colspan="3" style="padding:12px;color:#6c757d;">Nenhuma versão encontrada.</td></tr>
+          ` : allVersions.map((v: any) => `
+            <tr>
+              <td><strong>v${escapeHtml(v.version || '—')}</strong>${v.is_current ? ' <span class="badge badge-success" style="font-size:11px;">Atual</span>' : ''}</td>
+              <td><span class="badge badge-${v.status === 'active' ? 'success' : 'secondary'}">${escapeHtml(statusLabel[v.status] || v.status || 'Rascunho')}</span></td>
+              <td style="font-size:12px;color:#6c757d;">${v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Versão -->
+  <div class="modal-overlay no-print" id="novaVersaoModal">
+    <div class="modal">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-code-branch" style="margin-right:8px;"></i>Nova Versão</h3>
+        <button onclick="closeModal('novaVersaoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="font-size:13px;color:#6c757d;margin-bottom:16px;">Versão atual: <strong>v${escapeHtml(instruction.current_version || '1.0')}</strong></p>
+        <div class="form-group">
+          <label class="form-label">Nova versão *</label>
+          <input class="form-control" id="newVersionInput" type="text" placeholder="Ex: 2.0">
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaVersaoModal')" class="btn btn-secondary">Cancelar</button>
+        <button class="btn btn-primary" onclick="createVersion('${escapeHtml(instructionId)}')"><i class="fas fa-save"></i> Criar versão</button>
       </div>
     </div>
   </div>
@@ -495,7 +562,165 @@ app.get('/:id', (c) => {
       if (statusEl) statusEl.textContent = '❌ Erro de conexão. Tente novamente.'
     }
   }
+
+  async function createVersion(instructionId) {
+    const newVersion = String(document.getElementById('newVersionInput').value || '').trim()
+    if (!newVersion) { alert('❌ Nova versão é obrigatória'); return }
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/versions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_version: newVersion })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        alert('✅ Nova versão criada!')
+        closeModal('novaVersaoModal')
+        setTimeout(() => location.reload(), 250)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
+  async function transitionStatus(instructionId, newStatus) {
+    const labels = { active: 'aprovar', obsolete: 'arquivar', draft: 'voltar a rascunho' }
+    if (!confirm('Deseja ' + (labels[newStatus] || newStatus) + ' esta instrução?')) return
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/status', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        setTimeout(() => location.reload(), 150)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
   </script>
+  `
+
+  return c.html(layout('Instrução: ' + instruction.title, content, 'instrucoes', userInfo))
+})
+
+// ── UI: GET /instrucoes/:id/view (Read-only view) ──
+app.get('/:id/view', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const instructionId = c.req.param('id')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) {
+    const notFound = `
+    <div style="padding:48px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">📋</div>
+      <div style="font-size:18px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Instrução não encontrada</div>
+      <div style="font-size:14px;color:#6c757d;margin-bottom:20px;">O ID informado não corresponde a nenhuma instrução cadastrada.</div>
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar à listagem</a>
+    </div>`
+    return c.html(layout('Instrução não encontrada', notFound, 'instrucoes', userInfo))
+  }
+
+  const currentVersion = (tenant.workInstructionVersions || []).find(
+    (v: any) => v.instruction_id === instructionId && v.is_current
+  )
+
+  const steps = (tenant.workInstructionSteps || [])
+    .filter((s: any) => s.version_id === currentVersion?.id)
+    .sort((a: any, b: any) => (a.step_number || 0) - (b.step_number || 0))
+
+  const stepIds = new Set(steps.map((s: any) => s.id))
+  const photos = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.has(p.step_id))
+
+  const photosByStep: Record<string, any[]> = {}
+  for (const p of photos) (photosByStep[p.step_id] ||= []).push(p)
+
+  const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado', obsolete: 'Obsoleto' }
+  const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary', obsolete: 'secondary' }
+  const status = instruction.status || 'draft'
+
+  const content = `
+  <style>
+    .wi-thumb { width:140px; height:auto; border:1px solid #e9ecef; border-radius:8px; display:block; }
+    .wi-muted { font-size:12px; color:#6c757d; }
+    .wi-table td, .wi-table th { vertical-align: top; }
+    .wi-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.5; }
+    @media print {
+      .no-print { display: none !important; }
+      .sidebar, .nav-sidebar, .topbar { display: none !important; }
+      .main-content, body { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+      .card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
+      img { max-width: 180px !important; max-height: 180px !important; }
+      h1 { font-size: 16px !important; }
+      .wi-table td { word-break: break-word; }
+    }
+  </style>
+
+  <div class="section-header">
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+        <span class="badge badge-secondary">${escapeHtml(instruction.code || '—')}</span>
+        <h1 style="margin:0;font-size:20px;font-weight:700;color:#1B4F72;">${escapeHtml(instruction.title || '—')}</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:13px;color:#6c757d;flex-wrap:wrap;">
+        <span>Versão: <strong>v${escapeHtml(instruction.current_version || '1.0')}</strong></span>
+        <span class="badge badge-${escapeHtml(statusBadge[status] || 'secondary')}">${escapeHtml(statusLabel[status] || status)}</span>
+        ${instruction.description ? `<span>— ${escapeHtml(instruction.description)}</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" class="no-print">
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+      <a href="/instrucoes/${escapeHtml(instructionId)}" class="btn btn-secondary"><i class="fas fa-edit"></i> Editar</a>
+      <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+    </div>
+  </div>
+
+  <div class="card" style="overflow:hidden;">
+    <div class="table-wrapper">
+      <table class="wi-table">
+        <thead>
+          <tr>
+            <th style="width:60px;">Nº</th>
+            <th style="width:200px;">Título</th>
+            <th>Descrição</th>
+            <th>Observação</th>
+            <th style="width:200px;">Imagem de apoio</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${steps.length === 0 ? `
+            <tr>
+              <td colspan="5" style="padding:16px;color:#6c757d;">Nenhuma etapa cadastrada para esta instrução.</td>
+            </tr>
+          ` : steps.map((step: any) => {
+            const stepPhotos = photosByStep[step.id] || []
+            const firstPhoto = stepPhotos[0]
+            return `
+              <tr>
+                <td style="font-weight:700;font-size:15px;">${escapeHtml(String(step.step_number || ''))}</td>
+                <td style="font-weight:600;">${escapeHtml(step.title || '')}</td>
+                <td><div class="wi-text">${escapeHtml(step.description || '')}</div></td>
+                <td><div class="wi-text">${escapeHtml(step.observation || '')}</div></td>
+                <td>
+                  ${firstPhoto ? `
+                    <img src="/instrucoes/api/photos/${encodeURIComponent(firstPhoto.id)}" class="wi-thumb" alt="${escapeHtml(firstPhoto.file_name || 'foto')}">
+                    <div class="wi-muted" style="margin-top:6px;">${escapeHtml(firstPhoto.file_name || '')}</div>
+                  ` : `<div class="wi-muted">—</div>`}
+                </td>
+              </tr>
+            `
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
   `
 
   return c.html(layout('Instrução: ' + instruction.title, content, 'instrucoes', userInfo))
@@ -770,7 +995,7 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
 
   // Upload to R2
   const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
-  if (!bucket) return err(c, 'Bucket R2 não configurado', 503)
+  if (!bucket) return err(c, 'Upload de fotos indisponível: configure o binding INSTR_PHOTOS_BUCKET no Cloudflare R2.', 503)
 
   const arrayBuffer = await file.arrayBuffer()
   await bucket.put(objectKey, arrayBuffer, { httpMetadata: { contentType: resolvedContentType } })
@@ -996,6 +1221,67 @@ app.post('/api/instructions/:id/versions', async (c) => {
   }, tenant)
 
   return ok(c, { instruction, version: newVersion })
+})
+
+// ── API: PUT /api/instructions/:id/status (Transition Status) ──
+app.put('/api/instructions/:id/status', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.status) return err(c, 'Status é obrigatório')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+
+  const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+    draft: ['active'],
+    active: ['obsolete', 'draft'],
+    obsolete: [],
+    archived: [],
+  }
+
+  const currentStatus = instruction.status || 'draft'
+  const newStatus: string = body.status
+  const allowed = ALLOWED_TRANSITIONS[currentStatus] || []
+  if (!allowed.includes(newStatus)) {
+    return err(c, 'Transição de status inválida: ' + currentStatus + ' → ' + newStatus)
+  }
+
+  const oldStatus = instruction.status
+  instruction.status = newStatus
+  instruction.updated_at = new Date().toISOString()
+  instruction.updated_by = userId
+
+  // Also update the current version's status to stay in sync
+  const currentVersion = (tenant.workInstructionVersions || []).find(
+    (v: any) => v.instruction_id === instructionId && v.is_current
+  )
+  if (currentVersion) {
+    currentVersion.status = newStatus
+  }
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbUpdate(db, 'work_instructions', instructionId, userId, {
+      status: newStatus,
+      updated_at: instruction.updated_at,
+      updated_by: userId,
+    })
+    if (currentVersion) {
+      await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { status: newStatus })
+    }
+  }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STATUS_CHANGED', {
+    from: oldStatus,
+    to: newStatus,
+  }, tenant)
+
+  return ok(c, { instruction })
 })
 
 // ── API: DELETE /api/instructions/:id (Deletar Instrução) ──

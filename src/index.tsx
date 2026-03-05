@@ -96,8 +96,12 @@ app.use('*', async (c, next) => {
       session = await getSessionAsync(token, c.env.DB)
     }
     if (!session) {
-      // Session truly expired/invalid — clear cookie and redirect
-      deleteCookie(c, SESSION_COOKIE, { path: '/' })
+      // Only clear the cookie if DB was available and confirmed the session is gone.
+      // When DB is unavailable, keep the cookie so the user isn't permanently logged out
+      // due to a transient infrastructure issue (Cloudflare isolate cold-start, D1 downtime, etc.).
+      if (c.env?.DB) {
+        deleteCookie(c, SESSION_COOKIE, { path: '/' })
+      }
       return c.redirect('/login')
     }
   }
