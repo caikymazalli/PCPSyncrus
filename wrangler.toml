@@ -10,4 +10,4 @@ database_id = "449d62b1-b4f4-4a6f-93c8-ac4954a2d03f"
 
 [[r2_buckets]]
 binding = "INSTR_PHOTOS_BUCKET"
-bucket_name = "pcpsyncrus-instr-photos"
+bucket_name = "instrphotobucket"
