@@ -632,6 +632,20 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
 
   const steps = tenant.workInstructionSteps || []
   const stepIdx = steps.findIndex((s: any) => s.id === stepId)
+    // Fallback to D1 if not in memory
+  if (stepIdx === -1 && db && userId !== 'demo-tenant') {
+    const row = await db.prepare('SELECT * FROM work_instruction_steps WHERE id = ? AND user_id = ?')
+      .bind(stepId, userId).first()
+
+    if (row) {
+      if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
+      tenant.workInstructionSteps.push(row as any)
+    }
+  }
+
+  // recompute after fallback
+  const stepIdx2 = (tenant.workInstructionSteps || []).findIndex((s: any) => s.id === stepId)
+  if (stepIdx2 === -1) return err(c, 'Etapa não encontrada', 404)
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
   const oldStep = steps[stepIdx]
@@ -678,6 +692,20 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
 
   const steps = tenant.workInstructionSteps || []
   const stepIdx = steps.findIndex((s: any) => s.id === stepId)
+    // Fallback to D1 if not in memory
+  if (stepIdx === -1 && db && userId !== 'demo-tenant') {
+    const row = await db.prepare('SELECT * FROM work_instruction_steps WHERE id = ? AND user_id = ?')
+      .bind(stepId, userId).first()
+
+    if (row) {
+      if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
+      tenant.workInstructionSteps.push(row as any)
+    }
+  }
+
+  // recompute after fallback
+  const stepIdx2 = (tenant.workInstructionSteps || []).findIndex((s: any) => s.id === stepId)
+  if (stepIdx2 === -1) return err(c, 'Etapa não encontrada', 404)
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
   const step = steps[stepIdx]
