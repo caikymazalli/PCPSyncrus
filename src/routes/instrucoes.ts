@@ -177,40 +177,8 @@ app.get('/', (c) => {
     alert('Função "Visualizar" em breve')
   }
   </script>
-`
-  function filterInstructions() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const rows = document.querySelectorAll('#instructionsBody tr');
-    rows.forEach(row => {
-      const text = row.dataset.search || '';
-      row.style.display = !search || text.includes(search) ? '' : 'none';
-    });
-  }
+  `
 
-  async function saveInstruction() {
-    const title = document.getElementById('instrTitle').value.trim();
-    const code = document.getElementById('instrCode').value.trim();
-    const description = document.getElementById('instrDesc').value.trim();
-    if (!title) { alert('Título é obrigatório'); return; }
-    console.log('[Instruções] Salvando:', { title, code, description });
-    const res = await fetch('/instrucoes/api/instructions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, code, description })
-    });
-    const data = await res.json();
-    console.log('[Instruções] Resposta:', data);
-    if (data.ok) { closeModal('novaInstrucaoModal'); location.reload(); }
-    else { alert(data.error || 'Erro ao salvar'); }
-  }
-
-  async function viewInstruction(id) {
-    const res = await fetch('/instrucoes/api/instructions/' + id);
-    const data = await res.json();
-    if (data.ok) { console.log('Instruction details:', data); }
-  }
-  <script>
-`
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
 
@@ -229,7 +197,6 @@ app.post('/api/instructions', async (c) => {
 
   const instruction = {
     id,
-    
     code: body.code || 'INSTR-' + Date.now(),
     title: body.title,
     description: body.description || '',
@@ -566,12 +533,16 @@ app.delete('/api/instructions/:id', async (c) => {
         .bind(...stepIds, userId).run()
     }
     if (versionIds.length > 0) {
-  const versionPlaceholders = versionIds.map(() => '?').join(', ')
-  await db.prepare('DELETE FROM work_instruction_versions WHERE id IN (' + versionPlaceholders + ') AND user_id = ?')
-    .bind(...versionIds, userId).run()
-}
-await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
-})  // ← FECHA o app.delete()
+      const versionPlaceholders = versionIds.map(() => '?').join(', ')
+      await db.prepare('DELETE FROM work_instruction_versions WHERE id IN (' + versionPlaceholders + ') AND user_id = ?')
+        .bind(...versionIds, userId).run()
+    }
+    await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
+  }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'DELETED', { title: instruction.title }, tenant)
+
+  return ok(c, { deleted: true })
+})
 
 // ── API: GET /api/instructions/:id/audit-log (Obter Histórico) ──
 app.get('/api/instructions/:id/audit-log', async (c) => {
@@ -583,14 +554,14 @@ app.get('/api/instructions/:id/audit-log', async (c) => {
     .sort((a: any, b: any) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime())
 
   return ok(c, { auditLog })
-})  // ← FECHA o app.get('/api/instructions/:id/audit-log')
+})
 
 // ── API: GET /api/instructions (Listar todas) ──
 app.get('/api/instructions', async (c) => {
   const tenant = getCtxTenant(c)
   const instructions = tenant.workInstructions || []
   return ok(c, { instructions })
-})  // ← FECHA o app.get('/api/instructions')
+})
 
 // ── API: GET /api/instructions/:id (Obter detalhes) ──
 app.get('/api/instructions/:id', async (c) => {
@@ -608,6 +579,6 @@ app.get('/api/instructions/:id', async (c) => {
   )
 
   return ok(c, { instruction, currentVersion, versions, steps, photos })
-})  // ← FECHA o app.get('/api/instructions/:id')
+})
 
 export default app
