@@ -413,7 +413,7 @@ app.post('/api/instructions/:id/photos', async (c) => {
     id: photoId,
     step_id: body.step_id,
     photo_url: body.photo_url,
-    file_name: body.file_name || `photo_${photoId}.jpg`,
+    file_name: body.file_name ||`photo_${photoId}.jpg`,
     uploaded_at: new Date().toISOString(),
     uploaded_by: userId,
   }
