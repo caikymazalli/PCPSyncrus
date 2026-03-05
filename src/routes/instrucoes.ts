@@ -275,7 +275,7 @@ app.get('/:id', (c) => {
       img { max-width: 180px !important; max-height: 180px !important; }
       h1 { font-size: 16px !important; }
       textarea.form-control { border: none !important; background: transparent !important; resize: none !important; overflow: visible !important; height: auto !important; min-height: unset !important; padding: 2px 0 !important; }
-      .wi-table td { word-break: break-word; overflow: hidden; }
+      .wi-table td { word-break: break-word; overflow-wrap: break-word; }
     }
   </style>
 
@@ -586,8 +586,8 @@ app.get('/:id', (c) => {
   }
 
   async function transitionStatus(instructionId, newStatus) {
-    const labels = { active: 'aprovar', obsolete: 'arquivar', draft: 'voltar a rascunho' }
-    if (!confirm('Deseja ' + (labels[newStatus] || newStatus) + ' esta instrução?')) return
+    const actionLabels = { active: 'aprovar', obsolete: 'arquivar', draft: 'voltar a rascunho' }
+    if (!confirm('Deseja ' + (actionLabels[newStatus] || newStatus) + ' esta instrução?')) return
     try {
       const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/status', {
         method: 'PUT',
