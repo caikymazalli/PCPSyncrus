@@ -1,10 +1,52 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { ok, err, dbInsert, dbUpdate, dbDelete, genId } from '../dbHelpers'
 import { markTenantModified, logWorkInstructionEvent } from '../userStore'
 
 const app = new Hono()
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Escape HTML special characters to prevent XSS in SSR-rendered output. */
+function escapeHtml(str: any): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+}
+
+/** Resolve the Content-Type for an image file, only allowing jpg/jpeg/png. */
+function guessImageContentType(fileName: string, contentType?: string): string | null {
+  if (contentType) {
+    const ct = contentType.toLowerCase().split(';')[0].trim()
+    if (Object.values(ALLOWED_IMAGE_TYPES).includes(ct)) return ct
+  }
+  const ext = (fileName.split('.').pop() || '').toLowerCase()
+  return ALLOWED_IMAGE_TYPES[ext] || null
+}
+
+/** Remove path separators and dangerous characters from a file name. */
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_').slice(0, 200)
+}
+
+/** Return a 401 JSON response if the user is not authenticated (no session or demo). */
+async function ensureAuthenticatedOr401(c: any): Promise<Response | null> {
+  const session = getCtxSession(c)
+  if (!session || session.isDemo) {
+    return c.json({ error: 'Não autenticado' }, 401)
+  }
+  return null
+}
 
 // ── UI: GET /instrucoes ──
 app.get('/', (c) => {
@@ -53,19 +95,19 @@ app.get('/', (c) => {
         </tr></thead>
         <tbody id="instructionsBody">
           ${instructions.map((inst: any) => `
-          <tr data-search="${(inst.title || '').toLowerCase()} ${(inst.code || '').toLowerCase()} ${(inst.description || '').toLowerCase()}">
-            <td><span class="badge badge-secondary">${inst.code || '—'}</span></td>
+          <tr data-search="${escapeHtml((inst.title || '').toLowerCase())} ${escapeHtml((inst.code || '').toLowerCase())} ${escapeHtml((inst.description || '').toLowerCase())}">
+            <td><span class="badge badge-secondary">${escapeHtml(inst.code || '—')}</span></td>
             <td>
-              <div style="font-weight:700;color:#1B4F72;">${inst.title || '—'}</div>
-              ${inst.description ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;">${inst.description}</div>` : ''}
+              <div style="font-weight:700;color:#1B4F72;">${escapeHtml(inst.title || '—')}</div>
+              ${inst.description ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;">${escapeHtml(inst.description)}</div>` : ''}
             </td>
-            <td><span class="badge badge-secondary">v${inst.current_version || '1.0'}</span></td>
-            <td><span class="badge badge-${inst.status === 'active' ? 'success' : 'secondary'}">${inst.status || 'draft'}</span></td>
+            <td><span class="badge badge-secondary">v${escapeHtml(inst.current_version || '1.0')}</span></td>
+            <td><span class="badge badge-${inst.status === 'active' ? 'success' : 'secondary'}">${escapeHtml(inst.status || 'draft')}</span></td>
             <td style="font-size:12px;color:#6c757d;">${inst.updated_at ? new Date(inst.updated_at).toLocaleDateString('pt-BR') : '—'}</td>
             <td>
               <div style="display:flex;gap:4px;">
-                <button class="btn btn-secondary btn-sm" title="Visualizar" onclick="viewInstruction('${inst.id}')"><i class="fas fa-eye"></i></button>
-                <button class="btn btn-secondary btn-sm" title="Editar"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-secondary btn-sm" title="Visualizar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-secondary btn-sm" title="Editar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-edit"></i></button>
               </div>
             </td>
           </tr>`).join('')}
@@ -106,18 +148,12 @@ app.get('/', (c) => {
   <script>
   function openModal(id) {
     const modal = document.getElementById(id)
-    if (modal) {
-      modal.classList.add('open')
-      console.log('[MODAL] Aberto:', id)
-    }
+    if (modal) modal.classList.add('open')
   }
 
   function closeModal(id) {
     const modal = document.getElementById(id)
-    if (modal) {
-      modal.classList.remove('open')
-      console.log('[MODAL] Fechado:', id)
-    }
+    if (modal) modal.classList.remove('open')
   }
 
   async function saveInstruction() {
@@ -130,8 +166,6 @@ app.get('/', (c) => {
       return
     }
 
-    console.log('[INSTR] Salvando:', { code, title, desc })
-
     try {
       const res = await fetch('/instrucoes/api/instructions', {
         method: 'POST',
@@ -140,8 +174,6 @@ app.get('/', (c) => {
       })
 
       const data = await res.json()
-      console.log('[INSTR] Response:', data)
-
       if (data.ok) {
         alert('✅ Instrução criada com sucesso!')
         document.getElementById('instrCode').value = ''
@@ -153,33 +185,320 @@ app.get('/', (c) => {
         alert('❌ Erro: ' + (data.error || 'Desconhecido'))
       }
     } catch (e) {
-      console.error('[INSTR] Erro de conexão:', e)
-      alert('❌ Erro de conexão: ' + e.message)
+      alert('❌ Erro de conexão: ' + (e && e.message ? e.message : e))
     }
   }
 
   function filterInstructions() {
-    const searchValue = document.getElementById('searchInput').value.toLowerCase()
+    const searchValue = (document.getElementById('searchInput').value || '').toLowerCase()
     const rows = document.querySelectorAll('#instructionsBody tr')
-    
     rows.forEach(row => {
-      const searchText = row.getAttribute('data-search') || ''
-      if (searchText.includes(searchValue)) {
-        row.style.display = ''
-      } else {
-        row.style.display = 'none'
-      }
+      const searchText = (row.getAttribute('data-search') || '').toLowerCase()
+      row.style.display = searchText.includes(searchValue) ? '' : 'none'
     })
   }
 
   function viewInstruction(id) {
-    console.log('[INSTR] Visualizar:', id)
-    alert('Função "Visualizar" em breve')
+    window.location.href = '/instrucoes/' + encodeURIComponent(id)
   }
   </script>
   `
 
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
+})
+
+// ── UI: GET /instrucoes/:id ──
+app.get('/:id', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const instructionId = c.req.param('id')
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) {
+    const notFound = `
+    <div style="padding:48px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">📋</div>
+      <div style="font-size:18px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Instrução não encontrada</div>
+      <div style="font-size:14px;color:#6c757d;margin-bottom:20px;">O ID informado não corresponde a nenhuma instrução cadastrada.</div>
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar à listagem</a>
+    </div>`
+    return c.html(layout('Instrução não encontrada', notFound, 'instrucoes', userInfo))
+  }
+
+  const currentVersion = (tenant.workInstructionVersions || []).find(
+    (v: any) => v.instruction_id === instructionId && v.is_current
+  )
+
+  const steps = (tenant.workInstructionSteps || [])
+    .filter((s: any) => s.version_id === currentVersion?.id)
+    .sort((a: any, b: any) => (a.step_number || 0) - (b.step_number || 0))
+
+  const stepIds = new Set(steps.map((s: any) => s.id))
+  const photos = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.has(p.step_id))
+
+  const photosByStep: Record<string, any[]> = {}
+  for (const p of photos) (photosByStep[p.step_id] ||= []).push(p)
+
+  const nextStepNumber = steps.length ? Math.max(...steps.map((s: any) => Number(s.step_number) || 0)) + 1 : 1
+
+  const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado' }
+  const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary' }
+  const status = instruction.status || 'draft'
+
+  const content = `
+  <style>
+    .wi-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .wi-thumb { width:110px; height:auto; border:1px solid #e9ecef; border-radius:8px; display:block; }
+    .wi-muted { font-size:12px; color:#6c757d; }
+    .wi-table td, .wi-table th { vertical-align: top; }
+    .modal-overlay .modal { max-width: 720px; width: 95%; }
+
+    @media print {
+      .no-print { display: none !important; }
+      .sidebar, .nav-sidebar, .topbar { display: none !important; }
+      .main-content, body { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+      .card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
+      img { max-width: 180px !important; max-height: 180px !important; }
+      h1 { font-size: 16px !important; }
+    }
+  </style>
+
+  <div class="section-header">
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+        <span class="badge badge-secondary">${escapeHtml(instruction.code || '—')}</span>
+        <h1 style="margin:0;font-size:20px;font-weight:700;color:#1B4F72;">${escapeHtml(instruction.title || '—')}</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:13px;color:#6c757d;flex-wrap:wrap;">
+        <span>Versão: <strong>v${escapeHtml(instruction.current_version || '1.0')}</strong></span>
+        <span class="badge badge-${escapeHtml(statusBadge[status] || 'secondary')}">${escapeHtml(statusLabel[status] || status)}</span>
+        ${instruction.description ? `<span>— ${escapeHtml(instruction.description)}</span>` : ''}
+      </div>
+    </div>
+    <div class="wi-actions no-print">
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+      <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+      <button class="btn btn-primary" onclick="openModal('novaEtapaModal')"><i class="fas fa-plus"></i> Nova etapa</button>
+    </div>
+  </div>
+
+  <div class="card" style="overflow:hidden;">
+    <div class="table-wrapper">
+      <table class="wi-table">
+        <thead>
+          <tr>
+            <th style="width:70px;">Nº</th>
+            <th style="width:240px;">Título</th>
+            <th>Descrição</th>
+            <th>Observação</th>
+            <th style="width:280px;">Imagem de apoio</th>
+            <th class="no-print" style="width:140px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${steps.length === 0 ? `
+            <tr>
+              <td colspan="6" style="padding:16px;color:#6c757d;">Nenhuma etapa cadastrada para esta instrução.</td>
+            </tr>
+          ` : steps.map((step: any) => {
+            const stepPhotos = photosByStep[step.id] || []
+            const firstPhoto = stepPhotos[0]
+            return `
+              <tr data-step-id="${escapeHtml(step.id)}">
+                <td>
+                  <input class="form-control" type="number" min="1" step="1" data-field="step_number" value="${escapeHtml(step.step_number)}">
+                </td>
+                <td>
+                  <input class="form-control" type="text" data-field="title" value="${escapeHtml(step.title || '')}" placeholder="Título">
+                </td>
+                <td>
+                  <textarea class="form-control" rows="2" data-field="description" placeholder="Descrição...">${escapeHtml(step.description || '')}</textarea>
+                </td>
+                <td>
+                  <textarea class="form-control" rows="2" data-field="observation" placeholder="Observação...">${escapeHtml(step.observation || '')}</textarea>
+                </td>
+                <td>
+                  ${firstPhoto ? `
+                    <img src="/instrucoes/api/photos/${encodeURIComponent(firstPhoto.id)}" class="wi-thumb" alt="${escapeHtml(firstPhoto.file_name || 'foto')}">
+                    <div class="wi-muted" style="margin-top:6px;">${escapeHtml(firstPhoto.file_name || '')}</div>
+                  ` : `<div class="wi-muted">Sem imagem</div>`}
+
+                  <div class="no-print" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="file" id="file-${escapeHtml(step.id)}" accept="image/png,image/jpeg" style="font-size:13px;">
+                    <button class="btn btn-secondary btn-sm" onclick="uploadPhoto('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-upload"></i> Enviar</button>
+                  </div>
+                  <div id="upload-status-${escapeHtml(step.id)}" class="wi-muted no-print" style="margin-top:6px;"></div>
+                </td>
+                <td class="no-print">
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn btn-primary btn-sm" onclick="saveStep('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-save"></i></button>
+                    <button class="btn btn-secondary btn-sm" onclick="deleteStep('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-trash"></i></button>
+                  </div>
+                </td>
+              </tr>
+            `
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Etapa -->
+  <div class="modal-overlay no-print" id="novaEtapaModal">
+    <div class="modal">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-list-ol" style="margin-right:8px;"></i>Nova Etapa</h3>
+        <button onclick="closeModal('novaEtapaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div class="form-group">
+          <label class="form-label">Nº da etapa *</label>
+          <input class="form-control" id="stepNumber" type="number" min="1" step="1" value="${nextStepNumber}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Título *</label>
+          <input class="form-control" id="stepTitle" type="text" placeholder="Ex: Preparar equipamento">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição</label>
+          <textarea class="form-control" id="stepDesc" rows="3" placeholder="Descreva a etapa..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observação</label>
+          <textarea class="form-control" id="stepObs" rows="2" placeholder="Observações importantes..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaEtapaModal')" class="btn btn-secondary">Cancelar</button>
+        <button class="btn btn-primary" onclick="createStep('${escapeHtml(instructionId)}')"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function openModal(id) {
+    const modal = document.getElementById(id)
+    if (modal) modal.classList.add('open')
+  }
+  function closeModal(id) {
+    const modal = document.getElementById(id)
+    if (modal) modal.classList.remove('open')
+  }
+
+  function getRow(stepId) {
+    return document.querySelector('tr[data-step-id=\"' + stepId + '\"]')
+  }
+
+  async function createStep(instructionId) {
+    const step_number = Number(document.getElementById('stepNumber').value)
+    const title = String(document.getElementById('stepTitle').value || '').trim()
+    const description = String(document.getElementById('stepDesc').value || '')
+    const observation = String(document.getElementById('stepObs').value || '')
+
+    if (!step_number || step_number <= 0) { alert('❌ Nº da etapa é obrigatório'); return }
+    if (!title) { alert('❌ Título é obrigatório'); return }
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/steps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_number, title, description, observation })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        closeModal('novaEtapaModal')
+        setTimeout(() => location.reload(), 250)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
+  async function saveStep(instructionId, stepId) {
+    const row = getRow(stepId)
+    if (!row) return
+
+    const step_number = Number(row.querySelector('[data-field=\"step_number\"]').value)
+    const title = String(row.querySelector('[data-field=\"title\"]').value || '').trim()
+    const description = String(row.querySelector('[data-field=\"description\"]').value || '')
+    const observation = String(row.querySelector('[data-field=\"observation\"]').value || '')
+
+    if (!step_number || step_number <= 0) { alert('❌ Nº inválido'); return }
+    if (!title) { alert('❌ Título é obrigatório'); return }
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/steps/' + encodeURIComponent(stepId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_number, title, description, observation })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        alert('✅ Etapa salva')
+        setTimeout(() => location.reload(), 150)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
+  async function deleteStep(instructionId, stepId) {
+    if (!confirm('Remover esta etapa?')) return
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/steps/' + encodeURIComponent(stepId), {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        setTimeout(() => location.reload(), 150)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
+  async function uploadPhoto(instructionId, stepId) {
+    const fileInput = document.getElementById('file-' + stepId)
+    const statusEl = document.getElementById('upload-status-' + stepId)
+
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      if (statusEl) statusEl.textContent = '⚠️ Selecione um arquivo antes de enviar.'
+      return
+    }
+
+    const file = fileInput.files[0]
+    const formData = new FormData()
+    formData.append('step_id', stepId)
+    formData.append('file', file)
+
+    if (statusEl) statusEl.textContent = '⏳ Enviando...'
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/photos/upload', {
+        method: 'POST',
+        body: formData
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        if (statusEl) statusEl.textContent = '✅ Foto enviada! Recarregando...'
+        setTimeout(() => location.reload(), 800)
+      } else {
+        if (statusEl) statusEl.textContent = '❌ Erro: ' + (data.error || 'Desconhecido')
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '❌ Erro de conexão. Tente novamente.'
+    }
+  }
+  </script>
+  `
+
+  return c.html(layout('Instrução: ' + instruction.title, content, 'instrucoes', userInfo))
 })
 
 // ── API: POST /api/instructions (Criar Instrução) ──
@@ -300,9 +619,16 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
   const oldStep = steps[stepIdx]
+  const newStepNumber = body.step_number !== undefined ? Number(body.step_number) : oldStep.step_number
+
+  if (!newStepNumber || Number.isNaN(newStepNumber) || newStepNumber <= 0) {
+    return err(c, 'Número da etapa inválido', 400)
+  }
+
   steps[stepIdx] = {
     ...oldStep,
-    title: body.title || oldStep.title,
+    step_number: newStepNumber,
+    title: body.title !== undefined ? body.title : oldStep.title,
     description: body.description !== undefined ? body.description : oldStep.description,
     observation: body.observation !== undefined ? body.observation : oldStep.observation,
   }
@@ -311,6 +637,7 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'work_instruction_steps', stepId, userId, {
+      step_number: steps[stepIdx].step_number,
       title: steps[stepIdx].title,
       description: steps[stepIdx].description,
       observation: steps[stepIdx].observation,
@@ -347,8 +674,8 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'work_instruction_steps', stepId, userId)
-    const photos = await db.prepare('SELECT id FROM work_instruction_photos WHERE step_id = ?').bind(stepId).all()
-    for (const photo of photos.results || []) {
+    const photosInDb = await db.prepare('SELECT id FROM work_instruction_photos WHERE step_id = ?').bind(stepId).all()
+    for (const photo of photosInDb.results || []) {
       await dbDelete(db, 'work_instruction_photos', (photo as any).id, userId)
     }
   }
@@ -361,7 +688,127 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   return ok(c, { message: 'Etapa removida' })
 })
 
-// ── API: POST /api/instructions/:id/photos (Upload Foto) ──
+// ── API: POST /api/instructions/:id/photos/upload (R2 Upload) ──
+app.post('/api/instructions/:id/photos/upload', async (c) => {
+  const unauthorized = await ensureAuthenticatedOr401(c)
+  if (unauthorized) return unauthorized
+
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+
+  const formData = await c.req.formData().catch(() => null)
+  if (!formData) return err(c, 'Dados inválidos')
+
+  const stepId = formData.get('step_id')
+  const file = formData.get('file')
+
+  if (!stepId || typeof stepId !== 'string') return err(c, 'step_id obrigatório')
+  if (!file || !(file instanceof File)) return err(c, 'Arquivo obrigatório')
+
+  // Validate step exists
+  const stepExists = (tenant.workInstructionSteps || []).find((s: any) => s.id === stepId)
+  if (!stepExists) return err(c, 'Etapa não encontrada', 404)
+
+  // Validate file type
+  const resolvedContentType = guessImageContentType(file.name, file.type)
+  if (!resolvedContentType) return err(c, 'Tipo de arquivo não permitido. Use jpg, jpeg ou png.')
+
+  // Validate file size (~8MB)
+  if (file.size > 8 * 1024 * 1024) return err(c, 'Arquivo muito grande. Limite: 8MB')
+
+  const photoId = genId('photo')
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const safeFileName = sanitizeFileName(file.name)
+  const objectKey = `work-instructions/${instructionId}/steps/${stepId}/${photoId}.${ext}`
+
+  // Upload to R2
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (!bucket) return err(c, 'Bucket R2 não configurado', 503)
+
+  const arrayBuffer = await file.arrayBuffer()
+  await bucket.put(objectKey, arrayBuffer, { httpMetadata: { contentType: resolvedContentType } })
+
+  const photo: Record<string, any> = {
+    id: photoId,
+    step_id: stepId,
+    photo_url: '',
+    file_name: safeFileName,
+    uploaded_at: new Date().toISOString(),
+    uploaded_by: userId,
+    object_key: objectKey,
+    content_type: resolvedContentType,
+  }
+
+  // Memória
+  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
+  tenant.workInstructionPhotos.push(photo)
+  markTenantModified(userId)
+
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+  }
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_UPLOADED', {
+    stepId,
+    photoId,
+    fileName: safeFileName,
+    objectKey,
+  }, tenant)
+
+  return ok(c, { photo, view_url: \`/instrucoes/api/photos/\${photoId}\` })
+})
+
+// ── API: GET /api/photos/:photoId (Servir Foto do R2) ──
+app.get('/api/photos/:photoId', async (c) => {
+  const unauthorized = await ensureAuthenticatedOr401(c)
+  if (unauthorized) return unauthorized
+
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const photoId = c.req.param('photoId')
+
+  // Lookup photo in memory first
+  let photo: any = (tenant.workInstructionPhotos || []).find((p: any) => p.id === photoId)
+
+  // Fallback to D1 if not in memory
+  if (!photo && db && userId !== 'demo-tenant') {
+    try {
+      const row = await db.prepare('SELECT * FROM work_instruction_photos WHERE id = ? AND user_id = ?')
+        .bind(photoId, userId).first()
+      if (row) photo = row
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!photo) return err(c, 'Foto não encontrada', 404)
+
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+
+  // Serve from R2 if object_key exists and bucket is configured
+  if (photo.object_key && bucket) {
+    const obj = await bucket.get(photo.object_key)
+    if (!obj) return err(c, 'Objeto não encontrado no storage', 404)
+    const contentType = photo.content_type || obj.httpMetadata?.contentType || 'image/jpeg'
+    return c.body(obj.body as any, 200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'private, max-age=300',
+    })
+  }
+
+  // Fallback: redirect to photo_url for legacy data
+  if (photo.photo_url) {
+    return c.redirect(photo.photo_url, 302)
+  }
+
+  return err(c, 'Foto não disponível', 404)
+})
+
+// ── API: POST /api/instructions/:id/photos (Upload Foto — legado) ──
 app.post('/api/instructions/:id/photos', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
@@ -370,19 +817,21 @@ app.post('/api/instructions/:id/photos', async (c) => {
   const instructionId = c.req.param('id')
   const body = await c.req.json().catch(() => null)
 
-  if (!body || !body.step_id || !body.photo_url) return err(c, 'Dados inválidos')
+  if (!body || !body.step_id || (!body.photo_url && !body.object_key)) return err(c, 'step_id e (photo_url ou object_key) são obrigatórios')
 
   const stepExists = (tenant.workInstructionSteps || []).find((s: any) => s.id === body.step_id)
   if (!stepExists) return err(c, 'Etapa não encontrada', 404)
 
   const photoId = genId('photo')
-  const photo = {
+  const photo: Record<string, any> = {
     id: photoId,
     step_id: body.step_id,
-    photo_url: body.photo_url,
+    photo_url: body.photo_url || '',
     file_name: body.file_name || 'photo_' + photoId + '.jpg',
     uploaded_at: new Date().toISOString(),
     uploaded_by: userId,
+    object_key: body.object_key || '',
+    content_type: body.content_type || '',
   }
 
   // Memória
@@ -411,13 +860,23 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
   const instructionId = c.req.param('id')
   const photoId = c.req.param('photoId')
 
-  const photos = tenant.workInstructionPhotos || []
-  const photoIdx = photos.findIndex((p: any) => p.id === photoId)
+  const photosArr = tenant.workInstructionPhotos || []
+  const photoIdx = photosArr.findIndex((p: any) => p.id === photoId)
   if (photoIdx === -1) return err(c, 'Foto não encontrada', 404)
 
-  const photo = photos[photoIdx]
-  photos.splice(photoIdx, 1)
+  const photo = photosArr[photoIdx]
+  photosArr.splice(photoIdx, 1)
   markTenantModified(userId)
+
+  // Delete from R2 if object_key exists
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (photo.object_key && bucket) {
+    try {
+      await bucket.delete(photo.object_key)
+    } catch (e) {
+      console.warn('[R2][DELETE] Falha ao remover objeto do R2:', (e as any)?.message)
+    }
+  }
 
   // D1
   if (db && userId !== 'demo-tenant') {
@@ -516,12 +975,29 @@ app.delete('/api/instructions/:id', async (c) => {
     .filter((s: any) => versionIds.includes(s.version_id))
     .map((s: any) => s.id)
 
+  // Collect photos to delete from R2 before removing from memory
+  const photosToDelete = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.includes(p.step_id))
+
   // Remove from memory (cascade)
   tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => !stepIds.includes(p.step_id))
   tenant.workInstructionSteps = (tenant.workInstructionSteps || []).filter((s: any) => !versionIds.includes(s.version_id))
   tenant.workInstructionVersions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id !== instructionId)
   tenant.workInstructions.splice(idx, 1)
   markTenantModified(userId)
+
+  // Delete R2 objects for photos that have object_key
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (bucket) {
+    for (const p of photosToDelete) {
+      if (p.object_key) {
+        try {
+          await bucket.delete(p.object_key)
+        } catch (e) {
+          console.warn('[R2][DELETE] Falha ao remover objeto do R2:', (e as any)?.message)
+        }
+      }
+    }
+  }
 
   // D1 (cascade delete — use IN clauses to reduce round trips)
   if (db && userId !== 'demo-tenant') {
