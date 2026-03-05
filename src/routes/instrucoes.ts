@@ -9,8 +9,8 @@ const app = new Hono()
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Escape HTML special characters to prevent XSS in SSR-rendered output. */
-function escapeHtml(str: string): string {
-  return String(str)
+function escapeHtml(str: any): string {
+  return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -95,19 +95,19 @@ app.get('/', (c) => {
         </tr></thead>
         <tbody id="instructionsBody">
           ${instructions.map((inst: any) => `
-          <tr data-search="${(inst.title || '').toLowerCase()} ${(inst.code || '').toLowerCase()} ${(inst.description || '').toLowerCase()}">
-            <td><span class="badge badge-secondary">${inst.code || '—'}</span></td>
+          <tr data-search="${escapeHtml((inst.title || '').toLowerCase())} ${escapeHtml((inst.code || '').toLowerCase())} ${escapeHtml((inst.description || '').toLowerCase())}">
+            <td><span class="badge badge-secondary">${escapeHtml(inst.code || '—')}</span></td>
             <td>
-              <div style="font-weight:700;color:#1B4F72;">${inst.title || '—'}</div>
-              ${inst.description ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;">${inst.description}</div>` : ''}
+              <div style="font-weight:700;color:#1B4F72;">${escapeHtml(inst.title || '—')}</div>
+              ${inst.description ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;">${escapeHtml(inst.description)}</div>` : ''}
             </td>
-            <td><span class="badge badge-secondary">v${inst.current_version || '1.0'}</span></td>
-            <td><span class="badge badge-${inst.status === 'active' ? 'success' : 'secondary'}">${inst.status || 'draft'}</span></td>
+            <td><span class="badge badge-secondary">v${escapeHtml(inst.current_version || '1.0')}</span></td>
+            <td><span class="badge badge-${inst.status === 'active' ? 'success' : 'secondary'}">${escapeHtml(inst.status || 'draft')}</span></td>
             <td style="font-size:12px;color:#6c757d;">${inst.updated_at ? new Date(inst.updated_at).toLocaleDateString('pt-BR') : '—'}</td>
             <td>
               <div style="display:flex;gap:4px;">
-                <button class="btn btn-secondary btn-sm" title="Visualizar" onclick="viewInstruction('${inst.id}')"><i class="fas fa-eye"></i></button>
-                <button class="btn btn-secondary btn-sm" title="Editar"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-secondary btn-sm" title="Visualizar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-secondary btn-sm" title="Editar" onclick="viewInstruction('${escapeHtml(inst.id)}')"><i class="fas fa-edit"></i></button>
               </div>
             </td>
           </tr>`).join('')}
@@ -148,18 +148,12 @@ app.get('/', (c) => {
   <script>
   function openModal(id) {
     const modal = document.getElementById(id)
-    if (modal) {
-      modal.classList.add('open')
-      console.log('[MODAL] Aberto:', id)
-    }
+    if (modal) modal.classList.add('open')
   }
 
   function closeModal(id) {
     const modal = document.getElementById(id)
-    if (modal) {
-      modal.classList.remove('open')
-      console.log('[MODAL] Fechado:', id)
-    }
+    if (modal) modal.classList.remove('open')
   }
 
   async function saveInstruction() {
@@ -172,8 +166,6 @@ app.get('/', (c) => {
       return
     }
 
-    console.log('[INSTR] Salvando:', { code, title, desc })
-
     try {
       const res = await fetch('/instrucoes/api/instructions', {
         method: 'POST',
@@ -182,8 +174,6 @@ app.get('/', (c) => {
       })
 
       const data = await res.json()
-      console.log('[INSTR] Response:', data)
-
       if (data.ok) {
         alert('✅ Instrução criada com sucesso!')
         document.getElementById('instrCode').value = ''
@@ -195,27 +185,21 @@ app.get('/', (c) => {
         alert('❌ Erro: ' + (data.error || 'Desconhecido'))
       }
     } catch (e) {
-      console.error('[INSTR] Erro de conexão:', e)
-      alert('❌ Erro de conexão: ' + e.message)
+      alert('❌ Erro de conexão: ' + (e && e.message ? e.message : e))
     }
   }
 
   function filterInstructions() {
-    const searchValue = document.getElementById('searchInput').value.toLowerCase()
+    const searchValue = (document.getElementById('searchInput').value || '').toLowerCase()
     const rows = document.querySelectorAll('#instructionsBody tr')
-    
     rows.forEach(row => {
-      const searchText = row.getAttribute('data-search') || ''
-      if (searchText.includes(searchValue)) {
-        row.style.display = ''
-      } else {
-        row.style.display = 'none'
-      }
+      const searchText = (row.getAttribute('data-search') || '').toLowerCase()
+      row.style.display = searchText.includes(searchValue) ? '' : 'none'
     })
   }
 
   function viewInstruction(id) {
-    window.location.href = '/instrucoes/' + id
+    window.location.href = '/instrucoes/' + encodeURIComponent(id)
   }
   </script>
   `
@@ -223,7 +207,7 @@ app.get('/', (c) => {
   return c.html(layout('Instruções de Trabalho', content, 'instrucoes', userInfo))
 })
 
-// ── UI: GET /:id ──
+// ── UI: GET /instrucoes/:id ──
 app.get('/:id', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
@@ -244,55 +228,31 @@ app.get('/:id', (c) => {
   const currentVersion = (tenant.workInstructionVersions || []).find(
     (v: any) => v.instruction_id === instructionId && v.is_current
   )
-  const steps = (tenant.workInstructionSteps || []).filter(
-    (s: any) => s.version_id === currentVersion?.id
-  ).sort((a: any, b: any) => a.step_number - b.step_number)
+
+  const steps = (tenant.workInstructionSteps || [])
+    .filter((s: any) => s.version_id === currentVersion?.id)
+    .sort((a: any, b: any) => (a.step_number || 0) - (b.step_number || 0))
+
   const stepIds = new Set(steps.map((s: any) => s.id))
   const photos = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.has(p.step_id))
+
+  const photosByStep: Record<string, any[]> = {}
+  for (const p of photos) (photosByStep[p.step_id] ||= []).push(p)
+
+  const nextStepNumber = steps.length ? Math.max(...steps.map((s: any) => Number(s.step_number) || 0)) + 1 : 1
 
   const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado' }
   const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary' }
   const status = instruction.status || 'draft'
 
-  const stepsHtml = steps.length === 0
-    ? `<div class="card" style="padding:48px;text-align:center;">
-        <div style="font-size:32px;margin-bottom:12px;">📋</div>
-        <div style="font-size:16px;color:#6c757d;">Nenhuma etapa cadastrada para esta instrução.</div>
-      </div>`
-    : steps.map((step: any) => {
-        const stepPhotos = photos.filter((p: any) => p.step_id === step.id)
-        return `
-        <div class="card" style="margin-bottom:16px;overflow:hidden;">
-          <div style="padding:16px 20px;background:#f8f9fa;border-bottom:1px solid #e9ecef;">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <div style="width:32px;height:32px;border-radius:50%;background:#1B4F72;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">${step.step_number}</div>
-              <h3 style="margin:0;font-size:16px;font-weight:700;color:#1B4F72;">${escapeHtml(step.title || '')}</h3>
-            </div>
-          </div>
-          <div style="padding:20px;">
-            ${step.description ? `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Descrição</div><p style="margin:0;color:#344;line-height:1.6;">${escapeHtml(step.description)}</p></div>` : ''}
-            ${step.observation ? `<div style="margin-bottom:12px;padding:12px;background:#fff8e1;border-left:3px solid #F39C12;border-radius:4px;"><div style="font-size:12px;font-weight:600;color:#F39C12;margin-bottom:4px;">⚠️ Observação</div><p style="margin:0;color:#555;line-height:1.6;">${escapeHtml(step.observation)}</p></div>` : ''}
-            ${stepPhotos.length > 0 ? `
-            <div style="margin-bottom:16px;">
-              <div style="font-size:12px;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Fotos</div>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                ${stepPhotos.map((p: any) => `<img src="/instrucoes/api/photos/${escapeHtml(p.id)}" alt="${escapeHtml(p.file_name || 'foto')}" style="max-width:200px;max-height:200px;object-fit:cover;border-radius:6px;border:1px solid #e9ecef;">`).join('')}
-              </div>
-            </div>` : ''}
-            <div class="no-print" style="border-top:1px solid #f1f3f5;padding-top:16px;margin-top:4px;">
-              <div style="font-size:12px;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Upload de Foto</div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <input type="file" id="file-${escapeHtml(step.id)}" accept="image/png,image/jpeg" style="font-size:13px;">
-                <button class="btn btn-secondary btn-sm" onclick="uploadPhoto('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-upload"></i> Enviar foto</button>
-              </div>
-              <div id="upload-status-${escapeHtml(step.id)}" style="font-size:12px;margin-top:6px;"></div>
-            </div>
-          </div>
-        </div>`
-      }).join('')
-
   const content = `
   <style>
+    .wi-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .wi-thumb { width:110px; height:auto; border:1px solid #e9ecef; border-radius:8px; display:block; }
+    .wi-muted { font-size:12px; color:#6c757d; }
+    .wi-table td, .wi-table th { vertical-align: top; }
+    .modal-overlay .modal { max-width: 720px; width: 95%; }
+
     @media print {
       .no-print { display: none !important; }
       .sidebar, .nav-sidebar, .topbar { display: none !important; }
@@ -303,7 +263,6 @@ app.get('/:id', (c) => {
     }
   </style>
 
-  <!-- Header -->
   <div class="section-header">
     <div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
@@ -312,41 +271,223 @@ app.get('/:id', (c) => {
       </div>
       <div style="display:flex;align-items:center;gap:12px;font-size:13px;color:#6c757d;flex-wrap:wrap;">
         <span>Versão: <strong>v${escapeHtml(instruction.current_version || '1.0')}</strong></span>
-        <span class="badge badge-${statusBadge[status] || 'secondary'}">${statusLabel[status] || escapeHtml(status)}</span>
+        <span class="badge badge-${escapeHtml(statusBadge[status] || 'secondary')}">${escapeHtml(statusLabel[status] || status)}</span>
         ${instruction.description ? `<span>— ${escapeHtml(instruction.description)}</span>` : ''}
       </div>
     </div>
-    <div style="display:flex;gap:8px;" class="no-print">
+    <div class="wi-actions no-print">
       <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
-      <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+      <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+      <button class="btn btn-primary" onclick="openModal('novaEtapaModal')"><i class="fas fa-plus"></i> Nova etapa</button>
     </div>
   </div>
 
-  <!-- Steps -->
-  ${stepsHtml}
+  <div class="card" style="overflow:hidden;">
+    <div class="table-wrapper">
+      <table class="wi-table">
+        <thead>
+          <tr>
+            <th style="width:70px;">Nº</th>
+            <th style="width:240px;">Título</th>
+            <th>Descrição</th>
+            <th>Observação</th>
+            <th style="width:280px;">Imagem de apoio</th>
+            <th class="no-print" style="width:140px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${steps.length === 0 ? `
+            <tr>
+              <td colspan="6" style="padding:16px;color:#6c757d;">Nenhuma etapa cadastrada para esta instrução.</td>
+            </tr>
+          ` : steps.map((step: any) => {
+            const stepPhotos = photosByStep[step.id] || []
+            const firstPhoto = stepPhotos[0]
+            return `
+              <tr data-step-id="${escapeHtml(step.id)}">
+                <td>
+                  <input class="form-control" type="number" min="1" step="1" data-field="step_number" value="${escapeHtml(step.step_number)}">
+                </td>
+                <td>
+                  <input class="form-control" type="text" data-field="title" value="${escapeHtml(step.title || '')}" placeholder="Título">
+                </td>
+                <td>
+                  <textarea class="form-control" rows="2" data-field="description" placeholder="Descrição...">${escapeHtml(step.description || '')}</textarea>
+                </td>
+                <td>
+                  <textarea class="form-control" rows="2" data-field="observation" placeholder="Observação...">${escapeHtml(step.observation || '')}</textarea>
+                </td>
+                <td>
+                  ${firstPhoto ? `
+                    <img src="/instrucoes/api/photos/${encodeURIComponent(firstPhoto.id)}" class="wi-thumb" alt="${escapeHtml(firstPhoto.file_name || 'foto')}">
+                    <div class="wi-muted" style="margin-top:6px;">${escapeHtml(firstPhoto.file_name || '')}</div>
+                  ` : `<div class="wi-muted">Sem imagem</div>`}
+
+                  <div class="no-print" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="file" id="file-${escapeHtml(step.id)}" accept="image/png,image/jpeg" style="font-size:13px;">
+                    <button class="btn btn-secondary btn-sm" onclick="uploadPhoto('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-upload"></i> Enviar</button>
+                  </div>
+                  <div id="upload-status-${escapeHtml(step.id)}" class="wi-muted no-print" style="margin-top:6px;"></div>
+                </td>
+                <td class="no-print">
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn btn-primary btn-sm" onclick="saveStep('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-save"></i></button>
+                    <button class="btn btn-secondary btn-sm" onclick="deleteStep('${escapeHtml(instructionId)}', '${escapeHtml(step.id)}')"><i class="fas fa-trash"></i></button>
+                  </div>
+                </td>
+              </tr>
+            `
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Etapa -->
+  <div class="modal-overlay no-print" id="novaEtapaModal">
+    <div class="modal">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-list-ol" style="margin-right:8px;"></i>Nova Etapa</h3>
+        <button onclick="closeModal('novaEtapaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div class="form-group">
+          <label class="form-label">Nº da etapa *</label>
+          <input class="form-control" id="stepNumber" type="number" min="1" step="1" value="${nextStepNumber}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Título *</label>
+          <input class="form-control" id="stepTitle" type="text" placeholder="Ex: Preparar equipamento">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição</label>
+          <textarea class="form-control" id="stepDesc" rows="3" placeholder="Descreva a etapa..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observação</label>
+          <textarea class="form-control" id="stepObs" rows="2" placeholder="Observações importantes..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaEtapaModal')" class="btn btn-secondary">Cancelar</button>
+        <button class="btn btn-primary" onclick="createStep('${escapeHtml(instructionId)}')"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
 
   <script>
+  function openModal(id) {
+    const modal = document.getElementById(id)
+    if (modal) modal.classList.add('open')
+  }
+  function closeModal(id) {
+    const modal = document.getElementById(id)
+    if (modal) modal.classList.remove('open')
+  }
+
+  function getRow(stepId) {
+    return document.querySelector('tr[data-step-id=\"' + stepId + '\"]')
+  }
+
+  async function createStep(instructionId) {
+    const step_number = Number(document.getElementById('stepNumber').value)
+    const title = String(document.getElementById('stepTitle').value || '').trim()
+    const description = String(document.getElementById('stepDesc').value || '')
+    const observation = String(document.getElementById('stepObs').value || '')
+
+    if (!step_number || step_number <= 0) { alert('❌ Nº da etapa é obrigatório'); return }
+    if (!title) { alert('❌ Título é obrigatório'); return }
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/steps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_number, title, description, observation })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        closeModal('novaEtapaModal')
+        setTimeout(() => location.reload(), 250)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
+  async function saveStep(instructionId, stepId) {
+    const row = getRow(stepId)
+    if (!row) return
+
+    const step_number = Number(row.querySelector('[data-field=\"step_number\"]').value)
+    const title = String(row.querySelector('[data-field=\"title\"]').value || '').trim()
+    const description = String(row.querySelector('[data-field=\"description\"]').value || '')
+    const observation = String(row.querySelector('[data-field=\"observation\"]').value || '')
+
+    if (!step_number || step_number <= 0) { alert('❌ Nº inválido'); return }
+    if (!title) { alert('❌ Título é obrigatório'); return }
+
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/steps/' + encodeURIComponent(stepId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_number, title, description, observation })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        alert('✅ Etapa salva')
+        setTimeout(() => location.reload(), 150)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
+  async function deleteStep(instructionId, stepId) {
+    if (!confirm('Remover esta etapa?')) return
+    try {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/steps/' + encodeURIComponent(stepId), {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        setTimeout(() => location.reload(), 150)
+      } else {
+        alert('❌ Erro: ' + (data && data.error ? data.error : 'Desconhecido'))
+      }
+    } catch (e) {
+      alert('❌ Falha: ' + (e && e.message ? e.message : e))
+    }
+  }
+
   async function uploadPhoto(instructionId, stepId) {
     const fileInput = document.getElementById('file-' + stepId)
     const statusEl = document.getElementById('upload-status-' + stepId)
+
     if (!fileInput || !fileInput.files || !fileInput.files[0]) {
       if (statusEl) statusEl.textContent = '⚠️ Selecione um arquivo antes de enviar.'
       return
     }
+
     const file = fileInput.files[0]
     const formData = new FormData()
     formData.append('step_id', stepId)
     formData.append('file', file)
+
     if (statusEl) statusEl.textContent = '⏳ Enviando...'
+
     try {
-      const res = await fetch('/instrucoes/api/instructions/' + instructionId + '/photos/upload', {
+      const res = await fetch('/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/photos/upload', {
         method: 'POST',
         body: formData
       })
       const data = await res.json()
-      if (data.ok) {
+      if (data && data.ok) {
         if (statusEl) statusEl.textContent = '✅ Foto enviada! Recarregando...'
-        setTimeout(() => location.reload(), 1000)
+        setTimeout(() => location.reload(), 800)
       } else {
         if (statusEl) statusEl.textContent = '❌ Erro: ' + (data.error || 'Desconhecido')
       }
@@ -478,9 +619,16 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
   const oldStep = steps[stepIdx]
+  const newStepNumber = body.step_number !== undefined ? Number(body.step_number) : oldStep.step_number
+
+  if (!newStepNumber || Number.isNaN(newStepNumber) || newStepNumber <= 0) {
+    return err(c, 'Número da etapa inválido', 400)
+  }
+
   steps[stepIdx] = {
     ...oldStep,
-    title: body.title || oldStep.title,
+    step_number: newStepNumber,
+    title: body.title !== undefined ? body.title : oldStep.title,
     description: body.description !== undefined ? body.description : oldStep.description,
     observation: body.observation !== undefined ? body.observation : oldStep.observation,
   }
@@ -489,6 +637,7 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'work_instruction_steps', stepId, userId, {
+      step_number: steps[stepIdx].step_number,
       title: steps[stepIdx].title,
       description: steps[stepIdx].description,
       observation: steps[stepIdx].observation,
@@ -525,8 +674,8 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'work_instruction_steps', stepId, userId)
-    const photos = await db.prepare('SELECT id FROM work_instruction_photos WHERE step_id = ?').bind(stepId).all()
-    for (const photo of photos.results || []) {
+    const photosInDb = await db.prepare('SELECT id FROM work_instruction_photos WHERE step_id = ?').bind(stepId).all()
+    for (const photo of photosInDb.results || []) {
       await dbDelete(db, 'work_instruction_photos', (photo as any).id, userId)
     }
   }
@@ -609,7 +758,7 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
     objectKey,
   }, tenant)
 
-  return ok(c, { photo, view_url: `/instrucoes/api/photos/${photoId}` })
+  return ok(c, { photo, view_url: \`/instrucoes/api/photos/\${photoId}\` })
 })
 
 // ── API: GET /api/photos/:photoId (Servir Foto do R2) ──
@@ -711,12 +860,12 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
   const instructionId = c.req.param('id')
   const photoId = c.req.param('photoId')
 
-  const photos = tenant.workInstructionPhotos || []
-  const photoIdx = photos.findIndex((p: any) => p.id === photoId)
+  const photosArr = tenant.workInstructionPhotos || []
+  const photoIdx = photosArr.findIndex((p: any) => p.id === photoId)
   if (photoIdx === -1) return err(c, 'Foto não encontrada', 404)
 
-  const photo = photos[photoIdx]
-  photos.splice(photoIdx, 1)
+  const photo = photosArr[photoIdx]
+  photosArr.splice(photoIdx, 1)
   markTenantModified(userId)
 
   // Delete from R2 if object_key exists
