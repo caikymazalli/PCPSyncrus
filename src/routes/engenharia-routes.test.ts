@@ -403,3 +403,143 @@ describe('DELETE /engenharia/api/route/:id — D1 com sucesso em produção', ()
     expect((tenant.routes as any[]).length).toBe(0)
   })
 })
+
+// ── BOM: Source-code guardrail D1-first ──────────────────────────────────────
+
+describe('engenharia.ts source-code guardrails D1-first (BOM)', () => {
+  const src = readFileSync(resolve(__dirname, 'engenharia.ts'), 'utf8')
+
+  it('handler POST /api/bom/create: bloco D1 aparece antes de tenant.bomItems.push', () => {
+    const handlerStart = src.indexOf("app.post('/api/bom/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memPushPos = handlerBody.indexOf('tenant.bomItems.push')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memPushPos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memPushPos)
+  })
+
+  it('handler POST /api/bom/create: sem catch{} silencioso em writes D1', () => {
+    const handlerStart = src.indexOf("app.post('/api/bom/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).not.toMatch(/catch\s*\{\s*\}/)
+  })
+
+  it('handler POST /api/bom/create: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.post('/api/bom/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+})
+
+// ── POST /api/bom/create — modo demo (sem db) ─────────────────────────────────
+
+describe('POST /engenharia/api/bom/create — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e salva BOM em memória no modo demo', async () => {
+    const initialCount = (tenants[TEST_USER_ID].bomItems as any[]).length
+
+    const res = await authedRequest('/api/bom/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: TEST_PRODUCT_ID,
+        productName: 'Produto Teste',
+        componentName: 'Componente Demo',
+        componentCode: 'COMP-001',
+        quantity: 2,
+        unit: 'un',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse & { bom?: Record<string, unknown> }
+    expect(data.ok).toBe(true)
+    expect(data.bom).toBeDefined()
+
+    const tenant = tenants[TEST_USER_ID]
+    expect((tenant.bomItems as any[]).length).toBe(initialCount + 1)
+  })
+
+  it('retorna erro quando productId ou componentName não é fornecido', async () => {
+    const res = await authedRequest('/api/bom/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: TEST_PRODUCT_ID }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+})
+
+// ── POST /api/bom/create — D1 falhando em produção ───────────────────────────
+
+describe('POST /engenharia/api/bom/create — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const initialCount = (tenants[TEST_USER_ID].bomItems as any[]).length
+
+    const res = await authedRequest('/api/bom/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: TEST_PRODUCT_ID,
+        productName: 'Produto Teste',
+        componentName: 'Componente Produção',
+        quantity: 1,
+        unit: 'kg',
+      }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido atualizada
+    const tenant = tenants[TEST_USER_ID]
+    expect((tenant.bomItems as any[]).length).toBe(initialCount)
+  })
+})
+
+// ── POST /api/bom/create — D1 com sucesso em produção ────────────────────────
+
+describe('POST /engenharia/api/bom/create — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const initialCount = (tenants[TEST_USER_ID].bomItems as any[]).length
+
+    const res = await authedRequest('/api/bom/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: TEST_PRODUCT_ID,
+        productName: 'Produto Teste',
+        componentName: 'Componente Produção OK',
+        componentCode: 'COMP-OK',
+        quantity: 3,
+        unit: 'un',
+      }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse & { bom?: Record<string, unknown> }
+    expect(data.ok).toBe(true)
+    expect(data.bom).toBeDefined()
+
+    const tenant = tenants[TEST_USER_ID]
+    expect((tenant.bomItems as any[]).length).toBe(initialCount + 1)
+    const savedBom = (tenant.bomItems as any[]).find((b: any) => b.componentName === 'Componente Produção OK')
+    expect(savedBom).toBeDefined()
+  })
+})

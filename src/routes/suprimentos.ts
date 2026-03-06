@@ -1771,17 +1771,24 @@ app.post('/api/quotations/:id/approve', async (c) => {
     expectedDelivery: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   }
   
-  tenant.purchaseOrders.push(purchaseOrder)
-  
+  // D1-first: inserir Pedido de Compra antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
-    await dbInsertWithRetry(db, 'purchase_orders', {
+    const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
       id: pcId, user_id: userId, empresa_id: empresaId, code: pcCode,
       quotation_id: id,
       supplier_id: bestResponse?.supplierId || quotation.supplierIds?.[0] || '',
       supplier_name: purchaseOrder.supplierName, status: 'pending_approval', total_value: totalValue,
       currency: 'BRL', is_import: isImport ? 1 : 0, notes: JSON.stringify({ items: purchaseOrder.items }),
     })
+    if (!persistResult.success) {
+      console.error(`[SUPRIMENTOS][PC][CRÍTICO] Falha ao persistir pedido ${pcId} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return err(c, 'Erro ao salvar pedido de compra no banco de dados', 500)
+    }
+    console.log(`[SUPRIMENTOS][PC] Pedido ${pcId} persistido em D1 com sucesso`)
   }
+
+  // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
+  tenant.purchaseOrders.push(purchaseOrder)
   
   return ok(c, { quotation, purchaseOrder, pcCode })
 })
@@ -1888,9 +1895,7 @@ app.post('/api/purchase-orders/create', async (c) => {
     userId,
     empresaId,
   }
-  tenant.purchaseOrders.push(pedido)
-  console.log(`[PEDIDO] ✅ Pedido criado: ${pedido.id}`)
-  markTenantModified(userId)
+  // D1-first: inserir antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
       id, user_id: userId, empresa_id: empresaId, code,
@@ -1901,9 +1906,15 @@ app.post('/api/purchase-orders/create', async (c) => {
       notes: JSON.stringify({ items: pedido.items, pedidoData: pedido.pedidoData, dataEntrega: pedido.dataEntrega, observacoes: pedido.observacoes }),
     })
     if (!persistResult.success) {
-      console.warn(`[PEDIDO] Falha ao persistir pedido ${id} em D1: ${persistResult.error}`)
+      console.error(`[SUPRIMENTOS][PEDIDO][CRÍTICO] Falha ao persistir pedido ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return err(c, 'Erro ao salvar pedido de compra no banco de dados', 500)
     }
+    console.log(`[SUPRIMENTOS][PEDIDO] Pedido ${id} persistido em D1 com sucesso`)
   }
+  // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
+  tenant.purchaseOrders.push(pedido)
+  console.log(`[PEDIDO] ✅ Pedido criado: ${pedido.id}`)
+  markTenantModified(userId)
   return ok(c, { purchaseOrder: pedido, message: 'Pedido de compra criado com sucesso' })
 })
 

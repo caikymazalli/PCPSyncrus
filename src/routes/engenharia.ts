@@ -566,15 +566,22 @@ app.post('/api/bom/create', async (c) => {
     componentCode: body.componentCode || '', quantity: parseFloat(body.quantity) || 1,
     unit: body.unit || 'un', notes: body.notes || '', createdAt: new Date().toISOString(),
   }
-  tenant.bomItems.push(bom)
+  // D1-first: inserir antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
     const empresaId = getCtxEmpresaId(c)
-    await dbInsert(db, 'boms', {
+    const inserted = await dbInsert(db, 'boms', {
       id, user_id: userId, empresa_id: empresaId, product_id: bom.productId, component_id: bom.componentId,
       component_name: bom.componentName, component_code: bom.componentCode,
       quantity: bom.quantity, unit: bom.unit, notes: bom.notes,
     })
+    if (!inserted) {
+      console.error(`[ENGENHARIA][BOM][CRÍTICO] Falha ao persistir BOM ${id} em D1`)
+      return err(c, 'Erro ao salvar BOM no banco de dados', 500)
+    }
+    console.log(`[ENGENHARIA][BOM] BOM ${id} persistido em D1 com sucesso`)
   }
+  // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
+  tenant.bomItems.push(bom)
   return ok(c, { bom })
 })
 
