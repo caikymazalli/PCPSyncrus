@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
@@ -630,13 +631,10 @@ app.post('/api/route/create', async (c) => {
     updatedAt:   now,
   }
 
-  // Persist in tenant memory
-  if (!tenant.routes) (tenant as any).routes = []
-  tenant.routes.push(route)
-
-  // Persist to D1 if available
+  // D1-first: persist to D1 before updating memory (production only)
   if (db && userId !== 'demo-tenant') {
     try {
+      console.log(`[ENGENHARIA][ROTEIROS] Criando roteiro ${id} para ${userId}`)
       await db.prepare(`
         INSERT INTO work_instructions (id, user_id, title, code, version, status, product_id, operation, estimated_time, steps, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -645,10 +643,17 @@ app.post('/api/route/create', async (c) => {
         route.productId, 'roteiro', route.steps.reduce((acc: number, s: any) => acc + (s.standardTime || 0), 0),
         JSON.stringify(route.steps), now, now
       ).run()
-    } catch {
-      // D1 unavailable — kept in memory
+      console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} persistido em D1 com sucesso`)
+    } catch (e) {
+      console.error(`[ENGENHARIA][ROTEIROS][CRÍTICO] Falha ao persistir roteiro ${id} em D1:`, e)
+      return err(c, 'Erro ao salvar roteiro no banco de dados', 500)
     }
   }
+
+  // Update memory only after D1 success (or in demo/no-db mode)
+  if (!tenant.routes) (tenant as any).routes = []
+  tenant.routes.push(route)
+  markTenantModified(userId)
 
   return ok(c, { route })
 })
@@ -661,14 +666,23 @@ app.delete('/api/route/:id', async (c) => {
 
   const idx = (tenant.routes || []).findIndex((r: any) => r.id === id)
   if (idx === -1) return err(c, 'Roteiro não encontrado', 404)
-  tenant.routes.splice(idx, 1)
 
+  // D1-first: delete from D1 before removing from memory (production only)
   if (db && userId !== 'demo-tenant') {
     try {
+      console.log(`[ENGENHARIA][ROTEIROS] Deletando roteiro ${id} para ${userId}`)
       await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?')
         .bind(id, userId).run()
-    } catch {}
+      console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} removido de D1 com sucesso`)
+    } catch (e) {
+      console.error(`[ENGENHARIA][ROTEIROS][CRÍTICO] Falha ao deletar roteiro ${id} em D1:`, e)
+      return err(c, 'Erro ao remover roteiro do banco de dados', 500)
+    }
   }
+
+  // Remove from memory only after D1 success (or in demo/no-db mode)
+  tenant.routes.splice(idx, 1)
+  markTenantModified(userId)
 
   return ok(c)
 })
