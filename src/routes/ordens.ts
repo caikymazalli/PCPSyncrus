@@ -417,9 +417,6 @@ app.post('/api/create', async (c) => {
     createdAt: new Date().toISOString(),
   }
 
-  // Add to in-memory tenant
-  tenant.productionOrders.push(order)
-
   // Persist to D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'production_orders', {
@@ -431,6 +428,9 @@ app.post('/api/create', async (c) => {
       plant_id: order.plantId, notes: order.notes,
     })
   }
+
+  // Add to in-memory tenant after D1 (or in demo/no-db mode)
+  tenant.productionOrders.push(order)
 
   return ok(c, { order })
 })
@@ -447,8 +447,6 @@ app.put('/api/:id', async (c) => {
   const idx = tenant.productionOrders.findIndex((o: any) => o.id === id)
   if (idx === -1) return err(c, 'Ordem não encontrada', 404)
 
-  Object.assign(tenant.productionOrders[idx], body)
-
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'production_orders', id, userId, {
       status: body.status,
@@ -458,6 +456,8 @@ app.put('/api/:id', async (c) => {
       notes: body.notes,
     })
   }
+
+  Object.assign(tenant.productionOrders[idx], body)
 
   return ok(c, { order: tenant.productionOrders[idx] })
 })
@@ -471,11 +471,10 @@ app.delete('/api/:id', async (c) => {
 
   const idx = tenant.productionOrders.findIndex((o: any) => o.id === id)
   if (idx === -1) return err(c, 'Ordem não encontrada', 404)
-  tenant.productionOrders.splice(idx, 1)
-
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'production_orders', id, userId)
   }
+  tenant.productionOrders.splice(idx, 1)
 
   return ok(c)
 })

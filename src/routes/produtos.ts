@@ -1104,11 +1104,10 @@ app.delete('/api/:id', async (c) => {
 
   const idx = tenant.products.findIndex((p: any) => p.id === id)
   if (idx === -1) return err(c, 'Produto não encontrado', 404)
-  tenant.products.splice(idx, 1)
-
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'products', id, userId)
   }
+  tenant.products.splice(idx, 1)
 
   return ok(c)
 })

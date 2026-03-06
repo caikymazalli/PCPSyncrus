@@ -665,7 +665,6 @@ app.post('/api/create', async (c) => {
     notes: body.notes || '', shift: body.shift || 'manha',
     createdAt: new Date().toISOString(),
   }
-  tenant.productionEntries.push(entry)
   if (db && userId !== 'demo-tenant') {
     const empresaId = getCtxEmpresaId(c)
     await dbInsert(db, 'apontamentos', {
@@ -675,6 +674,7 @@ app.post('/api/create', async (c) => {
       produced: entry.produced, rejected: entry.rejected, shift: entry.shift, notes: entry.notes,
     })
   }
+  tenant.productionEntries.push(entry)
   return ok(c, { entry })
 })
 
@@ -683,8 +683,8 @@ app.delete('/api/:id', async (c) => {
   const id = c.req.param('id')
   const idx = tenant.productionEntries.findIndex((e: any) => e.id === id)
   if (idx === -1) return err(c, 'Apontamento não encontrado', 404)
-  tenant.productionEntries.splice(idx, 1)
   if (db && userId !== 'demo-tenant') await dbDelete(db, 'apontamentos', id, userId)
+  tenant.productionEntries.splice(idx, 1)
   return ok(c)
 })
 

@@ -1778,14 +1778,14 @@ app.put('/api/item/:id', async (c) => {
   if (!body) return err(c, 'Dados inválidos')
   const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Item não encontrado', 404)
-  Object.assign(tenant.stockItems[idx], body)
-  markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'stock_items', id, userId, {
       name: body.name, current_qty: body.currentQty,
       min_qty: body.minQty, max_qty: body.maxQty, location: body.location,
     })
   }
+  Object.assign(tenant.stockItems[idx], body)
+  markTenantModified(userId)
   return ok(c, { item: tenant.stockItems[idx] })
 })
 
@@ -1794,9 +1794,9 @@ app.delete('/api/item/:id', async (c) => {
   const id = c.req.param('id')
   const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Item não encontrado', 404)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'stock_items', id, userId)
   tenant.stockItems.splice(idx, 1)
   markTenantModified(userId)
-  if (db && userId !== 'demo-tenant') await dbDelete(db, 'stock_items', id, userId)
   return ok(c)
 })
 
@@ -1930,7 +1930,6 @@ app.post('/api/separation/create', async (c) => {
     })),
     createdAt: new Date().toISOString(),
   }
-  tenant.separationOrders.push(separation)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'separation_orders', {
       id, user_id: userId, code: separation.code, pedido: separation.pedido,
@@ -1938,6 +1937,7 @@ app.post('/api/separation/create', async (c) => {
       responsavel: separation.responsavel, status: separation.status,
     })
   }
+  tenant.separationOrders.push(separation)
   return ok(c, { separation })
 })
 
@@ -1959,6 +1959,13 @@ app.post('/api/exit/create', async (c) => {
     items: body.items.map((it: any) => ({ code: it.code, name: it.name || it.code, quantity: parseInt(it.quantity) || 1 })),
     createdAt: new Date().toISOString(),
   }
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'stock_exits', {
+      id, user_id: userId, code: exit.code, type: exit.type,
+      pedido: exit.pedido, nf: exit.nf, date: exit.date,
+      responsavel: exit.responsavel, notes: exit.notes,
+    })
+  }
   tenant.stockExits.push(exit)
   // Decrease stock quantities
   for (const it of exit.items) {
@@ -1966,13 +1973,6 @@ app.post('/api/exit/create', async (c) => {
     if (stockItem) stockItem.quantity = Math.max(0, (stockItem.quantity || 0) - (parseInt(it.quantity) || 1))
     const product = tenant.products?.find((p: any) => p.code === it.code)
     if (product) product.stockCurrent = Math.max(0, (product.stockCurrent || 0) - (parseInt(it.quantity) || 1))
-  }
-  if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'stock_exits', {
-      id, user_id: userId, code: exit.code, type: exit.type,
-      pedido: exit.pedido, nf: exit.nf, date: exit.date,
-      responsavel: exit.responsavel, notes: exit.notes,
-    })
   }
   return ok(c, { exit })
 })

@@ -1685,9 +1685,7 @@ app.post('/api/quotations/create', async (c) => {
     supplierResponses: [],
   }
   
-  tenant.quotations.push(quotation)
-  markTenantModified(userId)
-  
+  let d1Warning: string | undefined
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'quotations', {
       id, user_id: userId, empresa_id: empresaId, code: quotation.code,
@@ -1696,13 +1694,12 @@ app.post('/api/quotations/create', async (c) => {
     })
     if (!persistResult.success) {
       console.error(`[ERROR] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
-      return ok(c, {
-        quotation, code,
-        warning: 'Cotação salva localmente. Falha ao salvar no banco. Sincronizará automaticamente.',
-      })
+      d1Warning = 'Cotação salva localmente. Falha ao salvar no banco. Sincronizará automaticamente.'
     }
   }
-  return ok(c, { quotation, code })
+  tenant.quotations.push(quotation)
+  markTenantModified(userId)
+  return ok(c, d1Warning ? { quotation, code, warning: d1Warning } : { quotation, code })
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
@@ -2052,14 +2049,6 @@ app.post('/api/imports/from-purchase-order/:pedidoId', async (c) => {
     notes: `Gerado automaticamente a partir do Pedido ${pedido.code}`,
     createdAt: new Date().toISOString(),
   }
-  if (!tenant.imports) (tenant as any).imports = []
-  tenant.imports.push(importDraft)
-
-  // Atualizar status do pedido
-  pedido.status = 'in_import_process'
-  pedido.importProcessId = importId
-  markTenantModified(userId)
-
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'imports', {
       id: importId, user_id: userId, empresa_id: empresaId, code,
@@ -2079,6 +2068,14 @@ app.post('/api/imports/from-purchase-order/:pedidoId', async (c) => {
       import_process_id: importId,
     })
   }
+
+  if (!tenant.imports) (tenant as any).imports = []
+  tenant.imports.push(importDraft)
+
+  // Atualizar status do pedido
+  pedido.status = 'in_import_process'
+  pedido.importProcessId = importId
+  markTenantModified(userId)
 
   return ok(c, {
     import: importDraft,
@@ -2145,9 +2142,6 @@ app.post('/api/imports/create', async (c) => {
     modality: body.modality || 'maritimo', status: 'waiting_ship',
     createdAt: new Date().toISOString(),
   }
-  if (!tenant.imports) (tenant as any).imports = []
-  tenant.imports.push(imp)
-  markTenantModified(userId)
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'imports', {
       id, user_id: userId, empresa_id: empresaId, code, invoice_number: imp.invoiceNumber,
@@ -2157,6 +2151,9 @@ app.post('/api/imports/create', async (c) => {
       console.warn(`[IMPORT] Falha ao persistir importação ${id} em D1: ${persistResult.error}`)
     }
   }
+  if (!tenant.imports) (tenant as any).imports = []
+  tenant.imports.push(imp)
+  markTenantModified(userId)
   return ok(c, { imp, code })
 })
 
