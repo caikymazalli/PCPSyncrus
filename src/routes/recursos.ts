@@ -518,12 +518,11 @@ app.delete('/plantas/:id', async (c) => {
 
   const idx = tenant.plants.findIndex((p: any) => p.id === id)
   if (idx === -1) return err(c, 'Planta não encontrada', 404)
-  tenant.plants.splice(idx, 1)
-  markTenantModified(userId)
-
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'plants', id, userId)
   }
+  tenant.plants.splice(idx, 1)
+  markTenantModified(userId)
   return ok(c)
 })
 
@@ -611,12 +610,11 @@ app.delete('/maquinas/:id', async (c) => {
 
   const idx = tenant.machines.findIndex((m: any) => m.id === id)
   if (idx === -1) return err(c, 'Máquina não encontrada', 404)
-  tenant.machines.splice(idx, 1)
-  markTenantModified(userId)
-
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'machines', id, userId)
   }
+  tenant.machines.splice(idx, 1)
+  markTenantModified(userId)
   return ok(c)
 })
 
@@ -710,12 +708,11 @@ app.delete('/bancadas/:id', async (c) => {
 
   const idx = tenant.workbenches.findIndex((wb: any) => wb.id === id)
   if (idx === -1) return err(c, 'Bancada não encontrada', 404)
-  tenant.workbenches.splice(idx, 1)
-  markTenantModified(userId)
-
   if (db && userId !== 'demo-tenant') {
     await dbDelete(db, 'workbenches', id, userId)
   }
+  tenant.workbenches.splice(idx, 1)
+  markTenantModified(userId)
   return ok(c)
 })
 

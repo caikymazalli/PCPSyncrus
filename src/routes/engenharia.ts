@@ -591,12 +591,12 @@ app.put('/api/bom/:id', async (c) => {
   if (!body) return err(c, 'Dados inválidos')
   const idx = tenant.bomItems.findIndex((b: any) => b.id === id)
   if (idx === -1) return err(c, 'Item de BOM não encontrado', 404)
-  Object.assign(tenant.bomItems[idx], body)
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'boms', id, userId, {
       component_name: body.componentName, quantity: body.quantity, unit: body.unit, notes: body.notes,
     })
   }
+  Object.assign(tenant.bomItems[idx], body)
   return ok(c, { bom: tenant.bomItems[idx] })
 })
 
@@ -605,8 +605,8 @@ app.delete('/api/bom/:id', async (c) => {
   const id = c.req.param('id')
   const idx = tenant.bomItems.findIndex((b: any) => b.id === id)
   if (idx === -1) return err(c, 'Item não encontrado', 404)
-  tenant.bomItems.splice(idx, 1)
   if (db && userId !== 'demo-tenant') await dbDelete(db, 'boms', id, userId)
+  tenant.bomItems.splice(idx, 1)
   return ok(c)
 })
 
@@ -709,13 +709,13 @@ app.post('/api/product/create', async (c) => {
     stockMin: 0, stockMax: 0, stockCurrent: 0, criticalPercentage: 50,
     stockStatus: 'normal', createdAt: new Date().toISOString(),
   }
-  tenant.products.push(product)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'products', {
       id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code, unit: product.unit,
       type: product.type, stock_min: 0, stock_current: 0, description: product.description,
     })
   }
+  tenant.products.push(product)
   return ok(c, { product })
 })
 

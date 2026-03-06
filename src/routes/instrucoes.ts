@@ -764,18 +764,19 @@ app.post('/api/instructions', async (c) => {
     created_by: userId,
   }
 
-  // Memória
+  // D1
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
+    await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
+  }
+
+  // Memória (after D1 or in demo/no-db mode)
   if (!tenant.workInstructions) tenant.workInstructions = []
   if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
   tenant.workInstructions.push(instruction)
   tenant.workInstructionVersions.push(version)
   markTenantModified(userId)
 
-  // D1
-  if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
-    await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
-  }
   await logWorkInstructionEvent(db, userId, empresaId, id, 'CREATED', { title: body.title }, tenant)
 
   return ok(c, { instruction, version })
@@ -810,15 +811,16 @@ app.post('/api/instructions/:id/steps', async (c) => {
     created_by: userId,
   }
 
-  // Memória
-  if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
-  tenant.workInstructionSteps.push(step)
-  markTenantModified(userId)
-
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instruction_steps', { ...step, user_id: userId, empresa_id: empresaId })
   }
+
+  // Memória (after D1 or in demo/no-db mode)
+  if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
+  tenant.workInstructionSteps.push(step)
+  markTenantModified(userId)
+
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STEP_ADDED', {
     step_number: body.step_number,
     title: body.title
@@ -937,11 +939,6 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
   const step = tenant.workInstructionSteps[stepIdx]
-  tenant.workInstructionSteps.splice(stepIdx, 1)
-
-  // Remover fotos associadas
-  tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => p.step_id !== stepId)
-  markTenantModified(userId)
 
   // D1
   if (db && userId !== 'demo-tenant') {
@@ -951,6 +948,14 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
       await dbDelete(db, 'work_instruction_photos', (photo as any).id, userId)
     }
   }
+
+  // Memória (after D1 or in demo/no-db mode)
+  tenant.workInstructionSteps.splice(stepIdx, 1)
+
+  // Remover fotos associadas
+  tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => p.step_id !== stepId)
+  markTenantModified(userId)
+
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STEP_DELETED', {
     stepId,
     stepNumber: step.step_number,
@@ -1014,15 +1019,16 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
     content_type: resolvedContentType,
   }
 
-  // Memória
-  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
-  tenant.workInstructionPhotos.push(photo)
-  markTenantModified(userId)
-
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
   }
+
+  // Memória (after D1 or in demo/no-db mode)
+  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
+  tenant.workInstructionPhotos.push(photo)
+  markTenantModified(userId)
+
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_UPLOADED', {
     stepId,
     photoId,
@@ -1106,15 +1112,16 @@ app.post('/api/instructions/:id/photos', async (c) => {
     content_type: body.content_type || '',
   }
 
-  // Memória
-  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
-  tenant.workInstructionPhotos.push(photo)
-  markTenantModified(userId)
-
   // D1
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
   }
+
+  // Memória (after D1 or in demo/no-db mode)
+  if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
+  tenant.workInstructionPhotos.push(photo)
+  markTenantModified(userId)
+
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_ADDED', {
     stepId: body.step_id,
     fileName: photo.file_name

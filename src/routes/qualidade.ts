@@ -509,7 +509,6 @@ app.post('/api/create', async (c) => {
     quantityRejected: body.quantityRejected || 0, operator: body.operator || body.responsible || '—',
   }
   if (!Array.isArray(tenant.nonConformances)) tenant.nonConformances = []
-  tenant.nonConformances.push(nc)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'non_conformances', {
       id, user_id: userId, empresa_id: empresaId, title: nc.title, type: nc.type,
@@ -517,6 +516,7 @@ app.post('/api/create', async (c) => {
       description: nc.description, responsible: nc.responsible, due_date: nc.dueDate,
     })
   }
+  tenant.nonConformances.push(nc)
   return ok(c, { nc })
 })
 
@@ -526,13 +526,13 @@ app.put('/api/:id', async (c) => {
   if (!body) return err(c, 'Dados inválidos')
   const idx = tenant.nonConformances.findIndex((n: any) => n.id === id)
   if (idx === -1) return err(c, 'NC não encontrada', 404)
-  Object.assign(tenant.nonConformances[idx], body)
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'non_conformances', id, userId, {
       status: body.status, severity: body.severity, responsible: body.responsible,
       corrective_action: body.correctiveAction, root_cause: body.rootCause,
     })
   }
+  Object.assign(tenant.nonConformances[idx], body)
   return ok(c, { nc: tenant.nonConformances[idx] })
 })
 
@@ -541,8 +541,8 @@ app.delete('/api/:id', async (c) => {
   const id = c.req.param('id')
   const idx = tenant.nonConformances.findIndex((n: any) => n.id === id)
   if (idx === -1) return err(c, 'NC não encontrada', 404)
-  tenant.nonConformances.splice(idx, 1)
   if (db && userId !== 'demo-tenant') await dbDelete(db, 'non_conformances', id, userId)
+  tenant.nonConformances.splice(idx, 1)
   return ok(c)
 })
 

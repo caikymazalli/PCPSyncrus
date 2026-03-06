@@ -557,8 +557,8 @@ app.delete('/api/supplier/:id', async (c) => {
   const id = c.req.param('id')
   const idx = tenant.suppliers.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Fornecedor não encontrado', 404)
-  tenant.suppliers.splice(idx, 1)
   if (db && userId !== 'demo-tenant') await dbDelete(db, 'suppliers', id, userId)
+  tenant.suppliers.splice(idx, 1)
   return ok(c)
 })
 
@@ -589,10 +589,10 @@ app.post('/api/categories', async (c) => {
   }
   const id = genId('cat')
   const category = { id, name, createdAt: new Date().toISOString() }
-  tenant.supplierCategories.push(category)
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'supplier_categories', { id, user_id: userId, empresa_id: empresaId, name })
   }
+  tenant.supplierCategories.push(category)
   return ok(c, { category })
 })
 
