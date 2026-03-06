@@ -780,10 +780,10 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         const { supplierIdSet: _, ...rest } = g
         return rest
       })
-      const dbCodeSet = new Set(dbEntries.map((e: any) => e.productCode))
-      // Merge: keep in-memory entries that are not yet in D1 (not persisted)
-      const memoryOnly = (tenant.productSuppliers || []).filter((m: any) => !dbCodeSet.has(m.productCode))
-      tenant.productSuppliers = [...dbEntries, ...memoryOnly]
+      // D1 é a fonte de verdade em produção: substitui memória pelo estado do D1.
+      // Entradas apenas em memória (nunca persistidas) são descartadas para evitar
+      // divergência após deploy/cold-start.
+      tenant.productSuppliers = dbEntries
     }
     // Load quotations
     try {

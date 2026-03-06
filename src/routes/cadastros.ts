@@ -605,25 +605,8 @@ app.post('/api/supplier/vinc', async (c) => {
     ? body.productCodes.filter(Boolean)
     : body?.productCode ? [body.productCode] : []
   if (!body || productCodes.length === 0) return err(c, 'Produto obrigatório')
-  // Guardar vinculação na lista de productSuppliers do tenant
-  if (!tenant.productSuppliers) tenant.productSuppliers = []
-  for (const productCode of productCodes) {
-    // Remove vinculações anteriores do mesmo produto
-    tenant.productSuppliers = tenant.productSuppliers.filter((v: any) => v.productCode !== productCode)
-    if (body.type === 'external' && Array.isArray(body.suppliers)) {
-      const supplierIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean)
-      const priorities: Record<string, number> = {}
-      body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority || 1 })
-      tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds, priorities, internalProduction: false })
-    } else if (body.type === 'internal') {
-      tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds: [], priorities: {}, internalProduction: true })
-    }
-    // Atualizar supplier_id_1/2/3/4 no produto em memória
-    if (body.type === 'external' && Array.isArray(body.suppliers)) {
-      syncSupplierPrioritiesToProduct(tenant, productCode, body.suppliers)
-    }
-  }
-  // Persistir em D1
+  // Padrão D1-first: persistir em D1 antes de atualizar memória (produção).
+  // Em demo/sem-db, a memória é atualizada diretamente abaixo.
   if (db && userId !== 'demo-tenant') {
     try {
       // Migração de schema: garantir que colunas supplier_id_1/2/3/4 existam em products
@@ -797,8 +780,27 @@ app.post('/api/supplier/vinc', async (c) => {
         }
       }
     } catch (e) {
-      console.error('[VINCULAÇÃO] Erro ao persistir em D1:', e)
+      console.error('[VINCULAÇÃO] [CRÍTICO] Erro ao persistir em D1:', e)
       return err(c, `Erro ao persistir vinculação: ${(e as any).message}`, 500)
+    }
+  }
+  // Atualizar memória somente após D1 ter sido persistido com sucesso (ou em modo demo).
+  // Isso evita divergência entre memória e D1 caso a persistência falhe.
+  if (!tenant.productSuppliers) tenant.productSuppliers = []
+  for (const productCode of productCodes) {
+    // Remove vinculações anteriores do mesmo produto
+    tenant.productSuppliers = tenant.productSuppliers.filter((v: any) => v.productCode !== productCode)
+    if (body.type === 'external' && Array.isArray(body.suppliers)) {
+      const supplierIds = body.suppliers.map((s: any) => s.supplierId).filter(Boolean)
+      const priorities: Record<string, number> = {}
+      body.suppliers.forEach((s: any) => { if (s.supplierId) priorities[s.supplierId] = s.priority || 1 })
+      tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds, priorities, internalProduction: false })
+    } else if (body.type === 'internal') {
+      tenant.productSuppliers.push({ id: genId('vinc'), productCode, supplierIds: [], priorities: {}, internalProduction: true })
+    }
+    // Atualizar supplier_id_1/2/3/4 no produto em memória
+    if (body.type === 'external' && Array.isArray(body.suppliers)) {
+      syncSupplierPrioritiesToProduct(tenant, productCode, body.suppliers)
     }
   }
   markTenantModified(userId)

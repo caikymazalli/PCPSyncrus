@@ -1161,6 +1161,7 @@ app.post('/api/import', async (c) => {
   let created = 0
   let updated = 0
   let pendingSerial = 0
+  const d1Errors: string[] = []
   const importedAt = new Date().toISOString()
 
   function calcStockStatus(current: number, min: number, max: number = 0, criticalPct: number = 50): string {
@@ -1196,28 +1197,47 @@ app.post('/api/import', async (c) => {
     let productId: string
 
     if (existingIdx >= 0) {
-      // Update existing
+      // Update existing — padrão D1-first em produção
       const p = tenant.products[existingIdx] as any
-      p.name            = nome
-      p.unit            = unit
-      p.type            = type
-      p.stockMin        = stockMin
-      p.stockCurrent    = stockCurrent
-      p.stockStatus     = stockStatus
-      p.price           = price
-      p.notes           = notes
-      if (serialControlled) { p.serialControlled = true; p.controlType = controlType }
       productId = p.id
 
       if (db && userId !== 'demo-tenant') {
-        await dbUpdate(db, 'products', p.id, userId, {
-          name: nome, unit, type,
-          stock_min: stockMin, stock_current: stockCurrent, price, notes
-        }).catch(() => {})
+        // Persistir em D1 primeiro; só atualiza memória se D1 tiver sucesso
+        try {
+          await dbUpdate(db, 'products', p.id, userId, {
+            name: nome, unit, type,
+            stock_min: stockMin, stock_current: stockCurrent, price, notes
+          })
+          p.name            = nome
+          p.unit            = unit
+          p.type            = type
+          p.stockMin        = stockMin
+          p.stockCurrent    = stockCurrent
+          p.stockStatus     = stockStatus
+          p.price           = price
+          p.notes           = notes
+          if (serialControlled) { p.serialControlled = true; p.controlType = controlType }
+          updated++
+        } catch (e: any) {
+          console.error(`[IMPORT] [CRÍTICO] Erro ao atualizar produto ${codigo} em D1:`, e)
+          d1Errors.push(codigo)
+          continue
+        }
+      } else {
+        // Demo: apenas memória
+        p.name            = nome
+        p.unit            = unit
+        p.type            = type
+        p.stockMin        = stockMin
+        p.stockCurrent    = stockCurrent
+        p.stockStatus     = stockStatus
+        p.price           = price
+        p.notes           = notes
+        if (serialControlled) { p.serialControlled = true; p.controlType = controlType }
+        updated++
       }
-      updated++
     } else {
-      // Create new
+      // Create new — padrão D1-first em produção
       productId = genId('prod')
       const product: any = {
         id: productId, name: nome, code: codigo, unit, type,
@@ -1226,16 +1246,27 @@ app.post('/api/import', async (c) => {
         criticalPercentage: 50, supplierId: '', supplierName: '',
         price, notes, createdAt: importedAt,
       }
-      ;(tenant.products as any[]).push(product)
 
       if (db && userId !== 'demo-tenant') {
-        await dbInsert(db, 'products', {
-          id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
-          stock_min: stockMin, stock_max: 0, stock_current: stockCurrent,
-          price, notes,
-        }).catch(() => {})
+        // Persistir em D1 primeiro; só adiciona à memória se D1 tiver sucesso
+        try {
+          await dbInsert(db, 'products', {
+            id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
+            stock_min: stockMin, stock_max: 0, stock_current: stockCurrent,
+            price, notes,
+          })
+          ;(tenant.products as any[]).push(product)
+          created++
+        } catch (e: any) {
+          console.error(`[IMPORT] [CRÍTICO] Erro ao criar produto ${codigo} em D1:`, e)
+          d1Errors.push(codigo)
+          continue
+        }
+      } else {
+        // Demo: apenas memória
+        ;(tenant.products as any[]).push(product)
+        created++
       }
-      created++
     }
 
     // ── Gerar item de liberação de série/lote se necessário ──────────────────
@@ -1265,7 +1296,7 @@ app.post('/api/import', async (c) => {
     }
   }
 
-  return ok(c, { created, updated, total: created + updated, pendingSerial })
+  return ok(c, { created, updated, total: created + updated, pendingSerial, d1Errors })
 })
 
 export default app
