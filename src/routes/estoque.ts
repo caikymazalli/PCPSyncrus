@@ -1752,16 +1752,23 @@ app.post('/api/item/create', async (c) => {
     almoxarifadoId: body.almoxarifadoId || '',
     createdAt: new Date().toISOString(),
   }
-  tenant.stockItems.push(item)
-  markTenantModified(userId)
+  // D1-first: inserir antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'stock_items', {
+    const inserted = await dbInsert(db, 'stock_items', {
       id, user_id: userId, empresa_id: empresaId, name: item.name, code: item.code,
       unit: item.unit, category: item.category,
       current_qty: item.currentQty, min_qty: item.minQty, max_qty: item.maxQty,
       location: item.location,
     })
+    if (!inserted) {
+      console.error(`[ESTOQUE][ITEMS][CRÍTICO] Falha ao persistir item ${id} em D1`)
+      return err(c, 'Erro ao salvar item de estoque no banco de dados', 500)
+    }
+    console.log(`[ESTOQUE][ITEMS] Item ${id} persistido em D1 com sucesso`)
   }
+  // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
+  tenant.stockItems.push(item)
+  markTenantModified(userId)
   return ok(c, { item })
 })
 

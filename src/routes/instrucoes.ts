@@ -855,55 +855,61 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
 
   if (!body) return err(c, 'Dados inválidos')
 
-  const steps = tenant.workInstructionSteps || []
-  const stepIdx = steps.findIndex((s: any) => s.id === stepId)
-    // Fallback to D1 if not in memory
+  if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
+  let stepIdx = tenant.workInstructionSteps.findIndex((s: any) => s.id === stepId)
+  // Fallback to D1 if not in memory
   if (stepIdx === -1 && db && userId !== 'demo-tenant') {
     const row = await db.prepare('SELECT * FROM work_instruction_steps WHERE id = ? AND user_id = ?')
       .bind(stepId, userId).first()
 
     if (row) {
-      if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
       tenant.workInstructionSteps.push(row as any)
+      stepIdx = tenant.workInstructionSteps.length - 1
     }
   }
 
-  // recompute after fallback
-  const stepIdx2 = (tenant.workInstructionSteps || []).findIndex((s: any) => s.id === stepId)
-  if (stepIdx2 === -1) return err(c, 'Etapa não encontrada', 404)
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
-  const oldStep = steps[stepIdx]
+  const oldStep = tenant.workInstructionSteps[stepIdx]
   const newStepNumber = body.step_number !== undefined ? Number(body.step_number) : oldStep.step_number
 
   if (!newStepNumber || Number.isNaN(newStepNumber) || newStepNumber <= 0) {
     return err(c, 'Número da etapa inválido', 400)
   }
 
-  steps[stepIdx] = {
+  const updatedStep = {
     ...oldStep,
     step_number: newStepNumber,
     title: body.title !== undefined ? body.title : oldStep.title,
     description: body.description !== undefined ? body.description : oldStep.description,
     observation: body.observation !== undefined ? body.observation : oldStep.observation,
   }
+
+  // D1-first (production)
+  if (db && userId !== 'demo-tenant') {
+    const updated = await dbUpdate(db, 'work_instruction_steps', stepId, userId, {
+      step_number: updatedStep.step_number,
+      title: updatedStep.title,
+      description: updatedStep.description,
+      observation: updatedStep.observation,
+    })
+    if (!updated) {
+      console.error(`[INSTRUCOES][ETAPAS][CRÍTICO] Falha ao atualizar etapa ${stepId} em D1`)
+      return err(c, 'Erro ao salvar etapa no banco de dados', 500)
+    }
+    console.log(`[INSTRUCOES][ETAPAS] Etapa ${stepId} atualizada em D1 com sucesso`)
+  }
+
+  // Update memory only after D1 success (or demo/no-db mode)
+  tenant.workInstructionSteps[stepIdx] = updatedStep
   markTenantModified(userId)
 
-  // D1
-  if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'work_instruction_steps', stepId, userId, {
-      step_number: steps[stepIdx].step_number,
-      title: steps[stepIdx].title,
-      description: steps[stepIdx].description,
-      observation: steps[stepIdx].observation,
-    })
-  }
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STEP_EDITED', {
     stepId,
     whatChanged: Object.keys(body).filter((k: string) => body[k] !== undefined && body[k] !== oldStep[k])
   }, tenant)
 
-  return ok(c, { step: steps[stepIdx] })
+  return ok(c, { step: updatedStep })
 })
 
 // ── API: DELETE /api/instructions/:id/steps/:stepId (Deletar Etapa) ──
@@ -915,26 +921,23 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   const instructionId = c.req.param('id')
   const stepId = c.req.param('stepId')
 
-  const steps = tenant.workInstructionSteps || []
-  const stepIdx = steps.findIndex((s: any) => s.id === stepId)
-    // Fallback to D1 if not in memory
+  if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
+  let stepIdx = tenant.workInstructionSteps.findIndex((s: any) => s.id === stepId)
+  // Fallback to D1 if not in memory
   if (stepIdx === -1 && db && userId !== 'demo-tenant') {
     const row = await db.prepare('SELECT * FROM work_instruction_steps WHERE id = ? AND user_id = ?')
       .bind(stepId, userId).first()
 
     if (row) {
-      if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
       tenant.workInstructionSteps.push(row as any)
+      stepIdx = tenant.workInstructionSteps.length - 1
     }
   }
 
-  // recompute after fallback
-  const stepIdx2 = (tenant.workInstructionSteps || []).findIndex((s: any) => s.id === stepId)
-  if (stepIdx2 === -1) return err(c, 'Etapa não encontrada', 404)
   if (stepIdx === -1) return err(c, 'Etapa não encontrada', 404)
 
-  const step = steps[stepIdx]
-  steps.splice(stepIdx, 1)
+  const step = tenant.workInstructionSteps[stepIdx]
+  tenant.workInstructionSteps.splice(stepIdx, 1)
 
   // Remover fotos associadas
   tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => p.step_id !== stepId)

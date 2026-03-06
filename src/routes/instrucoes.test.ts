@@ -453,3 +453,157 @@ describe('GET /instrucoes/:id versions section', () => {
     expect(html).toContain('transitionStatus')
   })
 })
+
+// ── D1-first: PUT /instrucoes/api/instructions/:id/steps/:stepId ─────────────
+
+const failingDB = {
+  prepare: () => ({
+    bind: () => ({
+      run: () => Promise.reject(new Error('D1 connection failed')),
+      all: () => Promise.reject(new Error('D1 connection failed')),
+      first: () => Promise.reject(new Error('D1 connection failed')),
+    }),
+    run: () => Promise.reject(new Error('D1 connection failed')),
+    all: () => Promise.reject(new Error('D1 connection failed')),
+    first: () => Promise.reject(new Error('D1 connection failed')),
+  }),
+}
+
+const successDB = {
+  prepare: () => ({
+    bind: () => ({
+      run: () => Promise.resolve({ success: true, results: [] }),
+      all: () => Promise.resolve({ results: [] }),
+      first: () => Promise.resolve(null),
+    }),
+    run: () => Promise.resolve({ success: true, results: [] }),
+    all: () => Promise.resolve({ results: [] }),
+    first: () => Promise.resolve(null),
+  }),
+}
+
+// ── Source-code guardrail: D1-first in PUT step handler ──────────────────────
+
+describe('instrucoes.ts source-code guardrails D1-first (PUT step)', () => {
+  const { readFileSync } = require('fs')
+  const { resolve } = require('path')
+  const src: string = readFileSync(resolve(__dirname, 'instrucoes.ts'), 'utf8')
+
+  it('PUT step handler: bloco D1 (userId !== demo-tenant) aparece antes da mutação de memória', () => {
+    const handlerStart = src.indexOf("app.put('/api/instructions/:id/steps/:stepId'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memUpdatePos = handlerBody.indexOf('tenant.workInstructionSteps[stepIdx]')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memUpdatePos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memUpdatePos)
+  })
+
+  it('PUT step handler: sem catch{} silencioso em writes D1', () => {
+    const handlerStart = src.indexOf("app.put('/api/instructions/:id/steps/:stepId'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).not.toMatch(/catch\s*\{\s*\}/)
+    expect(handlerBody).not.toMatch(/catch\s*\{\s*\/\/\s*D1 unavailable/)
+  })
+
+  it('PUT step handler: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.put('/api/instructions/:id/steps/:stepId'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+
+  it('PUT step handler: não usa stepIdx2 / não há bug de índice duplo', () => {
+    const handlerStart = src.indexOf("app.put('/api/instructions/:id/steps/:stepId'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).not.toContain('stepIdx2')
+  })
+})
+
+// ── Integração: PUT step — D1 falhando em produção ───────────────────────────
+
+describe('PUT /instrucoes/api/instructions/:id/steps/:stepId — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true, true) })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const originalTitle = tenants[TEST_USER_ID].workInstructionSteps[0].title
+
+    const res = await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/steps/' + TEST_STEP_ID,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ step_number: 2, title: 'Título Alterado' }),
+      },
+      { DB: failingDB }
+    )
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido alterada
+    const stepInMem = tenants[TEST_USER_ID].workInstructionSteps[0]
+    expect(stepInMem.title).toBe(originalTitle)
+  })
+})
+
+// ── Integração: PUT step — D1 com sucesso em produção ────────────────────────
+
+describe('PUT /instrucoes/api/instructions/:id/steps/:stepId — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true, true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const res = await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/steps/' + TEST_STEP_ID,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ step_number: 3, title: 'Etapa Produção OK' }),
+      },
+      { DB: successDB }
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ title: string; step_number: number }>
+    expect(data.ok).toBe(true)
+    expect(data.step?.title).toBe('Etapa Produção OK')
+    expect(data.step?.step_number).toBe(3)
+
+    const stepInMem = tenants[TEST_USER_ID].workInstructionSteps[0]
+    expect(stepInMem.title).toBe('Etapa Produção OK')
+  })
+})
+
+// ── Integração: PUT step — modo demo (sem db) ─────────────────────────────────
+
+describe('PUT /instrucoes/api/instructions/:id/steps/:stepId — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant(true, true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória no modo demo (sem db)', async () => {
+    const res = await authedRequest(
+      '/api/instructions/' + TEST_INSTR_ID + '/steps/' + TEST_STEP_ID,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_number: 2, title: 'Etapa Demo' }),
+      }
+      // sem env.DB → modo demo
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ title: string }>
+    expect(data.ok).toBe(true)
+    expect(data.step?.title).toBe('Etapa Demo')
+
+    const stepInMem = tenants[TEST_USER_ID].workInstructionSteps[0]
+    expect(stepInMem.title).toBe('Etapa Demo')
+  })
+})
