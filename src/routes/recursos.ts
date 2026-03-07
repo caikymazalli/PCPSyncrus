@@ -627,6 +627,9 @@ app.post('/bancadas', async (c) => {
   const body   = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
   if (!body.nome) return err(c, 'Nome é obrigatório')
+  if (db && userId !== 'demo-tenant' && !body.plantaId?.trim()) {
+    return err(c, 'Planta é obrigatória', 400)
+  }
 
   console.log('[RECURSOS][POST /bancadas]', { userId, empresaId, hasDB: !!db, body })
 
@@ -644,12 +647,17 @@ app.post('/bancadas', async (c) => {
       const result = await dbInsert(db, 'workbenches', {
         id, user_id: userId, empresa_id: empresaId || '',
         name: bancada.name, function: bancada.function || '',
-        plant_id: bancada.plantId || '', plant_name: bancada.plantName || '',
+        plant_id: bancada.plantId, plant_name: bancada.plantName || '',
         status: bancada.status, created_at: new Date().toISOString(),
       })
       if (!result) {
         console.error(`[CRÍTICO] Falha ao inserir bancada ${id} em D1`)
-        return err(c, 'Falha ao salvar bancada em D1. Tente novamente.', 500)
+        return c.json({
+          ok: false,
+          error: 'Falha ao salvar bancada em D1. Tente novamente.',
+          errorCode: 'D1_INSERT_FAILED',
+          details: 'Verifique se as migrations foram aplicadas e o schema está correto.',
+        }, 500)
       }
     } catch (dbErr) {
       console.error(`[ERRO DB] Inserir bancada ${id}:`, dbErr instanceof Error ? dbErr.message : String(dbErr))
@@ -659,6 +667,30 @@ app.post('/bancadas', async (c) => {
   tenant.workbenches.push(bancada)
   markTenantModified(userId)
   return ok(c, { id, workbench: bancada })
+})
+
+app.get('/api/debug/workbenches-schema', async (c) => {
+  const env = c.env as Record<string, string> | undefined
+  if (env?.DEBUG !== '1') {
+    return c.json({ ok: false, error: 'Not found' }, 404)
+  }
+  const db = getCtxDB(c)
+  if (!db) {
+    return c.json({ ok: false, error: 'D1 não disponível neste ambiente' }, 503)
+  }
+  try {
+    const [tableInfo, masterRow] = await Promise.all([
+      db.prepare('PRAGMA table_info(workbenches)').all(),
+      db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='workbenches'").first(),
+    ])
+    return c.json({
+      ok: true,
+      columns: tableInfo.results,
+      ddl: (masterRow as { sql: string | null } | null)?.sql ?? null,
+    })
+  } catch (e) {
+    return c.json({ ok: false, error: 'Erro ao consultar schema', message: (e as any)?.message }, 500)
+  }
 })
 
 app.put('/bancadas/:id', async (c) => {
