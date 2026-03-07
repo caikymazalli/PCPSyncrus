@@ -149,74 +149,88 @@ done
 
 ---
 
-## Script Idempotente: `d1-ensure-empresa-id`
+## Script Idempotente: `d1:ensure-empresa-id`
 
-O script `scripts/d1-ensure-empresa-id.ts` resolve o problema de ambientes onde
-`machines` e/ou `workbenches` não possuem a coluna `empresa_id`, sem risco de
-falhar em ambientes que já receberam o hotfix manual ou executaram a migration 0022.
+O script `scripts/d1-ensure-empresa-id.ts` é a forma **segura e repetível** de
+garantir que a coluna `empresa_id` existe em todas as tabelas tenant, sem
+depender do histórico de migrations e **sem falhar** se a coluna já existir.
 
-### Por que este script é necessário
+### Como funciona
 
-O SQLite/D1 **não suporta** `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
-Rodar `wrangler d1 migrations apply` em um ambiente que já tem `empresa_id`
-(via hotfix manual) causa:
+Para cada tabela na allowlist interna, o script:
 
-```
-SQLITE_ERROR: duplicate column name: empresa_id
-```
+1. Executa `PRAGMA table_info(<table>)` para inspecionar as colunas existentes.
+2. Se `empresa_id` **já existir** → pula a tabela (nenhuma mudança).
+3. Se `empresa_id` **estiver ausente** → executa:
+   ```sql
+   ALTER TABLE <table> ADD COLUMN empresa_id TEXT DEFAULT '1';
+   UPDATE <table> SET empresa_id = '1' WHERE empresa_id IS NULL OR empresa_id = '';
+   ```
+4. Imprime um resumo claro ao final.
 
-Este script verifica o schema via `PRAGMA table_info` antes de aplicar qualquer
-`ALTER TABLE`, tornando a operação completamente segura de executar repetidas vezes.
+### Pré-requisitos
 
-### Como usar
+- Node.js >= 18
+- `wrangler` autenticado (`wrangler login` ou `CLOUDFLARE_API_TOKEN` definido)
 
-```bash
-# 1. Autentique com Wrangler
-npx wrangler login
-
-# 2. Execute o script (produção)
-npx ts-node scripts/d1-ensure-empresa-id.ts pcpsyncrus-production
-
-# 3. Para ambiente local
-npx ts-node scripts/d1-ensure-empresa-id.ts pcpsyncrus-production --local
-```
-
-### O que o script faz
-
-1. Consulta `PRAGMA table_info(machines)` e `PRAGMA table_info(workbenches)`
-2. Se `empresa_id` estiver **ausente**: executa `ALTER TABLE ... ADD COLUMN empresa_id TEXT DEFAULT '1'`
-3. Se `empresa_id` já **existir**: pula o ALTER TABLE (sem erro)
-4. Normaliza registros com `empresa_id IS NULL OR empresa_id = ''` → `'1'`
-
-### Verificação pós-execução
+### Uso
 
 ```bash
-npx wrangler d1 execute pcpsyncrus-production --remote \
-  --command "PRAGMA table_info(machines)"
+# Banco padrão (pcpsyncrus-production), modo remoto (produção)
+npm run d1:ensure-empresa-id
 
-npx wrangler d1 execute pcpsyncrus-production --remote \
+# Banco específico por argumento
+npm run d1:ensure-empresa-id -- pcpsyncrus-production
+
+# Banco específico por variável de ambiente
+D1_DB_NAME=pcpsyncrus-production npm run d1:ensure-empresa-id
+
+# Banco local (desenvolvimento / testes)
+npm run d1:ensure-empresa-id -- --local
+npm run d1:ensure-empresa-id -- meu-banco-local --local
+```
+
+### Saída esperada (exemplo)
+
+```
+🔧  PCP Syncrus — D1 ensure-empresa-id
+   Database : pcpsyncrus-production
+   Target   : remote (production)
+   Tables   : 24
+────────────────────────────────────────────────────────────
+
+  Checking plants                             ✓  already has empresa_id
+  Checking workbenches                        ⚠  missing — adding ... done ✅
+  ...
+
+────────────────────────────────────────────────────────────
+📊  Summary
+   Already correct : 23  (plants, users, ...)
+   Columns added   : 1   (workbenches)
+   Errors          : 0   (none)
+
+✅  empresa_id added to 1 table(s). Schema is now up to date.
+```
+
+### Como usar como checklist pós-deploy
+
+Execute o script após cada deploy que envolva alterações de schema ou novos
+ambientes:
+
+```bash
+# 1. Aplique as migrations pendentes normalmente
+wrangler d1 migrations apply pcpsyncrus-production --remote
+
+# 2. Execute o script idempotente como verificação/correção extra
+npm run d1:ensure-empresa-id -- pcpsyncrus-production
+
+# 3. Confirme o estado de uma tabela específica se necessário
+wrangler d1 execute pcpsyncrus-production --remote \
   --command "PRAGMA table_info(workbenches)"
 ```
 
-Ambas as saídas devem incluir uma linha com `empresa_id`.
-
----
-
-## Validação de `plant_id` na API
-
-Os endpoints `POST /recursos/maquinas` e `POST /recursos/bancadas` validam o
-`plant_id` **antes** de tentar o INSERT no D1, evitando erros 500 por
-`FOREIGN KEY constraint failed`.
-
-### Comportamento
-
-| Situação | HTTP | Mensagem |
-|---|---|---|
-| `plantaId` ausente (produção) | 400 | `Planta é obrigatória` |
-| `plantaId` vazio (produção) | 400 | `Planta é obrigatória` |
-| `plantaId` inválido / não encontrado | 400 | `plant_id inválido ou não encontrado` |
-| `plantaId` válido, D1 falhando | 500 | `errorCode: D1_INSERT_FAILED` |
-| `plantaId` válido, D1 ok | 200 | sucesso |
+O script termina com código de saída `0` se tudo estiver correto (mesmo que
+nenhuma coluna tenha sido adicionada) e código `1` se alguma tabela falhar.
 
 ---
 
@@ -229,3 +243,4 @@ Os endpoints `POST /recursos/maquinas` e `POST /recursos/bancadas` validam o
 
 > **Importante:** Sempre aplique migrations em **produção** após qualquer deploy
 > que inclua novos arquivos em `migrations/`.
+> Após o deploy, execute `npm run d1:ensure-empresa-id` como verificação final.
