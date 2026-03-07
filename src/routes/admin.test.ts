@@ -11,6 +11,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import app from './admin'
 import { sessions } from '../userStore'
 
@@ -170,5 +172,27 @@ describe('admin.ts logo source-code safeguards', () => {
   it('DELETE /api/grupo/logo endpoint is defined', async () => {
     const res = await unauthRequest('/api/grupo/logo', { method: 'DELETE' })
     expect(res.status).not.toBe(404)
+  })
+})
+
+// ── JS function safeguard tests ───────────────────────────────────────────────
+
+describe('admin.ts client-side JS function safeguards', () => {
+  const src = readFileSync(resolve(__dirname, 'admin.ts'), 'utf-8')
+
+  it('onLogoFileChange is declared as a named function', () => {
+    expect(src).toContain('function onLogoFileChange(')
+  })
+
+  it('sendInvite is declared as a named async function', () => {
+    expect(src).toContain('async function sendInvite()')
+  })
+
+  it('uploadLogo is declared as a named async function', () => {
+    expect(src).toContain('async function uploadLogo()')
+  })
+
+  it('removeLogo is declared as a named async function', () => {
+    expect(src).toContain('async function removeLogo()')
   })
 })
