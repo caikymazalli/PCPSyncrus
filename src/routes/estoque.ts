@@ -1429,7 +1429,7 @@ app.get('/', (c) => {
     if (qty < 1)  { errEl.textContent = 'Quantidade deve ser ≥ 1.'; errEl.style.display = ''; return; }
 
     // Checar duplicados (case-insensitive)
-    if (_srEntries.find(e => e.number.trim().toLowerCase() === number.toLowerCase())) {
+    if (_srEntries.find(e => e.number.trim().toLowerCase() === number.trim().toLowerCase())) {
       errEl.textContent = 'Este número já foi adicionado.'; errEl.style.display = ''; return;
     }
 
@@ -1957,9 +1957,11 @@ app.post('/api/serial-release', async (c) => {
 
   // Reject duplicates within the submitted entries (case-insensitive)
   const submittedNums = body.entries.map((e: any) => String(e.number).trim().toLowerCase())
+  const submittedOriginal = body.entries.map((e: any) => String(e.number).trim())
   const submittedSet = new Set<string>()
-  for (const n of submittedNums) {
-    if (submittedSet.has(n)) return err(c, `Número de série duplicado nos dados enviados: "${n}"`)
+  for (let i = 0; i < submittedNums.length; i++) {
+    const n = submittedNums[i]
+    if (submittedSet.has(n)) return err(c, `Número de série duplicado nos dados enviados: "${submittedOriginal[i]}"`)
     submittedSet.add(n)
   }
 
@@ -1969,8 +1971,8 @@ app.post('/api/serial-release', async (c) => {
       .filter((_p: any, i: number) => i !== idx)
       .flatMap((p: any) => (p.entries || []).map((e: any) => String(e.number).trim().toLowerCase()))
   )
-  for (const n of submittedNums) {
-    if (allExistingNums.has(n)) return err(c, `Número de série já em uso em outro item da fila: "${n}"`)
+  for (let i = 0; i < submittedNums.length; i++) {
+    if (allExistingNums.has(submittedNums[i])) return err(c, `Número de série já em uso em outro item da fila: "${submittedOriginal[i]}"`)
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -2145,7 +2147,7 @@ app.post('/api/pending-serial/create', async (c) => {
         pi.id, userId, pi.productCode, pi.productName, pi.totalQty, 0,
         pi.unit, pi.controlType, pi.status, '[]', pi.importedAt
       ).run()
-    } catch { /* D1 table may not exist yet in older deployments */ }
+    } catch (e) { console.warn('[ESTOQUE][SERIAL-PENDING] D1 insert failed (table may not exist yet):', (e as any).message) }
   }
 
   return ok(c, { item: pi })
