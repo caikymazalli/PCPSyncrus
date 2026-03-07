@@ -6,6 +6,8 @@ import { markTenantModified } from '../userStore'
 
 const app = new Hono()
 
+const PRODUTOS_URL = '/produtos'
+
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
@@ -18,7 +20,7 @@ app.get('/', (c) => {
   <!-- Header -->
   <div class="section-header">
     <div style="font-size:14px;color:#6c757d;">BOM (Lista de Materiais) e Roteiros de Fabricação</div>
-    <button class="btn btn-primary" onclick="openModal('novoProdutoModal')"><i class="fas fa-plus"></i> Novo Produto</button>
+    <a class="btn btn-secondary" href="${PRODUTOS_URL}"><i class="fas fa-external-link-alt"></i> Gerenciar Produtos</a>
   </div>
 
   <div data-tab-group="eng">
@@ -36,7 +38,7 @@ app.get('/', (c) => {
             <i class="fas fa-search icon"></i>
             <input class="form-control" type="text" placeholder="Buscar produto...">
           </div>
-          <button class="btn btn-primary btn-sm" onclick="openModal('novoProdutoModal')"><i class="fas fa-plus"></i> Novo</button>
+          <a class="btn btn-secondary btn-sm" href="${PRODUTOS_URL}"><i class="fas fa-external-link-alt"></i> Abrir em /produtos</a>
         </div>
         <div class="table-wrapper">
           <table>
@@ -64,10 +66,7 @@ app.get('/', (c) => {
                     </a>
                   </td>
                   <td>
-                    <div style="display:flex;gap:4px;">
-                      <button class="btn btn-secondary btn-sm" onclick="openModal('novoProdutoModal')"><i class="fas fa-edit"></i></button>
-                      <button class="btn btn-danger btn-sm" onclick="alert('Confirmar?')"><i class="fas fa-trash"></i></button>
-                    </div>
+                    <a class="btn btn-secondary btn-sm" href="${PRODUTOS_URL}"><i class="fas fa-external-link-alt"></i> Abrir em /produtos</a>
                   </td>
                 </tr>`
               }).join('')}
@@ -189,30 +188,6 @@ app.get('/', (c) => {
           </div>
         </div>`).join('')}
       </div>`}
-    </div>
-  </div>
-
-  <!-- Modal: Novo Produto -->
-  <div class="modal-overlay" id="novoProdutoModal">
-    <div class="modal">
-      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-box" style="margin-right:8px;"></i>Novo Produto</h3>
-        <button onclick="closeModal('novoProdutoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
-      </div>
-      <div style="padding:20px 24px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Produto *</label><input class="form-control" id="eng_prod_nome" type="text" placeholder="Ex: Engrenagem Helicoidal EH-60"></div>
-          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="eng_prod_codigo" type="text" placeholder="ENG-EH60"></div>
-          <div class="form-group"><label class="form-label">Unidade de Medida *</label>
-            <select class="form-control" id="eng_prod_unidade"><option value="un">un (unidade)</option><option value="kg">kg (quilograma)</option><option value="m">m (metro)</option><option value="l">l (litro)</option></select>
-          </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Descrição</label><textarea class="form-control" id="eng_prod_desc" rows="3" placeholder="Descrição detalhada do produto..."></textarea></div>
-        </div>
-      </div>
-      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeModal('novoProdutoModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="salvarProdutoEngenharia()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
-      </div>
     </div>
   </div>
 
@@ -516,30 +491,6 @@ app.get('/', (c) => {
     } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
-  async function salvarProdutoEngenharia() {
-    const name = document.getElementById('eng_prod_nome')?.value?.trim() || '';
-    const code = document.getElementById('eng_prod_codigo')?.value?.trim() || '';
-    const unit = document.getElementById('eng_prod_unidade')?.value || 'un';
-    const description = document.getElementById('eng_prod_desc')?.value?.trim() || '';
-    if (!name) { showToast('Informe o nome do produto!', 'error'); return; }
-    if (!code) { showToast('Informe o código do produto!', 'error'); return; }
-    try {
-      const res = await fetch('/engenharia/api/product/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, code, unit, description })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('✅ Produto criado com sucesso!');
-        closeModal('novoProdutoModal');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(data.error || 'Erro ao criar produto', 'error');
-      }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
-  }
-
   // ── Toast notification ────────────────────────────────────────────────────
   function showToast(msg, type = 'success') {
     const t = document.createElement('div');
@@ -696,27 +647,10 @@ app.delete('/api/route/:id', async (c) => {
 
 app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
 
-// ── API: POST /engenharia/api/product/create ────────────────────────────────
-// Cria produto (na lista geral de produtos do tenant) via engenharia
-app.post('/api/product/create', async (c) => {
-  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
-  const body = await c.req.json().catch(() => null)
-  if (!body || !body.name || !body.code) return err(c, 'Nome e código obrigatórios')
-  const id = genId('prod')
-  const product = {
-    id, name: body.name, code: body.code, unit: body.unit || 'un',
-    type: 'internal', description: body.description || '',
-    stockMin: 0, stockMax: 0, stockCurrent: 0, criticalPercentage: 50,
-    stockStatus: 'normal', createdAt: new Date().toISOString(),
-  }
-  if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'products', {
-      id, user_id: userId, empresa_id: empresaId, name: product.name, code: product.code, unit: product.unit,
-      type: product.type, stock_min: 0, stock_current: 0, description: product.description,
-    })
-  }
-  tenant.products.push(product)
-  return ok(c, { product })
+// ── API: POST /engenharia/api/product/create (removido) ─────────────────────
+// Criação de produtos deve ser feita em /produtos (módulo oficial).
+app.post('/api/product/create', (c) => {
+  return c.json({ ok: false, error: 'A criação de produtos foi movida para /produtos. Use o módulo oficial de Produtos.' }, 410)
 })
 
 export default app
