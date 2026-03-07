@@ -1436,4 +1436,78 @@ app.get('/api/instructions/:id', async (c) => {
   return ok(c, { instruction, currentVersion, versions, steps, photos })
 })
 
+// ── UI: GET /api/report (Printable list of all work instructions) ─────────────
+app.get('/api/report', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+
+  const instructions = (tenant.workInstructions || [])
+    .slice()
+    .sort((a: any, b: any) => (a.code || '').localeCompare(b.code || ''))
+
+  const statusLabel: Record<string, string> = { active: 'Ativo', draft: 'Rascunho', archived: 'Arquivado', obsolete: 'Obsoleto' }
+  const statusColor: Record<string, string> = { active: '#27AE60', draft: '#6c757d', archived: '#95a5a6', obsolete: '#E67E22' }
+
+  const generatedAt = new Date().toLocaleString('pt-BR')
+  const empresa = userInfo?.empresa ?? ''
+
+  const rowsHtml = instructions.map((i: any) => {
+    const status = i.status || 'draft'
+    const color = statusColor[status] || '#6c757d'
+    const label = statusLabel[status] || status
+    return `
+      <tr>
+        <td>${escapeHtml(i.code || '—')}</td>
+        <td>${escapeHtml(i.title || '—')}</td>
+        <td>${escapeHtml(i.description || '—')}</td>
+        <td>v${escapeHtml(i.current_version || '1.0')}</td>
+        <td><span style="background:${color};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${escapeHtml(label)}</span></td>
+        <td style="font-size:11px;color:#6c757d;">${escapeHtml((i.updated_at || i.created_at || '').split('T')[0] || '—')}</td>
+      </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Relatório de Instruções de Trabalho</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #333; font-size: 13px; }
+    h1 { font-size: 18px; color: #1B4F72; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; color: #6c757d; margin-bottom: 16px; }
+    .filters { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 8px 12px; font-size: 12px; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1B4F72; color: #fff; padding: 8px 10px; text-align: left; font-size: 12px; }
+    td { padding: 7px 10px; border: 1px solid #ddd; font-size: 12px; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8f9fa; }
+    .footer { margin-top: 28px; font-size: 11px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
+    @media print { button { display: none; } }
+  </style>
+</head>
+<body>
+  <h1>Relatório de Instruções de Trabalho</h1>
+  <div class="subtitle">${escapeHtml(empresa)} · Gerado em ${generatedAt}</div>
+  <div class="filters"><strong>Total:</strong> ${instructions.length} instrução(ões)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Título</th>
+        <th>Descrição</th>
+        <th>Versão</th>
+        <th>Status</th>
+        <th>Atualizado em</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <div class="footer">PCPSyncrus · Relatório Instruções de Trabalho · ${generatedAt}</div>
+  <script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>`
+
+  return c.html(html)
+})
+
 export default app
