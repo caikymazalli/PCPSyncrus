@@ -227,3 +227,193 @@ describe('POST /estoque/api/item/create — D1 com sucesso em produção', () =>
     expect(savedItem).toBeDefined()
   })
 })
+
+interface SerialEntry {
+  number: string
+  qty: number
+  addedAt: string
+}
+
+interface SerialPendingItem {
+  id: string
+  productCode: string
+  productName: string
+  totalQty: number
+  identifiedQty: number
+  unit: string
+  controlType: 'serie' | 'lote'
+  status: string
+  entries: SerialEntry[]
+  importedAt: string
+}
+
+interface SerialReleaseResponse {
+  status: string
+  identifiedQty: number
+  totalQty: number
+  newAdded: number
+}
+
+// ── POST /api/pending-serial/create — inicialização de fila S/N ───────────────
+
+describe('POST /estoque/api/pending-serial/create — inicialização de fila S/N', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('cria item pendente com totalQty correto e status pending', async () => {
+    const res = await authedRequest('/api/pending-serial/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productCode: 'PROD-001', productName: 'Produto Série Teste', totalQty: 5, unit: 'un', controlType: 'serie' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<SerialPendingItem>
+    expect(data.ok).toBe(true)
+    expect(data.item?.totalQty).toBe(5)
+    expect(data.item?.identifiedQty).toBe(0)
+    expect(data.item?.entries).toHaveLength(0)
+    expect(data.item?.status).toBe('pending')
+
+    const pending = (tenants[TEST_USER_ID] as any).serialPendingItems
+    expect(pending).toHaveLength(1)
+    expect(pending[0].totalQty).toBe(5)
+    expect(pending[0].productCode).toBe('PROD-001')
+  })
+
+  it('rejeita criação sem productCode', async () => {
+    const res = await authedRequest('/api/pending-serial/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productName: 'Sem Código', totalQty: 3, unit: 'un' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+
+  it('rejeita criação sem totalQty', async () => {
+    const res = await authedRequest('/api/pending-serial/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productCode: 'PROD-002', productName: 'Sem Quantidade' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+})
+
+// ── POST /api/serial-release — validação de série ────────────────────────────
+
+describe('POST /estoque/api/serial-release — validação de série', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  async function createPending(qty = 3, controlType: 'serie' | 'lote' = 'serie') {
+    const res = await authedRequest('/api/pending-serial/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productCode: 'PROD-SER', productName: 'Produto Série', totalQty: qty, unit: 'un', controlType }),
+    })
+    const data = await res.json() as ApiResponse<{ id: string }>
+    return data.item!.id
+  }
+
+  it('salva séries válidas (sem duplicados, sem brancos) e marca como complete', async () => {
+    const id = await createPending(3)
+    const res = await authedRequest('/api/serial-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pendingId: id,
+        entries: [{ number: 'SN-001', qty: 1 }, { number: 'SN-002', qty: 1 }, { number: 'SN-003', qty: 1 }],
+        replaceAll: true,
+      }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<never> & SerialReleaseResponse
+    expect(data.ok).toBe(true)
+    expect(data.status).toBe('complete')
+    expect(data.identifiedQty).toBe(3)
+    expect(data.totalQty).toBe(3)
+
+    const pending = (tenants[TEST_USER_ID] as any).serialPendingItems[0]
+    expect(pending.status).toBe('complete')
+    expect(pending.entries).toHaveLength(3)
+  })
+
+  it('rejeita séries com números em branco', async () => {
+    const id = await createPending(3)
+    const res = await authedRequest('/api/serial-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pendingId: id,
+        entries: [{ number: 'SN-001', qty: 1 }, { number: '', qty: 1 }, { number: 'SN-003', qty: 1 }],
+        replaceAll: true,
+      }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toContain('branco')
+  })
+
+  it('rejeita séries com números duplicados', async () => {
+    const id = await createPending(3)
+    const res = await authedRequest('/api/serial-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pendingId: id,
+        entries: [{ number: 'SN-001', qty: 1 }, { number: 'SN-001', qty: 1 }, { number: 'SN-003', qty: 1 }],
+        replaceAll: true,
+      }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toContain('duplicados')
+  })
+
+  it('salva lotes sem validação de blancos (lote aceita merge incremental)', async () => {
+    const id = await createPending(10, 'lote')
+    const res = await authedRequest('/api/serial-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pendingId: id,
+        entries: [{ number: 'LOTE-A', qty: 5 }, { number: 'LOTE-B', qty: 5 }],
+        replaceAll: false,
+      }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<never> & SerialReleaseResponse
+    expect(data.ok).toBe(true)
+    expect(data.status).toBe('complete')
+    expect(data.identifiedQty).toBe(10)
+  })
+
+  it('substitui entradas anteriores quando replaceAll=true', async () => {
+    const id = await createPending(2)
+    // First save
+    await authedRequest('/api/serial-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pendingId: id, entries: [{ number: 'OLD-1', qty: 1 }, { number: 'OLD-2', qty: 1 }], replaceAll: true }),
+    })
+    // Replace with new serials
+    const res = await authedRequest('/api/serial-release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pendingId: id, entries: [{ number: 'NEW-1', qty: 1 }, { number: 'NEW-2', qty: 1 }], replaceAll: true }),
+    })
+    expect(res.status).toBe(200)
+    const pending = (tenants[TEST_USER_ID] as any).serialPendingItems[0]
+    expect(pending.entries.map((e: any) => e.number)).toEqual(['NEW-1', 'NEW-2'])
+    // OLD serials should not be in serialNumbers
+    const snNumbers = (tenants[TEST_USER_ID] as any).serialNumbers.map((sn: any) => sn.number)
+    expect(snNumbers).not.toContain('OLD-1')
+    expect(snNumbers).toContain('NEW-1')
+  })
+})

@@ -734,76 +734,71 @@ app.get('/', (c) => {
           <i class="fas fa-file-upload"></i> Importar Planilha de Produtos
         </a>
       </div>` : `
-      <!-- Lista de itens pendentes -->
-      <div style="display:flex;flex-direction:column;gap:14px;">
-        ${(serialPendingItems as any[]).map((pi: any) => {
-          const pct = pi.totalQty > 0 ? Math.round((pi.identifiedQty / pi.totalQty) * 100) : 0
-          const statusColors: Record<string, { bg: string, color: string, label: string }> = {
-            pending:  { bg: '#fffbeb', color: '#d97706', label: 'Pendente' },
-            partial:  { bg: '#eff6ff', color: '#2563eb', label: 'Parcial'  },
-            complete: { bg: '#f0fdf4', color: '#16a34a', label: 'Completo' },
-          }
-          const st = statusColors[pi.status] || statusColors.pending
-          const ctColor = pi.controlType === 'serie' ? '#7c3aed' : '#d97706'
-          const ctBg    = pi.controlType === 'serie' ? '#ede9fe' : '#fef3c7'
-          const ctIcon  = pi.controlType === 'serie' ? 'fa-barcode' : 'fa-layer-group'
-          const ctLabel = pi.controlType === 'serie' ? 'Número de Série' : 'Número de Lote'
-          return `
-          <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${ctColor};">
-            <div style="padding:16px 20px;">
-              <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-                <div style="flex:1;min-width:200px;">
-                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
-                    <span style="font-size:15px;font-weight:700;color:#1B4F72;">${pi.productName}</span>
-                    <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${pi.productCode}</span>
-                    <span style="background:${ctBg};color:${ctColor};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">
-                      <i class="fas ${ctIcon}" style="font-size:9px;"></i> ${ctLabel}
-                    </span>
-                    <span style="background:${st.bg};color:${st.color};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">
-                      ${st.label}
-                    </span>
+      <!-- Tabela de itens pendentes -->
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8f9fa;border-bottom:2px solid #e5e7eb;">
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:left;text-transform:uppercase;letter-spacing:0.5px;">Cod.</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:left;text-transform:uppercase;letter-spacing:0.5px;">Descrição</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:center;text-transform:uppercase;letter-spacing:0.5px;">Quant.</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:center;text-transform:uppercase;letter-spacing:0.5px;">Tipo</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:center;text-transform:uppercase;letter-spacing:0.5px;">Status</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:center;text-transform:uppercase;letter-spacing:0.5px;">Progresso</th>
+              <th style="padding:10px 14px;font-size:11px;font-weight:700;color:#6c757d;text-align:center;text-transform:uppercase;letter-spacing:0.5px;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(serialPendingItems as any[]).map((pi: any) => {
+              const pct = pi.totalQty > 0 ? Math.round((pi.identifiedQty / pi.totalQty) * 100) : 0
+              const statusColors: Record<string, { bg: string, color: string, label: string }> = {
+                pending:  { bg: '#fffbeb', color: '#d97706', label: 'Pendente' },
+                partial:  { bg: '#eff6ff', color: '#2563eb', label: 'Parcial'  },
+                complete: { bg: '#f0fdf4', color: '#16a34a', label: 'Completo' },
+              }
+              const st = statusColors[pi.status] || statusColors.pending
+              const ctColor = pi.controlType === 'serie' ? '#7c3aed' : '#d97706'
+              const ctBg    = pi.controlType === 'serie' ? '#ede9fe' : '#fef3c7'
+              const ctIcon  = pi.controlType === 'serie' ? 'fa-barcode' : 'fa-layer-group'
+              const ctLabel = pi.controlType === 'serie' ? 'Número de Série' : 'Número de Lote'
+              return `
+              <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:12px 14px;font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">${pi.productCode}</td>
+                <td style="padding:12px 14px;">
+                  <div style="font-size:13px;font-weight:600;color:#1B4F72;">${pi.productName}</div>
+                  <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Adicionado em ${new Date(pi.importedAt).toLocaleDateString('pt-BR')}</div>
+                </td>
+                <td style="padding:12px 14px;text-align:center;">
+                  <span style="font-size:14px;font-weight:800;color:${ctColor};">${pi.totalQty}</span>
+                  <span style="font-size:11px;color:#9ca3af;margin-left:3px;">${pi.unit}</span>
+                </td>
+                <td style="padding:12px 14px;text-align:center;">
+                  <span style="background:${ctBg};color:${ctColor};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;">
+                    <i class="fas ${ctIcon}" style="font-size:9px;"></i> ${ctLabel}
+                  </span>
+                </td>
+                <td style="padding:12px 14px;text-align:center;">
+                  <span style="background:${st.bg};color:${st.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">${st.label}</span>
+                </td>
+                <td style="padding:12px 14px;text-align:center;">
+                  <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
+                    <div style="background:#f1f5f9;border-radius:4px;height:6px;width:70px;overflow:hidden;flex-shrink:0;">
+                      <div style="width:${pct}%;background:${pct===100?'#16a34a':ctColor};height:100%;border-radius:4px;"></div>
+                    </div>
+                    <span style="font-size:11px;font-weight:700;color:${pct===100?'#16a34a':ctColor};">${pi.identifiedQty}/${pi.totalQty}</span>
                   </div>
-                  <div style="font-size:12px;color:#6c757d;">
-                    Importado em ${new Date(pi.importedAt).toLocaleDateString('pt-BR')} às ${new Date(pi.importedAt).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}
-                    &nbsp;·&nbsp; ${pi.identifiedQty} / ${pi.totalQty} ${pi.unit} identificado(s)
-                  </div>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                </td>
+                <td style="padding:12px 14px;text-align:center;">
                   ${pi.status !== 'complete' ? `
                   <button class="btn btn-primary btn-sm" onclick="openSerialRelease('${pi.id}')">
-                    <i class="fas fa-plus-circle"></i> Identificar
+                    <i class="fas ${ctIcon}" style="font-size:10px;"></i> ${ctLabel}
                   </button>` : `
-                  <span style="font-size:12px;color:#16a34a;font-weight:600;"><i class="fas fa-check-circle"></i> Concluído</span>`}
-                </div>
-              </div>
-
-              <!-- Barra de progresso -->
-              <div style="margin-top:12px;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                  <span style="font-size:11px;color:#6c757d;">Progresso de identificação</span>
-                  <span style="font-size:11px;font-weight:700;color:${ctColor};">${pct}%</span>
-                </div>
-                <div style="background:#f1f5f9;border-radius:6px;height:8px;overflow:hidden;">
-                  <div style="width:${pct}%;background:${pct===100?'#16a34a':ctColor};height:100%;border-radius:6px;transition:width 0.3s;"></div>
-                </div>
-              </div>
-
-              <!-- Entradas já registradas -->
-              ${(pi.entries || []).length > 0 ? `
-              <div style="margin-top:12px;background:#f8f9fa;border-radius:8px;padding:10px 14px;">
-                <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
-                  <i class="fas fa-list-ul" style="margin-right:4px;color:${ctColor};"></i>Itens Identificados
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                  ${(pi.entries || []).map((e: any) => `
-                  <span style="background:${ctBg};color:${ctColor};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;font-family:monospace;">
-                    ${e.number}${e.qty > 1 ? ` <span style="font-weight:400;color:#9ca3af;">× ${e.qty}</span>` : ''}
-                  </span>`).join('')}
-                </div>
-              </div>` : ''}
-            </div>
-          </div>`
-        }).join('')}
+                  <span style="font-size:12px;color:#16a34a;font-weight:600;white-space:nowrap;"><i class="fas fa-check-circle"></i> Concluído</span>`}
+                </td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>
       </div>`}
 
     </div>
@@ -1285,6 +1280,15 @@ app.get('/', (c) => {
   let _srCurrentId = null;
   let _srEntries = [];
 
+  function _escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function openSerialRelease(pendingId) {
     const item = _serialPendingData.find(p => p.id === pendingId);
     if (!item) return;
@@ -1299,53 +1303,114 @@ app.get('/', (c) => {
       '<i class="fas ' + ctIcon + '" style="margin-right:8px;color:' + ctColor + ';"></i>Identificar ' + ctLabel;
 
     const body = document.getElementById('srModalBody');
-    body.innerHTML = \`
-      <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:160px;">
-          <div style="font-size:13px;font-weight:700;color:#1B4F72;">\${item.productName}</div>
-          <div style="font-size:11px;color:#9ca3af;font-family:monospace;">\${item.productCode} · \${item.unit}</div>
-        </div>
-        <div style="text-align:center;padding:10px 16px;background:white;border-radius:8px;border:1px solid #e5e7eb;">
-          <div style="font-size:20px;font-weight:800;color:\${ctColor};">\${item.totalQty}</div>
-          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;">Total a identificar</div>
-        </div>
-      </div>
+    const headerHtml =
+      '<div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:160px;">' +
+          '<div style="font-size:13px;font-weight:700;color:#1B4F72;">' + item.productName + '</div>' +
+          '<div style="font-size:11px;color:#9ca3af;font-family:monospace;">' + item.productCode + ' · ' + item.unit + '</div>' +
+        '</div>' +
+        '<div style="text-align:center;padding:10px 16px;background:white;border-radius:8px;border:1px solid #e5e7eb;">' +
+          '<div style="font-size:20px;font-weight:800;color:' + ctColor + ';">' + item.totalQty + '</div>' +
+          '<div style="font-size:10px;color:#9ca3af;text-transform:uppercase;">Total a identificar</div>' +
+        '</div>' +
+      '</div>';
 
-      <!-- Formulário de nova entrada -->
-      <div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid #ddd6fe;">
-        <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">
-          <i class="fas fa-plus-circle" style="margin-right:4px;"></i> Adicionar identificação
-        </div>
-        <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:end;">
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">\${ctLabel} *</label>
-            <input class="form-control" id="srNumberInput" type="text"
-              placeholder="\${item.controlType === 'serie' ? 'Ex: SN-2024-0001' : 'Ex: LOTE-2024-A01'}"
-              style="font-family:monospace;font-size:13px;"
-              onkeydown="if(event.key==='Enter') addSerialEntry()">
-          </div>
-          \${item.controlType === 'lote' ? \`
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Quantidade *</label>
-            <input class="form-control" id="srQtyInput" type="number" value="1" min="1" style="width:80px;text-align:center;font-weight:700;">
-          </div>\` : '<input type="hidden" id="srQtyInput" value="1">'}
-          <button class="btn btn-primary" onclick="addSerialEntry()" style="white-space:nowrap;">
-            <i class="fas fa-plus"></i> Adicionar
-          </button>
-        </div>
-        <div id="srInputError" style="display:none;font-size:11px;color:#dc2626;margin-top:6px;"></div>
-      </div>
+    if (item.controlType === 'serie') {
+      // Row-per-unit: show N input rows where N = totalQty, pre-filled with existing entries
+      const rowsHtml = Array.from({length: item.totalQty}, function(_, i) {
+        const existing = (_srEntries[i] && _srEntries[i].number) ? _escHtml(_srEntries[i].number) : '';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;">' +
+          '<span style="width:28px;text-align:right;font-size:11px;color:#9ca3af;font-family:monospace;flex-shrink:0;">' + (i + 1) + '</span>' +
+          '<input class="form-control sr-row-input" data-index="' + i + '" type="text" ' +
+                 'placeholder="Série ' + (i + 1) + '" value="' + existing + '" ' +
+                 'oninput="onSrRowInput()" ' +
+                 'style="font-family:monospace;font-size:13px;">' +
+        '</div>';
+      }).join('');
 
-      <!-- Lista de entradas -->
-      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
-        <i class="fas fa-list-ul" style="margin-right:4px;color:\${ctColor};"></i>Itens identificados
-      </div>
-      <div id="srEntriesList" style="min-height:60px;max-height:200px;overflow-y:auto;"></div>
-    \`;
+      body.innerHTML =
+        headerHtml +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+          '<span style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">' +
+            '<i class="fas fa-barcode" style="margin-right:4px;color:' + ctColor + ';"></i>Números de Série' +
+          '</span>' +
+          '<button onclick="pasteSerialRows()" class="btn btn-secondary btn-sm" style="font-size:11px;">' +
+            '<i class="fas fa-paste"></i> Colar em bloco' +
+          '</button>' +
+        '</div>' +
+        '<div id="srRowsList" style="max-height:300px;overflow-y:auto;padding-right:4px;">' + rowsHtml + '</div>' +
+        '<div id="srInputError" style="display:none;font-size:11px;color:#dc2626;margin-top:8px;background:#fef2f2;padding:8px 12px;border-radius:6px;border:1px solid #fca5a5;"></div>';
+    } else {
+      // Lote type: keep existing add-entry form
+      body.innerHTML =
+        headerHtml +
+        '<div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid #ddd6fe;">' +
+          '<div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">' +
+            '<i class="fas fa-plus-circle" style="margin-right:4px;"></i> Adicionar identificação' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:end;">' +
+            '<div>' +
+              '<label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">' + ctLabel + ' *</label>' +
+              '<input class="form-control" id="srNumberInput" type="text" placeholder="Ex: LOTE-2024-A01" ' +
+                     'style="font-family:monospace;font-size:13px;" onkeydown="if(event.key===\'Enter\') addSerialEntry()">' +
+            '</div>' +
+            '<div>' +
+              '<label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Quantidade *</label>' +
+              '<input class="form-control" id="srQtyInput" type="number" value="1" min="1" style="width:80px;text-align:center;font-weight:700;">' +
+            '</div>' +
+            '<button class="btn btn-primary" onclick="addSerialEntry()" style="white-space:nowrap;"><i class="fas fa-plus"></i> Adicionar</button>' +
+          '</div>' +
+          '<div id="srInputError" style="display:none;font-size:11px;color:#dc2626;margin-top:6px;"></div>' +
+        '</div>' +
+        '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">' +
+          '<i class="fas fa-list-ul" style="margin-right:4px;color:' + ctColor + ';"></i>Lotes identificados' +
+        '</div>' +
+        '<div id="srEntriesList" style="min-height:60px;max-height:200px;overflow-y:auto;"></div>';
+      renderSrEntries(item);
+    }
 
-    renderSrEntries(item);
     updateSrProgress(item);
     openModal('serialReleaseModal');
+  }
+
+  function onSrRowInput() {
+    const item = _serialPendingData.find(function(p) { return p.id === _srCurrentId; });
+    if (item) updateSrProgress(item);
+  }
+
+  function pasteSerialRows() {
+    const existing = document.getElementById('_srPasteArea');
+    if (existing) { existing.remove(); return; }
+    const rowsList = document.getElementById('srRowsList');
+    if (!rowsList) return;
+    const pasteArea = document.createElement('div');
+    pasteArea.id = '_srPasteArea';
+    pasteArea.style.cssText = 'margin-bottom:12px;background:#f0fdf4;border-radius:8px;padding:12px;border:1px solid #bbf7d0;';
+    pasteArea.innerHTML =
+      '<div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">' +
+        '<i class="fas fa-paste" style="margin-right:4px;"></i>Colar múltiplos números de série (um por linha)' +
+      '</div>' +
+      '<textarea class="form-control" id="_srPasteText" rows="5" ' +
+        'placeholder="Cole aqui os números de série, um por linha...\n\nEx:\nSN-001\nSN-002\nSN-003" ' +
+        'style="font-family:monospace;font-size:12px;"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;">' +
+        '<button onclick="_applySrPaste()" class="btn btn-primary btn-sm"><i class="fas fa-check"></i> Aplicar</button>' +
+        '<button onclick="document.getElementById(\'_srPasteArea\').remove()" class="btn btn-secondary btn-sm">Cancelar</button>' +
+      '</div>';
+    rowsList.parentNode.insertBefore(pasteArea, rowsList);
+    const ta = document.getElementById('_srPasteText');
+    if (ta) ta.focus();
+  }
+
+  function _applySrPaste() {
+    const textEl = document.getElementById('_srPasteText');
+    if (!textEl) return;
+    const lines = textEl.value.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l; });
+    const inputs = document.querySelectorAll('.sr-row-input');
+    lines.forEach(function(line, i) { if (inputs[i]) inputs[i].value = line; });
+    document.getElementById('_srPasteArea').remove();
+    const item = _serialPendingData.find(function(p) { return p.id === _srCurrentId; });
+    if (item) updateSrProgress(item);
   }
 
   function addSerialEntry() {
@@ -1408,7 +1473,13 @@ app.get('/', (c) => {
   }
 
   function updateSrProgress(item) {
-    const identifiedQty = _srEntries.reduce((s, e) => s + (e.qty || 1), 0);
+    let identifiedQty;
+    if (item.controlType === 'serie') {
+      const inputs = document.querySelectorAll('.sr-row-input');
+      identifiedQty = Array.from(inputs).filter(function(inp) { return inp.value.trim(); }).length;
+    } else {
+      identifiedQty = _srEntries.reduce((s, e) => s + (e.qty || 1), 0);
+    }
     const total = item.totalQty;
     const pct = total > 0 ? Math.round((identifiedQty / total) * 100) : 0;
     const bar = document.getElementById('srProgressBar');
@@ -1418,11 +1489,42 @@ app.get('/', (c) => {
     if (label) label.textContent = identifiedQty + ' / ' + total + ' ' + item.unit + ' identificado(s)';
     if (pctEl) pctEl.textContent = pct + '%';
     const saveBtn = document.getElementById('srSaveBtn');
-    if (saveBtn) saveBtn.disabled = _srEntries.length === 0;
+    if (saveBtn) {
+      // For serie: require all rows filled; for lote: require at least one entry
+      saveBtn.disabled = item.controlType === 'serie' ? identifiedQty < total : identifiedQty === 0;
+    }
   }
 
   async function salvarLiberacao() {
-    if (!_srCurrentId || _srEntries.length === 0) return;
+    if (!_srCurrentId) return;
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    if (!item) return;
+    const errEl = document.getElementById('srInputError');
+    if (errEl) errEl.style.display = 'none';
+
+    let entries;
+    let replaceAll = false;
+    if (item.controlType === 'serie') {
+      const inputs = Array.from(document.querySelectorAll('.sr-row-input'));
+      const values = inputs.map(function(inp) { return inp.value.trim(); });
+      // Validate: no blanks
+      if (values.some(function(v) { return !v; })) {
+        if (errEl) { errEl.textContent = 'Preencha todos os números de série antes de salvar.'; errEl.style.display = ''; }
+        return;
+      }
+      // Validate: no duplicates
+      const unique = new Set(values);
+      if (unique.size < values.length) {
+        if (errEl) { errEl.textContent = 'Existem números de série duplicados. Corrija antes de salvar.'; errEl.style.display = ''; }
+        return;
+      }
+      entries = values.map(function(v) { return { number: v, qty: 1, addedAt: new Date().toISOString() }; });
+      replaceAll = true;
+    } else {
+      if (_srEntries.length === 0) return;
+      entries = _srEntries;
+    }
+
     const btn = document.getElementById('srSaveBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
@@ -1430,16 +1532,15 @@ app.get('/', (c) => {
       const res = await fetch('/estoque/api/serial-release', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pendingId: _srCurrentId, entries: _srEntries })
+        body: JSON.stringify({ pendingId: _srCurrentId, entries, replaceAll })
       });
       const data = await res.json();
       if (data.ok) {
         closeModal('serialReleaseModal');
-        const status = data.status;
-        const msg = status === 'complete'
+        const msg = data.status === 'complete'
           ? '✅ Todos os itens identificados! Liberação concluída.'
           : '📋 Identificações salvas (' + data.identifiedQty + '/' + data.totalQty + '). Liberação parcial.';
-        showEstoqueToast(msg, status === 'complete' ? 'success' : 'info');
+        showEstoqueToast(msg, data.status === 'complete' ? 'success' : 'info');
         setTimeout(() => location.reload(), 1400);
       } else {
         showEstoqueToast(data.error || 'Erro ao salvar', 'error');
@@ -1838,28 +1939,56 @@ app.post('/api/serial-release', async (c) => {
 
   const pi = (tenant as any).serialPendingItems[idx]
 
-  // Merge entries — não duplicar numbers
-  const existingNumbers = new Set((pi.entries || []).map((e: any) => e.number))
-  const newEntries: any[] = []
-  for (const entry of body.entries) {
-    if (!entry.number || existingNumbers.has(entry.number)) continue
-    newEntries.push({ number: entry.number, qty: parseInt(entry.qty) || 1, addedAt: new Date().toISOString() })
-    existingNumbers.add(entry.number)
-
-    // Registrar no serialNumbers do tenant para aparecer na aba Série/Lote do estoque geral
-    ;(tenant as any).serialNumbers.push({
-      id: genId('sn'),
-      itemCode: pi.productCode,
-      number: entry.number,
-      qty: parseInt(entry.qty) || 1,
-      controlType: pi.controlType,
-      status: 'em_estoque',
-      origin: 'planilha',
-      createdAt: new Date().toISOString(),
-    })
+  // Validação server-side para série: sem brancos e sem duplicados
+  if (pi.controlType === 'serie') {
+    const numbers = (body.entries as any[]).map((e: any) => (e.number || '').trim())
+    if (numbers.some((n: string) => !n)) return err(c, 'Há números de série em branco. Preencha todos antes de salvar.')
+    const unique = new Set(numbers)
+    if (unique.size < numbers.length) return err(c, 'Há números de série duplicados.')
   }
 
-  pi.entries = [...(pi.entries || []), ...newEntries]
+  if (body.replaceAll) {
+    // Substituir todas as entradas existentes (série: substituição total)
+    ;(tenant as any).serialNumbers = (tenant as any).serialNumbers.filter((sn: any) => sn.itemCode !== pi.productCode)
+    pi.entries = []
+    for (const entry of body.entries as any[]) {
+      if (!entry.number) continue
+      pi.entries.push({ number: entry.number.trim(), qty: parseInt(entry.qty) || 1, addedAt: new Date().toISOString() })
+      ;(tenant as any).serialNumbers.push({
+        id: genId('sn'),
+        itemCode: pi.productCode,
+        number: entry.number.trim(),
+        qty: parseInt(entry.qty) || 1,
+        controlType: pi.controlType,
+        status: 'em_estoque',
+        origin: 'liberacao',
+        createdAt: new Date().toISOString(),
+      })
+    }
+  } else {
+    // Merge entries — não duplicar numbers (lote: adição incremental)
+    const existingNumbers = new Set((pi.entries || []).map((e: any) => e.number))
+    const newEntries: any[] = []
+    for (const entry of body.entries as any[]) {
+      if (!entry.number || existingNumbers.has(entry.number)) continue
+      newEntries.push({ number: entry.number, qty: parseInt(entry.qty) || 1, addedAt: new Date().toISOString() })
+      existingNumbers.add(entry.number)
+
+      // Registrar no serialNumbers do tenant para aparecer na aba Série/Lote do estoque geral
+      ;(tenant as any).serialNumbers.push({
+        id: genId('sn'),
+        itemCode: pi.productCode,
+        number: entry.number,
+        qty: parseInt(entry.qty) || 1,
+        controlType: pi.controlType,
+        status: 'em_estoque',
+        origin: 'planilha',
+        createdAt: new Date().toISOString(),
+      })
+    }
+    pi.entries = [...(pi.entries || []), ...newEntries]
+  }
+
   pi.identifiedQty = pi.entries.reduce((s: number, e: any) => s + (parseInt(e.qty) || 1), 0)
 
   // Atualizar status
@@ -1875,7 +2004,7 @@ app.post('/api/serial-release', async (c) => {
     status: pi.status,
     identifiedQty: pi.identifiedQty,
     totalQty: pi.totalQty,
-    newAdded: newEntries.length,
+    newAdded: pi.entries.length,
   })
 })
 
