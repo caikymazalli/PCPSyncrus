@@ -149,6 +149,91 @@ done
 
 ---
 
+## Script Idempotente: `d1:ensure-empresa-id`
+
+O script `scripts/d1-ensure-empresa-id.ts` é a forma **segura e repetível** de
+garantir que a coluna `empresa_id` existe em todas as tabelas tenant, sem
+depender do histórico de migrations e **sem falhar** se a coluna já existir.
+
+### Como funciona
+
+Para cada tabela na allowlist interna, o script:
+
+1. Executa `PRAGMA table_info(<table>)` para inspecionar as colunas existentes.
+2. Se `empresa_id` **já existir** → pula a tabela (nenhuma mudança).
+3. Se `empresa_id` **estiver ausente** → executa:
+   ```sql
+   ALTER TABLE <table> ADD COLUMN empresa_id TEXT DEFAULT '1';
+   UPDATE <table> SET empresa_id = '1' WHERE empresa_id IS NULL OR empresa_id = '';
+   ```
+4. Imprime um resumo claro ao final.
+
+### Pré-requisitos
+
+- Node.js >= 18
+- `wrangler` autenticado (`wrangler login` ou `CLOUDFLARE_API_TOKEN` definido)
+
+### Uso
+
+```bash
+# Banco padrão (pcpsyncrus-production), modo remoto (produção)
+npm run d1:ensure-empresa-id
+
+# Banco específico por argumento
+npm run d1:ensure-empresa-id -- pcpsyncrus-production
+
+# Banco específico por variável de ambiente
+D1_DB_NAME=pcpsyncrus-production npm run d1:ensure-empresa-id
+
+# Banco local (desenvolvimento / testes)
+npm run d1:ensure-empresa-id -- --local
+npm run d1:ensure-empresa-id -- meu-banco-local --local
+```
+
+### Saída esperada (exemplo)
+
+```
+🔧  PCP Syncrus — D1 ensure-empresa-id
+   Database : pcpsyncrus-production
+   Target   : remote (production)
+   Tables   : 24
+────────────────────────────────────────────────────────────
+
+  Checking plants                             ✓  already has empresa_id
+  Checking workbenches                        ⚠  missing — adding ... done ✅
+  ...
+
+────────────────────────────────────────────────────────────
+📊  Summary
+   Already correct : 23  (plants, users, ...)
+   Columns added   : 1   (workbenches)
+   Errors          : 0   (none)
+
+✅  empresa_id added to 1 table(s). Schema is now up to date.
+```
+
+### Como usar como checklist pós-deploy
+
+Execute o script após cada deploy que envolva alterações de schema ou novos
+ambientes:
+
+```bash
+# 1. Aplique as migrations pendentes normalmente
+wrangler d1 migrations apply pcpsyncrus-production --remote
+
+# 2. Execute o script idempotente como verificação/correção extra
+npm run d1:ensure-empresa-id -- pcpsyncrus-production
+
+# 3. Confirme o estado de uma tabela específica se necessário
+wrangler d1 execute pcpsyncrus-production --remote \
+  --command "PRAGMA table_info(workbenches)"
+```
+
+O script termina com código de saída `0` se tudo estiver correto (mesmo que
+nenhuma coluna tenha sido adicionada) e código `1` se alguma tabela falhar.
+
+---
+
 ## Ambientes
 
 | Ambiente | Banco | Como Aplicar |
@@ -158,3 +243,4 @@ done
 
 > **Importante:** Sempre aplique migrations em **produção** após qualquer deploy
 > que inclua novos arquivos em `migrations/`.
+> Após o deploy, execute `npm run d1:ensure-empresa-id` como verificação final.
