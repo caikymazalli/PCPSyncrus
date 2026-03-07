@@ -839,7 +839,7 @@ app.get('/', async (c) => {
     }
   }
 
-
+  async function sendInvite() {
     const email = document.getElementById('inviteEmail').value.trim();
     const nome  = document.getElementById('inviteNome').value.trim();
     const role  = document.getElementById('inviteRole').value;
