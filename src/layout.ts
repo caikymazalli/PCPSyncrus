@@ -165,8 +165,14 @@ export function layout(title: string, content: string, activePage: string = '', 
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:38px;height:38px;background:linear-gradient(135deg,#2980B9,#1B4F72);border-radius:10px;display:flex;align-items:center;justify-content:center;">
-        <i class="fas fa-industry" style="color:white;font-size:18px;"></i>
+      <div id="sidebarLogoWrap" style="width:38px;height:38px;flex-shrink:0;">
+        <img id="sidebarLogoImg" src="/admin/api/grupo/logo" alt="Logo"
+          style="width:38px;height:38px;border-radius:10px;object-fit:contain;background:rgba(255,255,255,0.1);display:none;"
+          onload="this.style.display='block';document.getElementById('sidebarLogoIcon').style.display='none';"
+          onerror="this.style.display='none';document.getElementById('sidebarLogoIcon').style.display='flex';">
+        <div id="sidebarLogoIcon" style="width:38px;height:38px;background:linear-gradient(135deg,#2980B9,#1B4F72);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-industry" style="color:white;font-size:18px;"></i>
+        </div>
       </div>
       <div>
         <div style="font-size:16px;font-weight:800;color:white;">PCP Planner</div>

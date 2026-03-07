@@ -611,9 +611,11 @@ app.get('/:id', (c) => {
 })
 
 // ── UI: GET /instrucoes/:id/view (Read-only view) ──
-app.get('/:id/view', (c) => {
+app.get('/:id/view', async (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
+  const session = getCtxSession(c)
+  const db = getCtxDB(c)
   const instructionId = c.req.param('id')
 
   const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
@@ -646,22 +648,59 @@ app.get('/:id/view', (c) => {
   const statusBadge: Record<string, string> = { active: 'success', draft: 'secondary', archived: 'secondary', obsolete: 'secondary' }
   const status = instruction.status || 'draft'
 
+  // Resolve group logo URL for print header
+  let logoHtml = ''
+  try {
+    if (db && session && !session.isDemo) {
+      let grupoId = session.grupoId || ''
+      if (!grupoId && session.empresaId) {
+        const empRow = await db.prepare('SELECT grupo_id FROM empresas WHERE id = ?')
+          .bind(session.empresaId).first() as any
+        grupoId = empRow?.grupo_id || ''
+      }
+      if (grupoId) {
+        const logoRow = await db.prepare(
+          'SELECT logo_object_key, logo_updated_at FROM grupo WHERE id = ?'
+        ).bind(grupoId).first() as any
+        if (logoRow?.logo_object_key) {
+          const vParam = logoRow.logo_updated_at
+            ? '?v=' + encodeURIComponent(logoRow.logo_updated_at)
+            : ''
+          logoHtml = `<img src="${escapeHtml('/admin/api/grupo/logo' + vParam)}" alt="Logo" style="max-height:48px;max-width:120px;object-fit:contain;" class="wi-print-logo">`
+        }
+      }
+    }
+  } catch {
+    // ignore — logo is optional
+  }
+
   const content = `
   <style>
     .wi-thumb { width:140px; height:auto; border:1px solid #e9ecef; border-radius:8px; display:block; }
     .wi-muted { font-size:12px; color:#6c757d; }
     .wi-table td, .wi-table th { vertical-align: top; }
     .wi-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.5; }
+    .wi-print-header { display:none; }
     @media print {
       .no-print { display: none !important; }
       .sidebar, .nav-sidebar, .topbar { display: none !important; }
       .main-content, body { background: #fff !important; padding: 0 !important; margin: 0 !important; }
       .card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
       img { max-width: 180px !important; max-height: 180px !important; }
+      .wi-print-logo { max-height:48px !important; max-width:120px !important; }
       h1 { font-size: 16px !important; }
       .wi-table td { word-break: break-word; }
+      .wi-print-header { display:flex !important; align-items:center; gap:12px; border-bottom:2px solid #1B4F72; padding-bottom:10px; margin-bottom:14px; }
     }
   </style>
+
+  <div class="wi-print-header">
+    ${logoHtml}
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#1B4F72;">${escapeHtml(instruction.title || '—')}</div>
+      <div style="font-size:11px;color:#6c757d;">${escapeHtml(instruction.code || '')} — v${escapeHtml(instruction.current_version || '1.0')}</div>
+    </div>
+  </div>
 
   <div class="section-header">
     <div>
