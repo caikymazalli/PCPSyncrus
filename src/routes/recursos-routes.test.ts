@@ -303,6 +303,238 @@ describe('POST /recursos/bancadas — D1 com sucesso em produção', () => {
   })
 })
 
+// ── Source-code guardrail: D1-first (máquinas) ───────────────────────────────
+
+describe('recursos.ts source-code guardrails D1-first (criação de máquina)', () => {
+  const src = readFileSync(resolve(__dirname, 'recursos.ts'), 'utf8')
+
+  it("handler POST /maquinas: valida plantaId antes de chamar dbInsert", () => {
+    const handlerStart = src.indexOf("app.post('/maquinas'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('plantaId')
+    const plantaValidation = handlerBody.indexOf('Planta é obrigatória')
+    const dbInsertCall = handlerBody.indexOf('dbInsert(')
+    expect(plantaValidation).toBeGreaterThan(-1)
+    expect(dbInsertCall).toBeGreaterThan(-1)
+    expect(plantaValidation).toBeLessThan(dbInsertCall)
+  })
+
+  it("handler POST /maquinas: bloco D1 aparece antes de tenant.machines.push", () => {
+    const handlerStart = src.indexOf("app.post('/maquinas'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memPushPos = handlerBody.indexOf('tenant.machines.push')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memPushPos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memPushPos)
+  })
+
+  it('handler POST /maquinas: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.post('/maquinas'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+
+  it('handler POST /maquinas: falha D1 retorna errorCode D1_INSERT_FAILED', () => {
+    const handlerStart = src.indexOf("app.post('/maquinas'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('D1_INSERT_FAILED')
+  })
+
+  it('handler POST /maquinas: sem catch{} silencioso em writes D1', () => {
+    const handlerStart = src.indexOf("app.post('/maquinas'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).not.toMatch(/catch\s*\{\s*\}/)
+  })
+
+  it('handler POST /bancadas: valida plant_id inválido (não encontrado) antes do dbInsert', () => {
+    const handlerStart = src.indexOf("app.post('/bancadas'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('plant_id inválido ou não encontrado')
+    const invalidPlantCheck = handlerBody.indexOf('plant_id inválido ou não encontrado')
+    const dbInsertCall = handlerBody.indexOf('dbInsert(')
+    expect(invalidPlantCheck).toBeLessThan(dbInsertCall)
+  })
+})
+
+// ── POST /maquinas — modo demo (sem db) ───────────────────────────────────────
+
+describe('POST /recursos/maquinas — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e salva máquina em memória no modo demo', async () => {
+    const initialCount = (tenants[TEST_USER_ID].machines as any[]).length
+
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Máquina Demo', tipo: 'CNC' }),
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ name: string }>
+    expect(data.ok).toBe(true)
+    expect(data.machine).toBeDefined()
+    expect((data as any).machine?.name).toBe('Máquina Demo')
+
+    const tenant = tenants[TEST_USER_ID]
+    expect((tenant.machines as any[]).length).toBe(initialCount + 1)
+  })
+
+  it('retorna 400 quando nome não é fornecido', async () => {
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'CNC' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+})
+
+// ── POST /maquinas — validação de entrada em produção ─────────────────────────
+
+describe('POST /recursos/maquinas — validação em produção (com DB)', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 400 quando plantaId está ausente em modo produção', async () => {
+    const initialCount = (tenants[TEST_USER_ID].machines as any[]).length
+
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Máquina Sem Planta' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toBeTruthy()
+
+    // Memória NÃO deve ter sido atualizada
+    expect((tenants[TEST_USER_ID].machines as any[]).length).toBe(initialCount)
+  })
+
+  it('retorna 400 quando plantaId é string vazia em modo produção', async () => {
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Máquina Planta Vazia', plantaId: '' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+
+  it('retorna 400 quando plantaId não existe nas plantas do tenant', async () => {
+    const initialCount = (tenants[TEST_USER_ID].machines as any[]).length
+
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Máquina Planta Inválida', plantaId: 'plant-inexistente' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toMatch(/plant_id inválido/i)
+
+    // Memória NÃO deve ter sido atualizada
+    expect((tenants[TEST_USER_ID].machines as any[]).length).toBe(initialCount)
+  })
+})
+
+// ── POST /maquinas — D1 falhando em produção ──────────────────────────────────
+
+describe('POST /recursos/maquinas — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna erro 500 com errorCode quando dbInsert retorna false e NÃO atualiza memória', async () => {
+    const initialCount = (tenants[TEST_USER_ID].machines as any[]).length
+
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Máquina Prod', plantaId: 'plant-1' }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toBeTruthy()
+
+    // Memória NÃO deve ter sido atualizada
+    expect((tenants[TEST_USER_ID].machines as any[]).length).toBe(initialCount)
+  })
+})
+
+// ── POST /maquinas — D1 com sucesso em produção ───────────────────────────────
+
+describe('POST /recursos/maquinas — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const initialCount = (tenants[TEST_USER_ID].machines as any[]).length
+
+    const res = await authedRequest('/maquinas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Máquina OK', plantaId: 'plant-1', tipo: 'CNC' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.machine).toBeDefined()
+    expect(data.machine?.name).toBe('Máquina OK')
+
+    const tenant = tenants[TEST_USER_ID]
+    expect((tenant.machines as any[]).length).toBe(initialCount + 1)
+    const saved = (tenant.machines as any[]).find((m: any) => m.name === 'Máquina OK')
+    expect(saved).toBeDefined()
+    expect(saved.plantId).toBe('plant-1')
+  })
+})
+
+// ── POST /bancadas — plant_id inválido (presente mas não existe) ──────────────
+
+describe('POST /recursos/bancadas — validação plant_id inválido', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 400 quando plantaId não existe nas plantas do tenant', async () => {
+    const initialCount = (tenants[TEST_USER_ID].workbenches as any[]).length
+
+    const res = await authedRequest('/bancadas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: 'Bancada Planta Inválida', plantaId: 'plant-inexistente' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toMatch(/plant_id inválido/i)
+
+    // Memória NÃO deve ter sido atualizada
+    expect((tenants[TEST_USER_ID].workbenches as any[]).length).toBe(initialCount)
+  })
+})
+
 // ── GET /api/debug/workbenches-schema — endpoint de diagnóstico ───────────────
 
 describe('GET /recursos/api/debug/workbenches-schema — proteção por DEBUG', () => {
