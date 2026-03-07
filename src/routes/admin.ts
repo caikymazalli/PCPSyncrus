@@ -540,6 +540,41 @@ app.get('/', async (c) => {
               <button class="btn btn-primary" onclick="saveConfig()"><i class="fas fa-save"></i> Salvar</button>
             </div>
           </div>
+
+          <!-- Logo do Grupo -->
+          <div class="card" style="padding:24px;margin-top:16px;">
+            <h4 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0 0 6px;"><i class="fas fa-image" style="margin-right:8px;"></i>Logo do Grupo</h4>
+            <div style="font-size:12px;color:#6c757d;margin-bottom:16px;">Exibido na barra lateral e nos PDFs de Instruções de Trabalho. PNG, JPG ou SVG; máx. 512 KB; dimensões máx. 512×512 px.</div>
+            <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+              <div id="logoPreviewWrap" style="width:96px;height:96px;border:2px dashed #dee2e6;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#f8f9fa;overflow:hidden;flex-shrink:0;">
+                <img id="logoPreviewImg" src="/admin/api/grupo/logo?t=${Date.now()}" alt="Logo atual"
+                  style="max-width:92px;max-height:92px;object-fit:contain;display:none;"
+                  onload="this.style.display='block';document.getElementById('logoPreviewPlaceholder').style.display='none';"
+                  onerror="this.style.display='none';document.getElementById('logoPreviewPlaceholder').style.display='flex';">
+                <div id="logoPreviewPlaceholder" style="display:flex;flex-direction:column;align-items:center;gap:4px;color:#9ca3af;">
+                  <i class="fas fa-image" style="font-size:28px;"></i>
+                  <span style="font-size:10px;">Sem logo</span>
+                </div>
+              </div>
+              <div style="flex:1;min-width:200px;">
+                <canvas id="logoResizeCanvas" style="display:none;"></canvas>
+                <div class="form-group" style="margin-bottom:10px;">
+                  <label class="form-label">Selecionar arquivo</label>
+                  <input class="form-control" type="file" id="logoFileInput" accept=".png,.jpg,.jpeg,.svg" onchange="onLogoFileChange(event)">
+                </div>
+                <div id="logoFileInfo" style="font-size:12px;color:#6c757d;margin-bottom:10px;display:none;"></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="btn btn-primary btn-sm" onclick="uploadLogo()" id="btnUploadLogo" disabled>
+                    <i class="fas fa-upload"></i> Enviar Logo
+                  </button>
+                  <button class="btn btn-danger btn-sm" onclick="removeLogo()" id="btnRemoveLogo">
+                    <i class="fas fa-trash"></i> Remover
+                  </button>
+                </div>
+                <div id="logoUploadStatus" style="margin-top:8px;font-size:12px;"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -658,7 +693,153 @@ app.get('/', async (c) => {
   <script>
   function saveConfig() { showToast('Configurações salvas!', 'success'); }
 
-  async function sendInvite() {
+  // ── Logo do Grupo ────────────────────────────────────────────────────────────
+  let _logoFileResized = null; // Blob or File ready to upload
+
+  function onLogoFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) { _logoFileResized = null; document.getElementById('btnUploadLogo').disabled = true; return; }
+    const infoEl = document.getElementById('logoFileInfo');
+    const MAX_BYTES = 512 * 1024;
+    const MAX_DIM   = 512;
+    const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+
+    if (file.size > MAX_BYTES) {
+      infoEl.style.display = 'block';
+      infoEl.style.color = '#dc2626';
+      infoEl.textContent = 'Arquivo muito grande (' + (file.size / 1024).toFixed(1) + ' KB). Limite: 512 KB.';
+      _logoFileResized = null;
+      document.getElementById('btnUploadLogo').disabled = true;
+      return;
+    }
+
+    if (isSvg) {
+      _logoFileResized = file;
+      infoEl.style.display = 'block';
+      infoEl.style.color = '#16a34a';
+      infoEl.textContent = 'SVG selecionado: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+      document.getElementById('btnUploadLogo').disabled = false;
+      // Show preview for SVG
+      const url = URL.createObjectURL(file);
+      const img = document.getElementById('logoPreviewImg');
+      img.src = url;
+      img.onload = function() { img.style.display='block'; document.getElementById('logoPreviewPlaceholder').style.display='none'; };
+      img.onerror = null;
+      return;
+    }
+
+    // Raster: use canvas to resize if needed
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = function() {
+      URL.revokeObjectURL(objUrl);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      let needsResize = w > MAX_DIM || h > MAX_DIM;
+      if (needsResize) {
+        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const canvas = document.getElementById('logoResizeCanvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const mimeType = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      canvas.toBlob(function(blob) {
+        _logoFileResized = blob;
+        const kb = (blob.size / 1024).toFixed(1);
+        if (blob.size > MAX_BYTES) {
+          infoEl.style.color = '#dc2626';
+          infoEl.textContent = 'Após redimensionar, o arquivo ainda é muito grande (' + kb + ' KB). Use uma imagem menor.';
+          document.getElementById('btnUploadLogo').disabled = true;
+          return;
+        }
+        infoEl.style.display = 'block';
+        infoEl.style.color = '#16a34a';
+        infoEl.textContent = (needsResize ? 'Redimensionado para ' + w + '×' + h + 'px — ' : '') + kb + ' KB';
+        document.getElementById('btnUploadLogo').disabled = false;
+        // Show preview
+        const previewImg = document.getElementById('logoPreviewImg');
+        previewImg.src = canvas.toDataURL(mimeType);
+        previewImg.style.display = 'block';
+        document.getElementById('logoPreviewPlaceholder').style.display = 'none';
+        previewImg.onerror = null;
+      }, mimeType, 0.92 /* JPEG quality */); 
+    };
+    img.onerror = function() {
+      URL.revokeObjectURL(objUrl);
+      infoEl.style.display = 'block';
+      infoEl.style.color = '#dc2626';
+      infoEl.textContent = 'Não foi possível ler a imagem.';
+      _logoFileResized = null;
+      document.getElementById('btnUploadLogo').disabled = true;
+    };
+    img.src = objUrl;
+  }
+
+  async function uploadLogo() {
+    if (!_logoFileResized) { showToast('Selecione um arquivo.', 'error'); return; }
+    const btn = document.getElementById('btnUploadLogo');
+    const statusEl = document.getElementById('logoUploadStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    statusEl.textContent = '';
+    try {
+      const fd = new FormData();
+      const input = document.getElementById('logoFileInput');
+      const origName = (input.files && input.files[0]) ? input.files[0].name : 'logo.png';
+      fd.append('logo', _logoFileResized, origName);
+      const res = await fetch('/admin/api/grupo/logo', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Logo enviado com sucesso!', 'success');
+        statusEl.style.color = '#16a34a';
+        statusEl.textContent = 'Logo atualizado!';
+        // Refresh sidebar logo
+        const sidebarImg = document.getElementById('sidebarLogoImg');
+        if (sidebarImg) { sidebarImg.src = '/admin/api/grupo/logo?t=' + Date.now(); }
+      } else {
+        showToast(data.error || 'Erro ao enviar logo.', 'error');
+        statusEl.style.color = '#dc2626';
+        statusEl.textContent = data.error || 'Erro ao enviar logo.';
+      }
+    } catch(e) {
+      showToast('Erro de conexão.', 'error');
+      statusEl.style.color = '#dc2626';
+      statusEl.textContent = 'Erro de conexão.';
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-upload"></i> Enviar Logo';
+  }
+
+  async function removeLogo() {
+    if (!confirm('Remover o logo do grupo?')) return;
+    try {
+      const res = await fetch('/admin/api/grupo/logo', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Logo removido.', 'success');
+        // Reset preview
+        const previewImg = document.getElementById('logoPreviewImg');
+        previewImg.style.display = 'none';
+        previewImg.src = '';
+        document.getElementById('logoPreviewPlaceholder').style.display = 'flex';
+        // Reset sidebar logo
+        const sidebarImg = document.getElementById('sidebarLogoImg');
+        if (sidebarImg) {
+          sidebarImg.style.display = 'none';
+          const icon = document.getElementById('sidebarLogoIcon');
+          if (icon) icon.style.display = 'flex';
+        }
+      } else {
+        showToast(data.error || 'Erro ao remover logo.', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão.', 'error');
+    }
+  }
+
+
     const email = document.getElementById('inviteEmail').value.trim();
     const nome  = document.getElementById('inviteNome').value.trim();
     const role  = document.getElementById('inviteRole').value;
@@ -979,6 +1160,157 @@ app.post('/api/empresas', async (c) => {
   ])
 
   return c.json({ ok: true, id: empresaId, grupoId })
+})
+
+// ── Logo do Grupo ─────────────────────────────────────────────────────────────
+
+const LOGO_ALLOWED_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  svg: 'image/svg+xml',
+}
+const LOGO_MAX_BYTES = 512 * 1024 // 512 KB
+
+function guessLogoContentType(fileName: string, contentType?: string): string | null {
+  if (contentType) {
+    const ct = contentType.toLowerCase().split(';')[0].trim()
+    if (Object.values(LOGO_ALLOWED_TYPES).includes(ct)) return ct
+  }
+  const ext = (fileName.split('.').pop() || '').toLowerCase()
+  return LOGO_ALLOWED_TYPES[ext] || null
+}
+
+/** Look up the grupo_id for the current session, falling back to D1 via empresa. */
+async function resolveGrupoId(session: any, db: D1Database | null): Promise<string | null> {
+  if (session.grupoId) return session.grupoId
+  // Fallback: look up via empresas table using empresaId
+  if (!db || !session.empresaId) return null
+  try {
+    const row = await db.prepare('SELECT grupo_id FROM empresas WHERE id = ?')
+      .bind(session.empresaId).first() as any
+    return row?.grupo_id || null
+  } catch {
+    return null
+  }
+}
+
+// ── GET /api/grupo/logo — servir logo do grupo ────────────────────────────────
+app.get('/api/grupo/logo', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ error: 'Não autenticado' }, 401)
+  if (!db) return c.json({ error: 'Banco indisponível.' }, 503)
+
+  const grupoId = await resolveGrupoId(session, db)
+  if (!grupoId) return c.json({ error: 'Grupo não encontrado.' }, 404)
+
+  const row = await db.prepare(
+    'SELECT logo_object_key, logo_content_type FROM grupo WHERE id = ?'
+  ).bind(grupoId).first() as any
+
+  if (!row?.logo_object_key) return c.json({ error: 'Logo não configurado.' }, 404)
+
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (!bucket) return c.json({ error: 'Storage indisponível.' }, 503)
+
+  const obj = await bucket.get(row.logo_object_key)
+  if (!obj) return c.json({ error: 'Logo não encontrado no storage.' }, 404)
+
+  const contentType = row.logo_content_type || obj.httpMetadata?.contentType || 'image/png'
+  return c.body(obj.body as any, 200, {
+    'Content-Type': contentType,
+    'Cache-Control': 'private, max-age=300',
+  })
+})
+
+// ── POST /api/grupo/logo — upload do logo do grupo ────────────────────────────
+app.post('/api/grupo/logo', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ ok: false, error: 'Não autorizado.' }, 401)
+  if (!db) return c.json({ ok: false, error: 'Banco indisponível.' }, 503)
+
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (!bucket) return c.json({ ok: false, error: 'Upload indisponível: configure o binding INSTR_PHOTOS_BUCKET.' }, 503)
+
+  const grupoId = await resolveGrupoId(session, db)
+  if (!grupoId) return c.json({ ok: false, error: 'Grupo não encontrado para este usuário.' }, 404)
+
+  const formData = await c.req.formData().catch(() => null)
+  if (!formData) return c.json({ ok: false, error: 'Dados de formulário inválidos.' }, 400)
+
+  const file = formData.get('logo')
+  if (!file || !(file instanceof File)) return c.json({ ok: false, error: 'Campo "logo" obrigatório.' }, 400)
+
+  // Validate file type
+  const resolvedContentType = guessLogoContentType(file.name, file.type)
+  if (!resolvedContentType) {
+    return c.json({ ok: false, error: 'Tipo de arquivo não permitido. Use PNG, JPG, JPEG ou SVG.' }, 400)
+  }
+
+  // Validate file size
+  if (file.size > LOGO_MAX_BYTES) {
+    return c.json({ ok: false, error: 'Arquivo muito grande. Limite: 512KB.' }, 400)
+  }
+
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+  const uniqueSuffix = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7)
+  const objectKey = `grupo-logos/${grupoId}/logo-${uniqueSuffix}.${ext}`
+
+  // Remove old logo from R2 if it exists
+  try {
+    const existing = await db.prepare(
+      'SELECT logo_object_key FROM grupo WHERE id = ?'
+    ).bind(grupoId).first() as any
+    if (existing?.logo_object_key) {
+      await bucket.delete(existing.logo_object_key)
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+
+  // Upload to R2
+  const arrayBuffer = await file.arrayBuffer()
+  await bucket.put(objectKey, arrayBuffer, { httpMetadata: { contentType: resolvedContentType } })
+
+  // Update D1
+  const logoUpdatedAt = new Date().toISOString()
+  await db.prepare(
+    'UPDATE grupo SET logo_object_key = ?, logo_content_type = ?, logo_updated_at = ? WHERE id = ?'
+  ).bind(objectKey, resolvedContentType, logoUpdatedAt, grupoId).run()
+
+  return c.json({ ok: true, logoUpdatedAt })
+})
+
+// ── DELETE /api/grupo/logo — remover logo do grupo ────────────────────────────
+app.delete('/api/grupo/logo', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ ok: false, error: 'Não autorizado.' }, 401)
+  if (!db) return c.json({ ok: false, error: 'Banco indisponível.' }, 503)
+
+  const grupoId = await resolveGrupoId(session, db)
+  if (!grupoId) return c.json({ ok: false, error: 'Grupo não encontrado.' }, 404)
+
+  const row = await db.prepare(
+    'SELECT logo_object_key FROM grupo WHERE id = ?'
+  ).bind(grupoId).first() as any
+
+  if (row?.logo_object_key) {
+    try {
+      const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+      if (bucket) await bucket.delete(row.logo_object_key)
+    } catch {
+      // ignore R2 cleanup errors
+    }
+  }
+
+  await db.prepare(
+    'UPDATE grupo SET logo_object_key = NULL, logo_content_type = NULL, logo_updated_at = NULL WHERE id = ?'
+  ).bind(grupoId).run()
+
+  return c.json({ ok: true })
 })
 
 export default app
