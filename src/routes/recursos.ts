@@ -535,11 +535,22 @@ app.post('/maquinas', async (c) => {
   const body   = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
   if (!body.nome) return err(c, 'Nome é obrigatório')
+  if (db && userId !== 'demo-tenant' && !body.plantaId?.trim()) {
+    return err(c, 'Planta é obrigatória', 400)
+  }
 
   console.log('[RECURSOS][POST /maquinas]', { userId, empresaId, hasDB: !!db, body })
 
   const id = genId('m')
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
+
+  if (db && userId !== 'demo-tenant' && body.plantaId) {
+    if (!planta) {
+      console.warn('[RECURSOS][POST /maquinas] plant_id inválido:', { userId, empresaId, plantaId: body.plantaId })
+      return err(c, 'plant_id inválido ou não encontrado', 400)
+    }
+  }
+
   const maquina = {
     id, name: body.nome, type: body.tipo,
     capacity: body.cap || '', plantId: body.plantaId || '',
@@ -549,16 +560,26 @@ app.post('/maquinas', async (c) => {
 
   if (db && userId !== 'demo-tenant') {
     console.log('[RECURSOS] Inserindo maquina em D1:', { id, empresaId, name: maquina.name })
-    const inserted = await dbInsert(db, 'machines', {
-      id, user_id: userId, empresa_id: empresaId,
-      name: maquina.name, type: maquina.type,
-      capacity: maquina.capacity, plant_id: maquina.plantId,
-      plant_name: maquina.plantName, status: maquina.status,
-      specs: maquina.specs, created_at: new Date().toISOString(),
-    })
-    if (!inserted) {
-      console.error(`[CRÍTICO] Falha ao inserir máquina ${id} em D1`)
-      return err(c, 'Falha ao salvar em D1. Tente novamente.', 500)
+    try {
+      const inserted = await dbInsert(db, 'machines', {
+        id, user_id: userId, empresa_id: empresaId,
+        name: maquina.name, type: maquina.type,
+        capacity: maquina.capacity, plant_id: maquina.plantId,
+        plant_name: maquina.plantName, status: maquina.status,
+        specs: maquina.specs, created_at: new Date().toISOString(),
+      })
+      if (!inserted) {
+        console.error(`[CRÍTICO] Falha ao inserir máquina ${id} em D1`)
+        return c.json({
+          ok: false,
+          error: 'Falha ao salvar máquina em D1. Tente novamente.',
+          errorCode: 'D1_INSERT_FAILED',
+          details: 'Verifique se as migrations foram aplicadas e o schema está correto.',
+        }, 500)
+      }
+    } catch (dbErr) {
+      console.error(`[ERRO DB] Inserir máquina ${id}:`, dbErr instanceof Error ? dbErr.message : String(dbErr))
+      return err(c, 'Erro ao conectar com banco de dados.', 500)
     }
   }
   tenant.machines.push(maquina)
@@ -635,6 +656,13 @@ app.post('/bancadas', async (c) => {
 
   const id = genId('wb')
   const planta = tenant.plants.find((p: any) => p.id === body.plantaId)
+
+  if (db && userId !== 'demo-tenant' && body.plantaId) {
+    if (!planta) {
+      console.warn('[RECURSOS][POST /bancadas] plant_id inválido:', { userId, empresaId, plantaId: body.plantaId })
+      return err(c, 'plant_id inválido ou não encontrado', 400)
+    }
+  }
   const bancada = {
     id, name: body.nome, function: body.func || '',
     plantId: body.plantaId || '', plantName: planta?.name || '',

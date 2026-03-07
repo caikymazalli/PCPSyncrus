@@ -149,6 +149,77 @@ done
 
 ---
 
+## Script Idempotente: `d1-ensure-empresa-id`
+
+O script `scripts/d1-ensure-empresa-id.ts` resolve o problema de ambientes onde
+`machines` e/ou `workbenches` não possuem a coluna `empresa_id`, sem risco de
+falhar em ambientes que já receberam o hotfix manual ou executaram a migration 0022.
+
+### Por que este script é necessário
+
+O SQLite/D1 **não suporta** `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+Rodar `wrangler d1 migrations apply` em um ambiente que já tem `empresa_id`
+(via hotfix manual) causa:
+
+```
+SQLITE_ERROR: duplicate column name: empresa_id
+```
+
+Este script verifica o schema via `PRAGMA table_info` antes de aplicar qualquer
+`ALTER TABLE`, tornando a operação completamente segura de executar repetidas vezes.
+
+### Como usar
+
+```bash
+# 1. Autentique com Wrangler
+npx wrangler login
+
+# 2. Execute o script (produção)
+npx ts-node scripts/d1-ensure-empresa-id.ts pcpsyncrus-production
+
+# 3. Para ambiente local
+npx ts-node scripts/d1-ensure-empresa-id.ts pcpsyncrus-production --local
+```
+
+### O que o script faz
+
+1. Consulta `PRAGMA table_info(machines)` e `PRAGMA table_info(workbenches)`
+2. Se `empresa_id` estiver **ausente**: executa `ALTER TABLE ... ADD COLUMN empresa_id TEXT DEFAULT '1'`
+3. Se `empresa_id` já **existir**: pula o ALTER TABLE (sem erro)
+4. Normaliza registros com `empresa_id IS NULL OR empresa_id = ''` → `'1'`
+
+### Verificação pós-execução
+
+```bash
+npx wrangler d1 execute pcpsyncrus-production --remote \
+  --command "PRAGMA table_info(machines)"
+
+npx wrangler d1 execute pcpsyncrus-production --remote \
+  --command "PRAGMA table_info(workbenches)"
+```
+
+Ambas as saídas devem incluir uma linha com `empresa_id`.
+
+---
+
+## Validação de `plant_id` na API
+
+Os endpoints `POST /recursos/maquinas` e `POST /recursos/bancadas` validam o
+`plant_id` **antes** de tentar o INSERT no D1, evitando erros 500 por
+`FOREIGN KEY constraint failed`.
+
+### Comportamento
+
+| Situação | HTTP | Mensagem |
+|---|---|---|
+| `plantaId` ausente (produção) | 400 | `Planta é obrigatória` |
+| `plantaId` vazio (produção) | 400 | `Planta é obrigatória` |
+| `plantaId` inválido / não encontrado | 400 | `plant_id inválido ou não encontrado` |
+| `plantaId` válido, D1 falhando | 500 | `errorCode: D1_INSERT_FAILED` |
+| `plantaId` válido, D1 ok | 200 | sucesso |
+
+---
+
 ## Ambientes
 
 | Ambiente | Banco | Como Aplicar |
