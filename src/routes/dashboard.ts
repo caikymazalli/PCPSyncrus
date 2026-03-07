@@ -10,7 +10,9 @@ app.get('/', (c) => {
 
   const kpis = tenant.kpis || {}
   const productionOrders = tenant.productionOrders || []
+  const plants = tenant.plants || []
   const machines = tenant.machines || []
+  const workbenches = tenant.workbenches || []
   const products = tenant.products || []
   const stockItems = tenant.stockItems || []
 
@@ -103,8 +105,26 @@ app.get('/', (c) => {
           <i class="fas fa-tools" style="color:#E74C3C;font-size:18px;"></i>
         </div>
       </div>
-      <div class="kpi-value" style="color:#E74C3C;">${kpis.totalMachines ?? 0}</div>
+      <div class="kpi-value" style="color:#E74C3C;">${kpis.totalMachines ?? machines.length}</div>
       <div class="kpi-label">Máquinas</div>
+    </div>
+    <div class="kpi-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(142,68,173,0.1);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-building" style="color:#8E44AD;font-size:18px;"></i>
+        </div>
+      </div>
+      <div class="kpi-value" style="color:#8E44AD;">${plants.length}</div>
+      <div class="kpi-label">Plantas</div>
+    </div>
+    <div class="kpi-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(22,160,133,0.1);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-drafting-compass" style="color:#16A085;font-size:18px;"></i>
+        </div>
+      </div>
+      <div class="kpi-value" style="color:#16A085;">${workbenches.length}</div>
+      <div class="kpi-label">Bancadas</div>
     </div>
   </div>
 

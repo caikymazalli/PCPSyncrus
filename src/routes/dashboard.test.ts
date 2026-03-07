@@ -171,3 +171,72 @@ describe('GET / — dashboard with empty tenant data', () => {
     expect(html).toContain('Não Conformidades')
   })
 })
+
+describe('GET / — dashboard KPI indicators: Plantas and Bancadas', () => {
+  beforeEach(() => {
+    setupSession()
+    tenants[TEST_USER_ID] = {
+      plants: [{ id: 'p1', name: 'Planta A' }, { id: 'p2', name: 'Planta B' }],
+      machines: [{ id: 'm1', name: 'Máquina 1', plantName: 'Planta A', status: 'operational' }],
+      workbenches: [{ id: 'w1', name: 'Bancada 1' }, { id: 'w2', name: 'Bancada 2' }, { id: 'w3', name: 'Bancada 3' }],
+      products: [], productionOrders: [], productionEntries: [],
+      stockItems: [], nonConformances: [], suppliers: [],
+      quotations: [], purchaseOrders: [], imports: [],
+      boms: [], instructions: [], qualityChecks: [], users: [],
+      kpis: { totalOrders: 0, activeOrders: 0, completedOrders: 0, totalProduced: 0, qualityRate: 100, totalMachines: 1 },
+      chartData: {},
+      bomItems: [], productSuppliers: [], workOrders: [], routes: [],
+      serialNumbers: [], serialPendingItems: [],
+      warehouses: [], separationOrders: [], stockExits: [],
+      supplierCategories: [], productSupplierLinks: [],
+      quotationNegotiations: [],
+      workInstructions: [], workInstructionVersions: [],
+      workInstructionSteps: [], workInstructionPhotos: [],
+      workInstructionAuditLog: [],
+    }
+  })
+  afterEach(cleanup)
+
+  it('shows Plantas KPI label', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    expect(html).toContain('Plantas')
+  })
+
+  it('shows Bancadas KPI label', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    expect(html).toContain('Bancadas')
+  })
+
+  it('shows Máquinas KPI label', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    expect(html).toContain('Máquinas')
+  })
+
+  it('renders plant count correctly', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    // 2 plants in tenant — check count appears next to the Plantas label
+    expect(html).toContain('>2</div>\n      <div class="kpi-label">Plantas</div>')
+  })
+
+  it('renders workbench count correctly', async () => {
+    const res = await authedRequest('/')
+    const html = await res.text()
+    // 3 workbenches in tenant — check count appears next to the Bancadas label
+    expect(html).toContain('>3</div>\n      <div class="kpi-label">Bancadas</div>')
+  })
+
+  it('renders safely with undefined plants and workbenches', async () => {
+    // Remove plants and workbenches from tenant to test fallback
+    delete (tenants[TEST_USER_ID] as any).plants
+    delete (tenants[TEST_USER_ID] as any).workbenches
+    const res = await authedRequest('/')
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('Plantas')
+    expect(html).toContain('Bancadas')
+  })
+})
