@@ -607,3 +607,47 @@ describe('PUT /instrucoes/api/instructions/:id/steps/:stepId — modo demo (sem 
     expect(stepInMem.title).toBe('Etapa Demo')
   })
 })
+
+// ── GET /api/report — printable list of work instructions ────────────────────
+
+describe('GET /instrucoes/api/report — printable report', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('returns 200 with HTML content-type', async () => {
+    const res = await authedRequest('/api/report')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/html')
+  })
+
+  it('HTML contains report title', async () => {
+    const res = await authedRequest('/api/report')
+    const html = await res.text()
+    expect(html).toContain('Relatório de Instruções de Trabalho')
+  })
+
+  it('HTML contains instruction code and title', async () => {
+    const res = await authedRequest('/api/report')
+    const html = await res.text()
+    expect(html).toContain('INSTR-001')
+    expect(html).toContain('Test Instruction')
+  })
+
+  it('HTML triggers window.print on load', async () => {
+    const res = await authedRequest('/api/report')
+    const html = await res.text()
+    expect(html).toContain('window.print()')
+  })
+})
+
+describe('GET /instrucoes/api/report — empty tenant', () => {
+  beforeEach(() => { setupSession(); setupTenant(false) })
+  afterEach(cleanup)
+
+  it('returns 200 even when no instructions exist', async () => {
+    const res = await authedRequest('/api/report')
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('instrução(ões)')
+  })
+})
