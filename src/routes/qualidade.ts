@@ -1,7 +1,25 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+
+/** Return a 401 JSON response if the user is not authenticated. */
+function ensureAuthOr401(c: any): Response | null {
+  const session = getCtxSession(c)
+  if (!session) {
+    return c.json({ error: 'Não autenticado' }, 401)
+  }
+  return null
+}
+
+/** Escape a string for safe inclusion in HTML text content. */
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 const app = new Hono()
 
@@ -547,5 +565,258 @@ app.delete('/api/:id', async (c) => {
 })
 
 app.get('/api/list', (c) => ok(c, { ncs: getCtxTenant(c).nonConformances }))
+
+// ── UI: GET /qualidade/relatorios ────────────────────────────────────────────
+app.get('/relatorios', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+
+  const content = `
+  <!-- Header -->
+  <div class="section-header">
+    <div>
+      <div style="font-size:14px;color:#6c757d;">Relatório de Não Conformidades</div>
+    </div>
+  </div>
+
+  <!-- Filter Card -->
+  <div class="card" style="padding:20px;margin-bottom:24px;">
+    <h4 style="font-size:14px;font-weight:700;color:#1B4F72;margin-bottom:16px;"><i class="fas fa-filter" style="margin-right:8px;"></i>Filtros</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;align-items:end;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Status</label>
+        <select class="form-control" id="rel_status" multiple size="3">
+          <option value="open" selected>Aberta</option>
+          <option value="in_analysis" selected>Em Análise</option>
+          <option value="closed" selected>Encerrada</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Data Início (abertura)</label>
+        <input class="form-control" id="rel_start" type="date">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Data Fim (abertura)</label>
+        <input class="form-control" id="rel_end" type="date">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="aplicarFiltros()"><i class="fas fa-search"></i> Filtrar</button>
+        <button class="btn btn-danger" onclick="gerarPDF()" id="btnGerarPdf" style="display:none;"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultadoRelatorio" style="display:none;">
+    <div class="card" style="overflow:hidden;">
+      <div style="padding:14px 16px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;font-weight:600;color:#374151;" id="resultCount"></span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr>
+            <th>Código NC</th>
+            <th>Título</th>
+            <th>Tipo</th>
+            <th>Severidade</th>
+            <th>Status</th>
+            <th>Responsável</th>
+            <th>Abertura</th>
+            <th>Prazo</th>
+          </tr></thead>
+          <tbody id="relatorioTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const allNCs = ${JSON.stringify((tenant as any).nonConformances || [])};
+  const sevLabel = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' };
+  const sevColor = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' };
+  const stLabel  = { open: 'Aberta', in_analysis: 'Em Análise', closed: 'Encerrada' };
+  const stBadge  = { open: 'badge-danger', in_analysis: 'badge-warning', closed: 'badge-success' };
+
+  let filteredNCs = [];
+
+  function getSelectedStatuses() {
+    const sel = document.getElementById('rel_status');
+    return Array.from(sel.options).filter(o => o.selected).map(o => o.value);
+  }
+
+  function aplicarFiltros() {
+    const statuses = getSelectedStatuses();
+    const start = document.getElementById('rel_start').value;
+    const end   = document.getElementById('rel_end').value;
+
+    filteredNCs = allNCs.filter(nc => {
+      if (statuses.length && !statuses.includes(nc.status)) return false;
+      // Lexicographic comparison works correctly for ISO YYYY-MM-DD date strings
+      const dateStr = nc.openedAt || nc.createdAt || '';
+      if (start && dateStr && dateStr < start) return false;
+      if (end   && dateStr && dateStr > end)   return false;
+      return true;
+    });
+
+    renderTabela(filteredNCs);
+    document.getElementById('resultadoRelatorio').style.display = 'block';
+    document.getElementById('btnGerarPdf').style.display = filteredNCs.length ? 'inline-flex' : 'none';
+  }
+
+  function renderTabela(ncs) {
+    document.getElementById('resultCount').textContent = ncs.length + ' NC(s) encontrada(s)';
+    const tbody = document.getElementById('relatorioTbody');
+    if (!ncs.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#6c757d;padding:20px;">Nenhuma NC encontrada para os filtros selecionados.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = ncs.map(nc => \`
+      <tr>
+        <td style="font-weight:700;color:#E74C3C;">\${nc.code || '—'}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${nc.title || ''}">\${nc.title || '—'}</td>
+        <td>\${nc.type || '—'}</td>
+        <td><span class="badge" style="background-color:\${sevColor[nc.severity]||'#666'};color:#fff;">\${sevLabel[nc.severity]||nc.severity||'—'}</span></td>
+        <td><span class="badge \${stBadge[nc.status]||''}">\${stLabel[nc.status]||nc.status||'—'}</span></td>
+        <td>\${nc.responsible || '—'}</td>
+        <td style="font-size:12px;color:#6c757d;">\${nc.openedAt || nc.createdAt || '—'}</td>
+        <td style="font-size:12px;color:#6c757d;">\${nc.dueDate || '—'}</td>
+      </tr>
+    \`).join('');
+  }
+
+  function gerarPDF() {
+    const statuses = getSelectedStatuses();
+    const start = document.getElementById('rel_start').value;
+    const end   = document.getElementById('rel_end').value;
+    const params = new URLSearchParams();
+    statuses.forEach(s => params.append('status', s));
+    if (start) params.set('start', start);
+    if (end)   params.set('end', end);
+    window.open('/qualidade/api/report/pdf?' + params.toString(), '_blank');
+  }
+  </script>
+  `
+
+  return c.html(layout('Qualidade — Relatórios NC', content, 'qualidade', userInfo))
+})
+
+// ── API: GET /qualidade/api/report/pdf ───────────────────────────────────────
+// Period filter is based on `openedAt` (fallback: `createdAt`).
+// Accepts query params: status (repeatable), start (YYYY-MM-DD), end (YYYY-MM-DD).
+app.get('/api/report/pdf', (c) => {
+  const unauth = ensureAuthOr401(c)
+  if (unauth) return unauth
+
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+
+  const statusParam = c.req.queries('status') || []
+  const start = c.req.query('start') || ''
+  const end   = c.req.query('end')   || ''
+
+  const sevLabel: Record<string, string> = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' }
+  const stLabel:  Record<string, string> = { open: 'Aberta', in_analysis: 'Em Análise', closed: 'Encerrada' }
+  const sevColor: Record<string, string> = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' }
+
+  const allNCs: any[] = (tenant as any).nonConformances || []
+
+  const filtered = allNCs.filter(nc => {
+    if (statusParam.length && !statusParam.includes(nc.status)) return false
+    // Lexicographic comparison works correctly for ISO YYYY-MM-DD date strings
+    const dateStr: string = nc.openedAt || nc.createdAt || ''
+    if (start && dateStr && dateStr < start) return false
+    if (end   && dateStr && dateStr > end)   return false
+    return true
+  })
+
+  const generatedAt = new Date().toLocaleString('pt-BR')
+
+  const statusLabels = statusParam.length
+    ? statusParam.map(s => stLabel[s] || s).join(', ')
+    : 'Todos'
+
+  const periodLabel = start || end
+    ? `${start || '—'} a ${end || '—'}`
+    : 'Todo o período'
+
+  const rowsHtml = filtered.length
+    ? filtered.map(nc => `
+      <tr>
+        <td>${escapeHtml(nc.code || '—')}</td>
+        <td>${escapeHtml(nc.title || '—')}</td>
+        <td>${escapeHtml(nc.type || '—')}</td>
+        <td style="color:${sevColor[nc.severity] || '#333'};font-weight:600;">${escapeHtml(sevLabel[nc.severity] || nc.severity || '—')}</td>
+        <td>${escapeHtml(stLabel[nc.status] || nc.status || '—')}</td>
+        <td>${escapeHtml(nc.responsible || '—')}</td>
+        <td>${escapeHtml(nc.openedAt || nc.createdAt || '—')}</td>
+        <td>${escapeHtml(nc.dueDate || '—')}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="8" style="text-align:center;color:#666;padding:16px;">Nenhuma NC encontrada para os filtros selecionados.</td></tr>'
+
+  const logoHtml = (() => {
+    try {
+      const logoUrl = (tenant as any).groupLogoUrl || (tenant as any).logoUrl || ''
+      if (logoUrl) {
+        return `<img src="${escapeHtml(logoUrl)}" alt="Logo" style="height:50px;object-fit:contain;margin-bottom:8px;">`
+      }
+    } catch {}
+    return ''
+  })()
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório de NCs — ${escapeHtml(userInfo.empresa)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #222; }
+    h1 { color: #1B4F72; font-size: 20px; margin: 0 0 4px; }
+    .subtitle { font-size: 13px; color: #6c757d; margin-bottom: 16px; }
+    .filters { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 10px 14px; margin-bottom: 20px; font-size: 12px; }
+    .filters strong { color: #374151; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th { background: #1B4F72; color: #fff; padding: 8px 10px; border: 1px solid #bbb; text-align: left; font-size: 12px; }
+    td { padding: 7px 10px; border: 1px solid #ddd; font-size: 12px; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8f9fa; }
+    .footer { margin-top: 28px; font-size: 11px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
+    @media print { button { display: none; } }
+  </style>
+</head>
+<body>
+  <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:12px;">
+    ${logoHtml}
+    <div>
+      <h1><i class="fas fa-clipboard-list"></i> Relatório de Não Conformidades</h1>
+      <div class="subtitle">${escapeHtml(userInfo.empresa)} · Gerado em ${generatedAt}</div>
+    </div>
+  </div>
+  <div class="filters">
+    <strong>Filtros aplicados:</strong>
+    Status: ${escapeHtml(statusLabels)} &nbsp;|&nbsp;
+    Período (abertura): ${escapeHtml(periodLabel)} &nbsp;|&nbsp;
+    Total: ${filtered.length} NC(s)
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Código NC</th>
+        <th>Título</th>
+        <th>Tipo</th>
+        <th>Severidade</th>
+        <th>Status</th>
+        <th>Responsável</th>
+        <th>Abertura</th>
+        <th>Prazo</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <div class="footer">PCPSyncrus · Relatório NC · ${generatedAt}</div>
+  <script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>`
+
+  return c.html(html)
+})
 
 export default app
