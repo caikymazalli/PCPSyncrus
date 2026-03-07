@@ -699,6 +699,32 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         createdAt: r.created_at || new Date().toISOString(),
       }))
     }
+    // Load serial pending items (release queue)
+    try {
+      const spi = await db.prepare('SELECT * FROM serial_pending_items WHERE user_id = ? ORDER BY imported_at DESC').bind(userId).all()
+      if (spi.results && spi.results.length > 0) {
+        tenant.serialPendingItems = (spi.results as any[]).map(r => {
+          let entries: any[] = []
+          try { entries = JSON.parse(r.entries_json || '[]') } catch { entries = [] }
+          return {
+            id: r.id,
+            productCode: r.product_code,
+            productName: r.product_name,
+            totalQty: r.total_qty || 1,
+            identifiedQty: r.identified_qty || 0,
+            unit: r.unit || 'un',
+            controlType: r.control_type || 'serie',
+            status: r.status || 'pending',
+            entries,
+            importedAt: r.imported_at || r.created_at || new Date().toISOString(),
+          }
+        })
+        console.log(`[HYDRATION] ✅ ${tenant.serialPendingItems.length} itens de liberação de série carregados`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar serial_pending_items:', (e as any).message)
+      if (!tenant.serialPendingItems) tenant.serialPendingItems = []
+    }
     // Load plants
     const plantsRes = await db.prepare(`SELECT * FROM plants WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
       .bind(...bindEmpresa([userId])).all()
