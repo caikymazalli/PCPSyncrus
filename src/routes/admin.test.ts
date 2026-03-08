@@ -195,4 +195,41 @@ describe('admin.ts client-side JS function safeguards', () => {
   it('removeLogo is declared as a named async function', () => {
     expect(src).toContain('async function removeLogo()')
   })
+
+  it('uploadLogo is not declared more than once (no duplicate)', () => {
+    const matches = src.match(/async function uploadLogo\(\)/g) || []
+    expect(matches.length).toBe(1)
+  })
+
+  it('removeLogo is not declared more than once (no duplicate)', () => {
+    const matches = src.match(/async function removeLogo\(\)/g) || []
+    expect(matches.length).toBe(1)
+  })
+
+  it('showToast is not declared more than once (no duplicate)', () => {
+    const matches = src.match(/function showToast\(/g) || []
+    expect(matches.length).toBe(1)
+  })
+
+  it('uploadLogo uses safe JSON parsing (try/catch around res.json)', () => {
+    // The good version wraps res.json() in a try/catch; the bad version does not.
+    // Verify the safe pattern is present.
+    expect(src).toMatch(/try\s*\{\s*data\s*=\s*await\s+res\.json\(\)\s*;\s*\}\s*catch\s*\(\s*e\s*\)\s*\{\s*data\s*=\s*null\s*;\s*\}/)
+  })
+})
+
+// ── resolveGrupoId fallback safeguard tests ───────────────────────────────────
+
+describe('admin.ts resolveGrupoId source-code safeguards', () => {
+  const src = readFileSync(resolve(__dirname, 'admin.ts'), 'utf-8')
+
+  it('resolveGrupoId has a fallback that queries registered_users by userId', () => {
+    expect(src).toContain('SELECT empresa_id FROM registered_users WHERE id = ?')
+  })
+
+  it('resolveGrupoId has a fallback that queries empresas using the resolved empresa_id', () => {
+    // Two distinct DB queries: once via session.empresaId and once via userId lookup
+    const matches = src.match(/SELECT grupo_id FROM empresas WHERE id = \?/g) || []
+    expect(matches.length).toBeGreaterThanOrEqual(2)
+  })
 })
