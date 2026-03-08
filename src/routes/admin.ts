@@ -776,7 +776,104 @@ app.get('/', async (c) => {
     };
     img.src = objUrl;
   }
+  // ── Toast simples (somente Admin) ───────────────────────────────────────────
+  function showToast(msg, type) {
+    type = type || 'success'
+    var t = document.createElement('div')
+    t.style.cssText =
+      'position:fixed;bottom:18px;right:18px;z-index:99999;' +
+      'padding:10px 14px;border-radius:10px;font-size:12px;font-weight:700;' +
+      'color:white;box-shadow:0 10px 30px rgba(0,0,0,0.25);' +
+      'max-width:360px;opacity:1;transition:opacity .25s ease;'
+    t.style.background = type === 'error' ? '#dc2626' : type === 'info' ? '#2563eb' : '#16a34a'
+    t.textContent = msg
+    document.body.appendChild(t)
+    setTimeout(function () {
+      t.style.opacity = '0'
+      setTimeout(function () { t.remove() }, 250)
+    }, 3200)
+  }
 
+  async function uploadLogo() {
+    if (!_logoFileResized) { showToast('Selecione um arquivo.', 'error'); return; }
+    const btn = document.getElementById('btnUploadLogo');
+    const statusEl = document.getElementById('logoUploadStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    statusEl.textContent = '';
+    try {
+      const fd = new FormData();
+      const input = document.getElementById('logoFileInput');
+      const origName = (input.files && input.files[0]) ? input.files[0].name : 'logo.png';
+      fd.append('logo', _logoFileResized, origName);
+
+      const res = await fetch('/admin/api/grupo/logo', { method: 'POST', body: fd });
+
+      // parse JSON safely (avoid crash if backend returns HTML/empty body)
+      let data = null;
+      try { data = await res.json(); } catch(e) { data = null; }
+
+      if (!res.ok) {
+        const errMsg = (data && data.error) ? data.error : ('Erro HTTP ' + res.status);
+        showToast(errMsg, 'error');
+        statusEl.style.color = '#dc2626';
+        statusEl.textContent = errMsg;
+      } else if (data && data.ok) {
+        showToast('Logo enviado com sucesso!', 'success');
+        statusEl.style.color = '#16a34a';
+        statusEl.textContent = 'Logo atualizado!';
+        // Refresh sidebar logo
+        const sidebarImg = document.getElementById('sidebarLogoImg');
+        if (sidebarImg) { sidebarImg.src = '/admin/api/grupo/logo?t=' + Date.now(); }
+      } else {
+        const errMsg = (data && data.error) ? data.error : 'Erro ao enviar logo.';
+        showToast(errMsg, 'error');
+        statusEl.style.color = '#dc2626';
+        statusEl.textContent = errMsg;
+      }
+    } catch(e) {
+      showToast('Erro de conexão.', 'error');
+      statusEl.style.color = '#dc2626';
+      statusEl.textContent = 'Erro de conexão.';
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-upload"></i> Enviar Logo';
+  }
+
+  async function removeLogo() {
+    if (!confirm('Remover o logo do grupo?')) return;
+    try {
+      const res = await fetch('/admin/api/grupo/logo', { method: 'DELETE' });
+
+      let data = null;
+      try { data = await res.json(); } catch(e) { data = null; }
+
+      if (!res.ok) {
+        showToast((data && data.error) ? data.error : ('Erro HTTP ' + res.status), 'error');
+        return;
+      }
+
+      if (data && data.ok) {
+        showToast('Logo removido.', 'success');
+        // Reset preview
+        const previewImg = document.getElementById('logoPreviewImg');
+        previewImg.style.display = 'none';
+        previewImg.src = '';
+        document.getElementById('logoPreviewPlaceholder').style.display = 'flex';
+        // Reset sidebar logo
+        const sidebarImg = document.getElementById('sidebarLogoImg');
+        if (sidebarImg) {
+          sidebarImg.style.display = 'none';
+          const icon = document.getElementById('sidebarLogoIcon');
+          if (icon) icon.style.display = 'flex';
+        }
+      } else {
+        showToast((data && data.error) ? data.error : 'Erro ao remover logo.', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão.', 'error');
+    }
+  }
   async function uploadLogo() {
     if (!_logoFileResized) { showToast('Selecione um arquivo.', 'error'); return; }
     const btn = document.getElementById('btnUploadLogo');
