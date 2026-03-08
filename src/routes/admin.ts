@@ -793,7 +793,22 @@ app.get('/', async (c) => {
       setTimeout(function () { t.remove() }, 250)
     }, 3200)
   }
-
+function showToast(msg, type) {
+  type = type || 'success'
+  var t = document.createElement('div')
+  t.style.cssText =
+    'position:fixed;bottom:18px;right:18px;z-index:99999;' +
+    'padding:10px 14px;border-radius:10px;font-size:12px;font-weight:700;' +
+    'color:white;box-shadow:0 10px 30px rgba(0,0,0,0.25);' +
+    'max-width:360px;opacity:1;transition:opacity .25s ease;'
+  t.style.background = type === 'error' ? '#dc2626' : type === 'info' ? '#2563eb' : '#16a34a'
+  t.textContent = msg
+  document.body.appendChild(t)
+  setTimeout(function () {
+    t.style.opacity = '0'
+    setTimeout(function () { t.remove() }, 250)
+  }, 3200)
+}
   async function uploadLogo() {
     if (!_logoFileResized) { showToast('Selecione um arquivo.', 'error'); return; }
     const btn = document.getElementById('btnUploadLogo');
