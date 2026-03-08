@@ -793,22 +793,6 @@ app.get('/', async (c) => {
       setTimeout(function () { t.remove() }, 250)
     }, 3200)
   }
-function showToast(msg, type) {
-  type = type || 'success'
-  var t = document.createElement('div')
-  t.style.cssText =
-    'position:fixed;bottom:18px;right:18px;z-index:99999;' +
-    'padding:10px 14px;border-radius:10px;font-size:12px;font-weight:700;' +
-    'color:white;box-shadow:0 10px 30px rgba(0,0,0,0.25);' +
-    'max-width:360px;opacity:1;transition:opacity .25s ease;'
-  t.style.background = type === 'error' ? '#dc2626' : type === 'info' ? '#2563eb' : '#16a34a'
-  t.textContent = msg
-  document.body.appendChild(t)
-  setTimeout(function () {
-    t.style.opacity = '0'
-    setTimeout(function () { t.remove() }, 250)
-  }, 3200)
-}
   async function uploadLogo() {
     if (!_logoFileResized) { showToast('Selecione um arquivo.', 'error'); return; }
     const btn = document.getElementById('btnUploadLogo');
@@ -884,67 +868,6 @@ function showToast(msg, type) {
         }
       } else {
         showToast((data && data.error) ? data.error : 'Erro ao remover logo.', 'error');
-      }
-    } catch(e) {
-      showToast('Erro de conexão.', 'error');
-    }
-  }
-  async function uploadLogo() {
-    if (!_logoFileResized) { showToast('Selecione um arquivo.', 'error'); return; }
-    const btn = document.getElementById('btnUploadLogo');
-    const statusEl = document.getElementById('logoUploadStatus');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
-    statusEl.textContent = '';
-    try {
-      const fd = new FormData();
-      const input = document.getElementById('logoFileInput');
-      const origName = (input.files && input.files[0]) ? input.files[0].name : 'logo.png';
-      fd.append('logo', _logoFileResized, origName);
-      const res = await fetch('/admin/api/grupo/logo', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('Logo enviado com sucesso!', 'success');
-        statusEl.style.color = '#16a34a';
-        statusEl.textContent = 'Logo atualizado!';
-        // Refresh sidebar logo
-        const sidebarImg = document.getElementById('sidebarLogoImg');
-        if (sidebarImg) { sidebarImg.src = '/admin/api/grupo/logo?t=' + Date.now(); }
-      } else {
-        showToast(data.error || 'Erro ao enviar logo.', 'error');
-        statusEl.style.color = '#dc2626';
-        statusEl.textContent = data.error || 'Erro ao enviar logo.';
-      }
-    } catch(e) {
-      showToast('Erro de conexão.', 'error');
-      statusEl.style.color = '#dc2626';
-      statusEl.textContent = 'Erro de conexão.';
-    }
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-upload"></i> Enviar Logo';
-  }
-
-  async function removeLogo() {
-    if (!confirm('Remover o logo do grupo?')) return;
-    try {
-      const res = await fetch('/admin/api/grupo/logo', { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('Logo removido.', 'success');
-        // Reset preview
-        const previewImg = document.getElementById('logoPreviewImg');
-        previewImg.style.display = 'none';
-        previewImg.src = '';
-        document.getElementById('logoPreviewPlaceholder').style.display = 'flex';
-        // Reset sidebar logo
-        const sidebarImg = document.getElementById('sidebarLogoImg');
-        if (sidebarImg) {
-          sidebarImg.style.display = 'none';
-          const icon = document.getElementById('sidebarLogoIcon');
-          if (icon) icon.style.display = 'flex';
-        }
-      } else {
-        showToast(data.error || 'Erro ao remover logo.', 'error');
       }
     } catch(e) {
       showToast('Erro de conexão.', 'error');
@@ -1296,15 +1219,32 @@ function guessLogoContentType(fileName: string, contentType?: string): string | 
 /** Look up the grupo_id for the current session, falling back to D1 via empresa. */
 async function resolveGrupoId(session: any, db: D1Database | null): Promise<string | null> {
   if (session.grupoId) return session.grupoId
-  // Fallback: look up via empresas table using empresaId
-  if (!db || !session.empresaId) return null
-  try {
-    const row = await db.prepare('SELECT grupo_id FROM empresas WHERE id = ?')
-      .bind(session.empresaId).first() as any
-    return row?.grupo_id || null
-  } catch {
-    return null
+  // Fallback 1: look up via empresas table using empresaId from session
+  if (db && session.empresaId) {
+    try {
+      const row = await db.prepare('SELECT grupo_id FROM empresas WHERE id = ?')
+        .bind(session.empresaId).first() as any
+      if (row?.grupo_id) return row.grupo_id
+    } catch {
+      // fall through to userId lookup
+    }
   }
+  // Fallback 2: look up empresa_id via registered_users using userId, then resolve grupo_id
+  if (db && session.userId) {
+    try {
+      const userRow = await db.prepare('SELECT empresa_id FROM registered_users WHERE id = ?')
+        .bind(session.userId).first() as any
+      const empresaId = userRow?.empresa_id
+      if (empresaId) {
+        const empresaRow = await db.prepare('SELECT grupo_id FROM empresas WHERE id = ?')
+          .bind(empresaId).first() as any
+        return empresaRow?.grupo_id || null
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 // ── GET /api/grupo/logo — servir logo do grupo ────────────────────────────────
