@@ -213,11 +213,22 @@ export async function getSessionAsync(token: string | undefined, db: D1Database 
       grupoId: row.grupo_id || null,
     }
 
-    // Carregar owner_id do usuário para suportar conta de convidado
+    // Lookup registered_users to:
+    //   1. Resolve owner_id (supports guest accounts)
+    //   2. Resolve empresa_id / grupo_id when absent in session row
+    //      (sessions created before migration 0010 or stored with NULL values)
     try {
-      const userRow = await db.prepare('SELECT owner_id FROM registered_users WHERE id = ?')
+      const userRow = await db.prepare('SELECT owner_id, empresa_id, grupo_id FROM registered_users WHERE id = ?')
         .bind(row.user_id).first() as any
-      if (userRow) session.ownerId = userRow.owner_id || null
+      if (userRow) {
+        session.ownerId = userRow.owner_id || null
+        if (!session.empresaId && userRow.empresa_id) {
+          session.empresaId = userRow.empresa_id
+        }
+        if (!session.grupoId && userRow.grupo_id) {
+          session.grupoId = userRow.grupo_id
+        }
+      }
     } catch {}
     
     // Cache in memory
@@ -616,9 +627,24 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
 
   tenantHydratedAt[userId] = now
 
+  // Resolve empresa_id: if not provided, fall back to registered_users to ensure
+  // tenant-scoped data (product_supplier_links, work_instructions, etc.) is always
+  // filtered correctly even after a cold start where the session row has NULL empresa_id.
+  let resolvedEmpresaId = empresaId || null
+  if (!resolvedEmpresaId) {
+    try {
+      const userRow = await db.prepare('SELECT empresa_id FROM registered_users WHERE id = ?')
+        .bind(userId).first() as any
+      if (userRow?.empresa_id) {
+        resolvedEmpresaId = userRow.empresa_id
+        console.log(`[HYDRATION] Resolved empresaId=${resolvedEmpresaId} from registered_users for ${userId}`)
+      }
+    } catch {}
+  }
+
   // Build empresa_id filter clause for tables that support it
-  const byEmpresa = empresaId ? ' AND empresa_id = ?' : ''
-  const bindEmpresa = (base: any[]) => empresaId ? [...base, empresaId] : base
+  const byEmpresa = resolvedEmpresaId ? ' AND empresa_id = ?' : ''
+  const bindEmpresa = (base: any[]) => resolvedEmpresaId ? [...base, resolvedEmpresaId] : base
 
   const tenant = getTenantData(userId)
   console.log(`[HYDRATION] Loading tenant ${userId} from D1`)
