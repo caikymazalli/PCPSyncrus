@@ -41,19 +41,23 @@ app.get('/', async (c) => {
   const plants  = tenant.plants  || []
 
   // ── Carregar membros da empresa do D1 ─────────────────────────────────────
-  // Inclui: o próprio dono (owner_id IS NULL) + todos os convidados (owner_id = ownerId)
-  // Se o usuário logado for um membro convidado (tem ownerId), usa o ownerId para buscar
-  // os colegas de empresa. Caso contrário, usa o próprio userId como ownerId da empresa.
+  // Inclui: usuários que compartilham o mesmo empresa_id (fonte de verdade),
+  // mais usuários vinculados via owner_id (convidados legados).
+  // Se o usuário logado for um membro convidado (tem owner_id), usa o owner_id para buscar
+  // os colegas de empresa. Caso contrário, usa o próprio userId como owner_id da empresa.
 
-  // Determinar o "dono" da empresa:
-  // Buscamos o owner_id do usuário logado no D1 para descobrir se ele é dono ou membro convidado
+  // Determinar o "dono" da empresa e resolver empresa_id do usuário atual:
   let userOwnerId: string | null = null
+  let resolvedEmpresaId: string | null = session?.empresaId || null
   if (db && !isDemo && userId) {
     try {
       const myRow = await db.prepare(
-        'SELECT owner_id FROM registered_users WHERE id = ? AND is_demo = 0'
+        'SELECT owner_id, empresa_id FROM registered_users WHERE id = ? AND is_demo = 0'
       ).bind(userId).first() as any
       userOwnerId = myRow?.owner_id || null
+      if (!resolvedEmpresaId && myRow?.empresa_id) {
+        resolvedEmpresaId = myRow.empresa_id
+      }
     } catch {}
   }
   // Se não há owner_id, este usuário é o dono; caso contrário, o dono é quem o convidou
@@ -77,15 +81,24 @@ app.get('/', async (c) => {
 
   if (db && !isDemo) {
     try {
-      // Busca: o dono + todos os membros convidados (owner_id = companyOwnerId)
+      // Busca: usuários que compartilham empresa_id (fonte de verdade) OU
+      // vinculados via owner_id (convidados legados sem empresa_id).
+      // A cláusula empresa_id cobre usuários adicionados diretamente ao D1.
+      const byEmpresa = resolvedEmpresaId ? ' OR empresa_id = ?' : ''
+      const bindArgs = resolvedEmpresaId
+        ? [companyOwnerId, companyOwnerId, resolvedEmpresaId]
+        : [companyOwnerId, companyOwnerId]
       const rows = await db.prepare(
         `SELECT id, nome, sobrenome, email, role, last_login, owner_id
          FROM registered_users
-         WHERE (id = ? OR owner_id = ?) AND is_demo = 0
+         WHERE (id = ? OR owner_id = ?${byEmpresa}) AND is_demo = 0
          ORDER BY owner_id ASC, created_at ASC`
-      ).bind(companyOwnerId, companyOwnerId).all()
+      ).bind(...bindArgs).all()
 
+      const seen = new Set<string>()
       for (const row of (rows.results || []) as any[]) {
+        if (seen.has(row.id)) continue
+        seen.add(row.id)
         const isThisOwner = !row.owner_id // sem owner_id = é o dono
         dbMembers.push({
           id:          row.id,

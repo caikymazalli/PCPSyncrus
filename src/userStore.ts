@@ -460,17 +460,21 @@ export async function loginUser(email: string, pwd: string, db?: D1Database | nu
   // Capture lastLogin BEFORE createSession updates it
   const hadPreviousLogin = !!user.lastLogin
 
-  // Look up empresa and grupo from user_empresa table
+  // Resolve empresa_id and grupo_id from registered_users (source of truth)
+  // NOTE: user_empresa table does not exist in production D1 — use registered_users.empresa_id
   let empresaId: string | null = null
   let grupoId: string | null = null
   if (db && !user.isDemo) {
     try {
-      const ue = await db.prepare(
-        'SELECT ue.empresa_id, e.grupo_id FROM user_empresa ue JOIN empresas e ON ue.empresa_id = e.id WHERE ue.user_id = ? LIMIT 1'
+      const uRow = await db.prepare(
+        'SELECT empresa_id FROM registered_users WHERE id = ?'
       ).bind(user.userId).first() as any
-      if (ue) {
-        empresaId = ue.empresa_id || null
-        grupoId = ue.grupo_id || null
+      empresaId = uRow?.empresa_id || null
+      if (empresaId) {
+        const eRow = await db.prepare(
+          'SELECT grupo_id FROM empresas WHERE id = ?'
+        ).bind(empresaId).first() as any
+        grupoId = eRow?.grupo_id || null
       }
     } catch {}
   }
