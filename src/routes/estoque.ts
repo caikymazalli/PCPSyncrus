@@ -1799,7 +1799,7 @@ app.get('/', (c) => {
       '<div class="modal" style="max-width:500px;">' +
       '<div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">' +
         '<h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Liberar S/N por Estoque</h3>' +
-        '<button onclick="document.getElementById(\'_snByStockModal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>' +
+        '<button onclick="document.getElementById(\\'_snByStockModal\\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>' +
       '</div>' +
       '<div style="padding:24px;">' +
         '<div class="form-group"><label class="form-label">Produto *</label>' +
@@ -1813,7 +1813,7 @@ app.get('/', (c) => {
         '</div>' +
       '</div>' +
       '<div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">' +
-        '<button onclick="document.getElementById(\'_snByStockModal\').remove()" class="btn btn-secondary">Cancelar</button>' +
+        '<button onclick="document.getElementById(\\'_snByStockModal\\').remove()" class="btn btn-secondary">Cancelar</button>' +
         '<button onclick="criarPendingPorEstoque()" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Criar Fila de Liberação</button>' +
       '</div>' +
       '</div>';
@@ -1887,7 +1887,7 @@ app.get('/', (c) => {
             (stLabel[pi.status]||pi.status) + ' · ' + pi.identifiedQty + '/' + pi.totalQty +
           '</span>' +
         '</div>' +
-        '<button class="btn btn-primary btn-sm" onclick="openSerialRelease(\'' + pi.id + '\')">' +
+        '<button class="btn btn-primary btn-sm" onclick="openSerialRelease(\\\'' + pi.id + '\\\')">' +
           '<i class="fas fa-barcode" style="margin-right:4px;"></i>Identificar' +
         '</button>' +
       '</div>').join('');
@@ -2024,7 +2024,7 @@ app.get('/', (c) => {
       '</select>' +
       '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
       '<input class="form-control" type="text" placeholder="Nº Série / Lote">' +
-      '<button class="btn btn-danger btn-sm" onclick="this.closest(\'.trf-item\').remove()"><i class="fas fa-trash"></i></button>';
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.trf-item\\').remove()"><i class="fas fa-trash"></i></button>';
     list.appendChild(div);
   }
 
