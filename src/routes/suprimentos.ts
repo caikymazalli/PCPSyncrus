@@ -3,8 +3,17 @@ import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbInsertWithRetry, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { tenants, markTenantModified } from '../userStore'
+import { requireModuleWriteAccess } from '../moduleAccess'
 
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    const blocked = await requireModuleWriteAccess(c, 'suprimentos')
+    if (blocked) return blocked
+  }
+  return next()
+})
 
 /**
  * Escapar string para JSON de forma segura
@@ -2017,6 +2026,8 @@ app.post('/api/purchase-orders/:id/status', async (c) => {
 
 // ── API: POST /suprimentos/api/imports/from-purchase-order/:pedidoId ─────────
 app.post('/api/imports/from-purchase-order/:pedidoId', async (c) => {
+  const importBlocked = await requireModuleWriteAccess(c, 'importacao')
+  if (importBlocked) return importBlocked
   const pedidoId = c.req.param('pedidoId')
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
@@ -2130,6 +2141,8 @@ app.get('/api/purchase-orders/:id/pdf', async (c) => {
 
 // ── API: POST /suprimentos/api/imports/create ────────────────────────────────
 app.post('/api/imports/create', async (c) => {
+  const importBlocked = await requireModuleWriteAccess(c, 'importacao')
+  if (importBlocked) return importBlocked
   const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.invoiceNumber) return err(c, 'Número da Invoice obrigatório')

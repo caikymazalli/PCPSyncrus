@@ -3,8 +3,17 @@ import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxSession, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { markTenantModified } from '../userStore'
+import { requireModuleWriteAccess } from '../moduleAccess'
 
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    const blocked = await requireModuleWriteAccess(c, 'recursos')
+    if (blocked) return blocked
+  }
+  return next()
+})
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function statusBadgeMachine(s: string) {

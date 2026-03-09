@@ -1,6 +1,9 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { registeredUsers, DEMO_USERS, loadAllUsersFromDB } from '../userStore'
+import { ALL_MODULES, MODULE_LABELS } from '../modules'
+import { getEmpresaModuleAccess } from '../moduleAccess'
+import type { AccessLevel, ModuleKey } from '../modules'
 
 const app = new Hono<{ Bindings: { DB: D1Database } }>()
 
@@ -410,6 +413,310 @@ app.get('/api/backup', async (c) => {
   })
 })
 
+// ── API: GET /api/client/:clientId/modules ────────────────────────────────────
+app.get('/api/client/:clientId/modules', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const db = c.env?.DB || null
+  const clientId = c.req.param('clientId')
+
+  const states: Record<string, AccessLevel> = {}
+  for (const mod of ALL_MODULES) {
+    states[mod] = await getEmpresaModuleAccess(db, clientId, mod)
+  }
+  return c.json({ ok: true, modules: states })
+})
+
+// ── API: POST /api/client/:clientId/modules ───────────────────────────────────
+app.post('/api/client/:clientId/modules', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const db = c.env?.DB || null
+  if (!db) return c.json({ error: 'Database not available' }, 503)
+  const clientId = c.req.param('clientId')
+  const body = await c.req.json() as Record<string, string>
+
+  const now = new Date().toISOString()
+  const allowed: AccessLevel[] = ['allowed', 'read_only', 'denied']
+
+  for (const mod of ALL_MODULES) {
+    const level = (body[mod] || 'allowed') as AccessLevel
+    if (!allowed.includes(level)) continue
+    const id = `em_${clientId}_${mod}`
+    try {
+      await db.prepare(`
+        INSERT INTO empresa_modules (id, empresa_id, module_key, access_level, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(empresa_id, module_key) DO UPDATE SET
+          access_level = excluded.access_level,
+          updated_at   = excluded.updated_at,
+          updated_by   = excluded.updated_by
+      `).bind(id, clientId, mod, level, now, auth.email).run()
+    } catch (e) {
+      console.error(`[MASTER][MODULES] Falha ao salvar módulo ${mod} para ${clientId}:`, e)
+      return c.json({ ok: false, error: 'Erro ao salvar módulos.' }, 500)
+    }
+  }
+
+  auditLog.unshift({ ts: now, user: auth.name, action: 'SET_MODULES', detail: `Módulos atualizados para cliente ${clientId}` })
+  return c.json({ ok: true })
+})
+
+// ── Rota: GET /client/:clientId ────────────────────────────────────────────────
+app.get('/client/:clientId', async (c) => {
+  await ensureInit()
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.html(loginRedirect())
+  const db = c.env?.DB || null
+  const clientId = c.req.param('clientId')
+
+  // Find client in masterClients (may be empty after cold start; refresh from DB)
+  if (masterClients.length === 0 && db) {
+    try {
+      const dbUsers = await loadAllUsersFromDB(db)
+      const ownerUsers = dbUsers.filter(u => !u.ownerId)
+      const memberCount: Record<string, number> = {}
+      for (const m of dbUsers.filter(u => u.ownerId)) {
+        if (m.ownerId) memberCount[m.ownerId] = (memberCount[m.ownerId] || 0) + 1
+      }
+      for (const u of ownerUsers) {
+        if (u.isDemo) continue
+        masterClients.push({
+          id: u.userId, empresa: u.empresa, fantasia: u.empresa,
+          cnpj: '', setor: u.setor, porte: u.porte,
+          responsavel: u.nome + (u.sobrenome ? ' ' + u.sobrenome : ''),
+          email: u.email, tel: u.tel,
+          plano: u.plano, billing: 'trial', valor: 0, status: 'trial',
+          trialStart: u.trialStart, trialEnd: u.trialEnd,
+          empresas: 1, usuarios: 1 + (memberCount[u.userId] || 0), plantas: 0,
+          criadoEm: u.createdAt, ultimoAcesso: u.lastLogin || u.createdAt,
+          modulos: [], cnpjsExtras: 0, pagamentos: [], obs: ''
+        })
+      }
+    } catch {}
+  }
+
+  const cli = masterClients.find(c2 => c2.id === clientId)
+  if (!cli) {
+    return c.html(masterLayout('Cliente não encontrado',
+      `<div class="empty-state"><i class="fas fa-building"></i><h3>Cliente não encontrado</h3><p>ID: ${clientId}</p><a href="/master" class="btn btn-secondary" style="margin-top:16px;"><i class="fas fa-arrow-left"></i> Voltar</a></div>`,
+      auth.name))
+  }
+
+  // Load current module states
+  const moduleStates: Record<string, AccessLevel> = {}
+  for (const mod of ALL_MODULES) {
+    moduleStates[mod] = await getEmpresaModuleAccess(db, clientId, mod)
+  }
+
+  const pl = PLANS[cli.plano] || PLANS.starter
+  const statusMap: Record<string, { label: string; color: string; bg: string }> = {
+    active:   { label: 'Ativo',   color: '#16a34a', bg: '#f0fdf4' },
+    trial:    { label: 'Trial',   color: '#d97706', bg: '#fffbeb' },
+    inactive: { label: 'Inativo', color: '#6c757d', bg: '#e9ecef' },
+  }
+  const st = statusMap[cli.status] || statusMap.inactive
+
+  const accessColors: Record<AccessLevel, { color: string; bg: string; label: string }> = {
+    allowed:   { color: '#16a34a', bg: '#f0fdf4', label: 'Liberado' },
+    read_only: { color: '#d97706', bg: '#fffbeb', label: 'Somente Leitura' },
+    denied:    { color: '#dc2626', bg: '#fef2f2', label: 'Negado' },
+  }
+
+  const content = `
+  <!-- Cabeçalho do cliente -->
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap;">
+    <a href="/master" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6c757d;text-decoration:none;padding:6px 12px;border:1px solid #e9ecef;border-radius:8px;background:white;transition:all 0.15s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+      <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <div>
+      <div style="font-size:20px;font-weight:800;color:#1B4F72;">${cli.fantasia || cli.empresa}</div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${cli.email} · ID: <code style="font-size:11px;background:#f1f3f5;padding:1px 5px;border-radius:4px;">${cli.id}</code></div>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span class="mbadge" style="background:${pl.bg};color:${pl.color};">${pl.label}</span>
+      <span class="mbadge" style="background:${st.bg};color:${st.color};">${st.label}</span>
+    </div>
+  </div>
+
+  <!-- Abas -->
+  <div style="display:flex;border-bottom:2px solid #e9ecef;margin-bottom:20px;overflow-x:auto;background:white;border-radius:12px 12px 0 0;padding:0 8px;">
+    <button class="panel-tab active" id="tabInfo" data-ptab="info"><i class="fas fa-info-circle" style="margin-right:6px;"></i>Informações</button>
+    <button class="panel-tab" id="tabMod" data-ptab="modulos"><i class="fas fa-th-large" style="margin-right:6px;"></i>Módulos</button>
+    <button class="panel-tab" id="tabPag" data-ptab="pagamentos"><i class="fas fa-receipt" style="margin-right:6px;"></i>Pagamentos</button>
+    <button class="panel-tab" id="tabAtiv" data-ptab="atividade"><i class="fas fa-history" style="margin-right:6px;"></i>Atividade</button>
+  </div>
+
+  <!-- Painel: Informações -->
+  <div id="panelInfo" class="card" style="padding:22px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+      ${[
+        ['Empresa',     cli.empresa],
+        ['Fantasia',    cli.fantasia || '—'],
+        ['CNPJ',        cli.cnpj    || '—'],
+        ['Setor',       cli.setor   || '—'],
+        ['Porte',       cli.porte   || '—'],
+        ['Responsável', cli.responsavel],
+        ['E-mail',      `<a href="mailto:${cli.email}" style="color:#2980B9;">${cli.email}</a>`],
+        ['Telefone',    cli.tel || '—'],
+        ['Plano',       `<span class="mbadge" style="background:${pl.bg};color:${pl.color};">${pl.label}</span>`],
+        ['Status',      `<span class="mbadge" style="background:${st.bg};color:${st.color};">${st.label}</span>`],
+        ['Criado em',   new Date(cli.criadoEm + 'T12:00:00').toLocaleDateString('pt-BR')],
+        ['Último acesso', new Date(cli.ultimoAcesso + 'T12:00:00').toLocaleDateString('pt-BR')],
+      ].map(([label, val]) =>
+        `<div style="background:#f8f9fa;border-radius:8px;padding:9px 11px;">
+          <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:2px;">${label}</div>
+          <div style="font-size:13px;color:#374151;font-weight:500;">${val}</div>
+        </div>`
+      ).join('')}
+    </div>
+    ${cli.obs ? `<div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;"><div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:3px;">Observações</div><div style="font-size:13px;color:#374151;">${cli.obs}</div></div>` : ''}
+  </div>
+
+  <!-- Painel: Módulos -->
+  <div id="panelMod" class="card" style="padding:22px;display:none;">
+    <div style="font-size:14px;font-weight:700;color:#1B4F72;margin-bottom:16px;">
+      <i class="fas fa-th-large" style="margin-right:8px;color:#7c3aed;"></i>Controle de Acesso por Módulo
+    </div>
+    <div style="font-size:12px;color:#6c757d;margin-bottom:20px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;">
+      <i class="fas fa-info-circle" style="color:#0284c7;margin-right:6px;"></i>
+      <strong>Liberado</strong>: acesso total &nbsp;·&nbsp; <strong>Somente Leitura</strong>: cliente pode visualizar mas não editar &nbsp;·&nbsp; <strong>Negado</strong>: módulo bloqueado para escrita
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;" id="modulesGrid">
+      ${ALL_MODULES.map(mod => {
+        const level = moduleStates[mod] || 'allowed'
+        const ac = accessColors[level]
+        return `<div style="background:#f8f9fa;border-radius:10px;padding:14px;border:1px solid #e9ecef;">
+          <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;">
+            <i class="fas fa-cube" style="color:#7c3aed;margin-right:7px;font-size:11px;"></i>${MODULE_LABELS[mod]}
+          </div>
+          <select class="form-control module-select" data-mod="${mod}" style="font-size:12px;padding:7px 10px;">
+            <option value="allowed"   ${level === 'allowed'   ? 'selected' : ''}>✅ Liberado</option>
+            <option value="read_only" ${level === 'read_only' ? 'selected' : ''}>👁️ Somente Leitura</option>
+            <option value="denied"    ${level === 'denied'    ? 'selected' : ''}>🚫 Negado</option>
+          </select>
+          <div class="mod-badge" style="margin-top:8px;display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;background:${ac.bg};color:${ac.color};">${ac.label}</div>
+        </div>`
+      }).join('')}
+    </div>
+    <div style="margin-top:20px;display:flex;gap:10px;align-items:center;">
+      <button id="btnSalvarModulos" class="btn btn-primary" style="background:#7c3aed;">
+        <i class="fas fa-save"></i> Salvar Módulos
+      </button>
+      <span id="modSaveStatus" style="font-size:12px;color:#6c757d;"></span>
+    </div>
+  </div>
+
+  <!-- Painel: Pagamentos -->
+  <div id="panelPag" class="card" style="padding:22px;display:none;">
+    ${cli.pagamentos && cli.pagamentos.length > 0
+      ? `<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#f8f9fa;">
+          <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Período</th>
+          <th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Valor</th>
+          <th style="padding:8px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
+          <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Data</th>
+        </tr></thead><tbody>${cli.pagamentos.map(p => {
+          const sc = p.status === 'pago' ? '#16a34a' : '#dc2626', sb = p.status === 'pago' ? '#f0fdf4' : '#fef2f2'
+          return `<tr style="border-bottom:1px solid #f1f3f5;">
+            <td style="padding:8px;font-weight:600;color:#374151;">${p.mes}</td>
+            <td style="padding:8px;text-align:right;font-weight:700;color:#1B4F72;">R$ ${p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+            <td style="padding:8px;text-align:center;"><span class="mbadge" style="background:${sb};color:${sc};">${p.status}</span></td>
+            <td style="padding:8px;color:#6c757d;">${p.data}</td></tr>`
+        }).join('')}</tbody></table>`
+      : `<div class="empty-state"><i class="fas fa-receipt"></i><h3>Nenhum pagamento registrado</h3></div>`
+    }
+  </div>
+
+  <!-- Painel: Atividade -->
+  <div id="panelAtiv" class="card" style="padding:22px;display:none;">
+    <div style="display:flex;flex-direction:column;gap:0;">
+      ${[
+        { icon: 'fa-user-plus', color: '#27AE60', desc: 'Conta criada', date: cli.criadoEm, detail: 'Plano ' + (PLANS[cli.plano]?.label || cli.plano) },
+        { icon: 'fa-sign-in-alt', color: '#2980B9', desc: 'Último acesso', date: cli.ultimoAcesso, detail: 'Usuário: ' + cli.responsavel },
+        ...(cli.status === 'trial' ? [{ icon: 'fa-clock', color: '#d97706', desc: 'Trial ativo', date: cli.trialStart || cli.criadoEm, detail: 'Expira: ' + cli.trialEnd }] : []),
+      ].map(ev => `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f1f3f5;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#f1f3f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas ${ev.icon}" style="font-size:11px;color:${ev.color};"></i></div>
+        <div><div style="font-size:13px;font-weight:600;color:#374151;">${ev.desc}</div>
+        <div style="font-size:11px;color:#9ca3af;">${new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')} · ${ev.detail}</div></div></div>`
+      ).join('')}
+    </div>
+  </div>
+
+  <script>
+  const CLIENT_ID = ${JSON.stringify(clientId)};
+
+  // Aba switching
+  document.addEventListener('click', function(e) {
+    const tabBtn = e.target.closest('[data-ptab]');
+    if (tabBtn) {
+      const tab = tabBtn.dataset.ptab;
+      ['info','modulos','pagamentos','atividade'].forEach(t => {
+        const panel = document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1));
+        const btn   = document.getElementById('tab' + ({ info:'Info', modulos:'Mod', pagamentos:'Pag', atividade:'Ativ' })[t]);
+        if (panel) panel.style.display = (t === tab) ? '' : 'none';
+        if (btn)   btn.className = 'panel-tab' + (t === tab ? ' active' : '');
+      });
+    }
+  });
+
+  // Atualizar badge ao mudar select
+  document.querySelectorAll('.module-select').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      const colors = {
+        allowed:   { color: '#16a34a', bg: '#f0fdf4', label: 'Liberado' },
+        read_only: { color: '#d97706', bg: '#fffbeb', label: 'Somente Leitura' },
+        denied:    { color: '#dc2626', bg: '#fef2f2', label: 'Negado' },
+      };
+      const badge = sel.parentElement.querySelector('.mod-badge');
+      const ac = colors[sel.value] || colors.allowed;
+      if (badge) {
+        badge.style.background = ac.bg;
+        badge.style.color = ac.color;
+        badge.textContent = ac.label;
+      }
+    });
+  });
+
+  // Salvar módulos
+  document.getElementById('btnSalvarModulos').addEventListener('click', async function() {
+    const btn = this;
+    const status = document.getElementById('modSaveStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+    if (status) status.textContent = '';
+
+    const payload = {};
+    document.querySelectorAll('.module-select').forEach(function(sel) {
+      payload[sel.dataset.mod] = sel.value;
+    });
+
+    try {
+      const res = await fetch('/master/api/client/' + CLIENT_ID + '/modules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        showToast('✅ Módulos salvos com sucesso!', 'success');
+        if (status) status.textContent = 'Salvo às ' + new Date().toLocaleTimeString('pt-BR');
+      } else {
+        showToast('Erro ao salvar módulos.', 'error');
+      }
+    } catch {
+      showToast('Erro de conexão.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save"></i> Salvar Módulos';
+    }
+  });
+  </script>
+  `
+
+  return c.html(masterLayout(`Cliente: ${cli.fantasia || cli.empresa}`, content, auth.name))
+})
+
 // ── Rota principal: GET / ──────────────────────────────────────────────────────
 app.get('/', async (c) => {
   await ensureInit()
@@ -539,6 +846,10 @@ app.get('/', async (c) => {
               <td style="padding:10px 14px;font-size:11px;color:#374151;">${new Date(cli.criadoEm+'T12:00:00').toLocaleDateString('pt-BR')}</td>
               <td style="padding:10px 14px;text-align:center;">
                 <div style="display:flex;gap:4px;justify-content:center;">
+                  <a class="abtn" href="/master/client/${cli.id}" style="color:#2980B9;text-decoration:none;">
+                    <i class="fas fa-external-link-alt"></i>
+                    <span class="tooltip-text">Abrir página</span>
+                  </a>
                   <button class="abtn" data-action="detail" data-id="${cli.id}" style="color:#2980B9;">
                     <i class="fas fa-eye"></i>
                     <span class="tooltip-text">Ver detalhes</span>
@@ -997,7 +1308,10 @@ app.get('/', async (c) => {
       }
     } else if (tab === 'modulos') {
       const allMods = ['Ordens','Planejamento','Estoque','Qualidade','Suprimentos','Engenharia','Apontamento','Importação','Recursos'];
-      html = '<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px;">Módulos habilitados ('+cli.modulos.length+'/'+allMods.length+')</div>';
+      html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:13px;font-weight:700;color:#374151;">Módulos habilitados ('+cli.modulos.length+'/'+allMods.length+')</div>' +
+        '<a href="/master/client/'+cli.id+'" target="_blank" style="font-size:11px;font-weight:700;color:#7c3aed;text-decoration:none;padding:4px 10px;border:1px solid #ddd6fe;border-radius:6px;background:#f5f3ff;" title="Abrir página de detalhes">' +
+        '<i class="fas fa-external-link-alt" style="margin-right:5px;font-size:10px;"></i>Gerenciar Acesso</a></div>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
       allMods.forEach(m => {
         const on = cli.modulos.includes(m);
