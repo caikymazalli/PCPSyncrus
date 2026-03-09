@@ -88,6 +88,36 @@ npx wrangler pages deploy dist --project-name pcpsyncrus
 npx wrangler d1 migrations apply pcpsyncrus-production --remote
 ```
 
+## Cloudflare Queues — Arquitetura Producer/Consumer
+
+O projeto usa Cloudflare Queues para resiliência no módulo de Suporte. A separação é obrigatória
+porque **Cloudflare Pages não suporta `queues.consumers`** — somente Workers normais podem consumir filas.
+
+### Pages (este projeto) — apenas Producer
+
+O `wrangler.jsonc` expõe somente o binding producer `pcpsyncrus`.  
+Quando o D1 falha, `POST /suporte/api/tickets` enfileira o ticket e retorna **202**.
+
+### Worker consumer separado
+
+O Worker `pcpsyncrus-support-consumer` (pasta `workers/support-consumer/`) consome a fila em
+batch e persiste os tickets no D1.
+
+```bash
+# Deploy do consumer
+cd workers/support-consumer
+npx wrangler deploy
+```
+
+### Criar a Dead Letter Queue (DLQ)
+
+Mensagens que falham repetidamente são movidas para a DLQ.
+Crie-a antes de fazer o primeiro deploy do consumer:
+
+```bash
+npx wrangler queues create pcpsyncrus-support-dlq
+```
+
 ## Desenvolvimento Local
 ```bash
 npm run build
