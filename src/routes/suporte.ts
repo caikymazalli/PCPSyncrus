@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { ok, err, genId } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
 
 const app = new Hono<{ Bindings: { DB: D1Database; pcpsyncrus: Queue } }>()
 
@@ -287,6 +288,7 @@ app.post('/api/tickets', async (c) => {
           // Retornar 202 com protocolo para rastreabilidade
           if (!(tenant as any).supportTickets) (tenant as any).supportTickets = []
           ;(tenant as any).supportTickets.push(ticket)
+          markTenantModified(userId)
           return c.json({ ok: true, queued: true, correlationId: id, protocolo: id,
             mensagem: 'Chamado recebido e em processamento. Protocolo: ' + id }, 202)
         } catch (qe: any) {
@@ -300,9 +302,10 @@ app.post('/api/tickets', async (c) => {
     }
   }
 
-  // Memory
+  // Memory (only reached when D1 succeeded or demo mode)
   if (!(tenant as any).supportTickets) (tenant as any).supportTickets = []
   ;(tenant as any).supportTickets.push(ticket)
+  markTenantModified(userId)
 
   return ok(c, { ticket })
 })
