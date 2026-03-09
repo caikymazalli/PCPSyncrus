@@ -13,6 +13,16 @@ const SESSION_DURATION   = 60 * 60 * 8 // 8h em segundos
 const MASTER_JWT_SECRET  = 'syncrus-master-jwt-secret-2025-xK9pLmN3'
 const MASTER_PWD_SALT    = 'syncrus-master-salt-2025'
 
+// ── Escape para uso seguro em HTML e atributos HTML ────────────────────────────
+function escapeHtml(str: any): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // ── Utilidades ─────────────────────────────────────────────────────────────────
 async function sha256(text: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -570,7 +580,7 @@ app.get('/client/:clientId', async (c) => {
         </div>`
       ).join('')}
     </div>
-    ${cli.obs ? `<div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;"><div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:3px;">Observações</div><div style="font-size:13px;color:#374151;">${cli.obs}</div></div>` : ''}
+    ${cli.obs ? `<div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;"><div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:3px;">Observações</div><div style="font-size:13px;color:#374151;">${escapeHtml(cli.obs)}</div></div>` : ''}
   </div>
 
   <!-- Painel: Módulos -->
@@ -832,7 +842,7 @@ app.get('/', async (c) => {
               <td style="padding:10px 14px;">
                 <div style="font-weight:700;color:#1B4F72;">${cli.fantasia || cli.empresa}</div>
                 <div style="font-size:11px;color:#9ca3af;">${cli.email}</div>
-                ${cli.obs ? `<div style="font-size:10px;color:#d97706;margin-top:2px;"><i class="fas fa-sticky-note" style="font-size:9px;"></i> ${cli.obs.slice(0,40)}${cli.obs.length>40?'...':''}</div>` : ''}
+                ${cli.obs ? `<div style="font-size:10px;color:#d97706;margin-top:2px;"><i class="fas fa-sticky-note" style="font-size:9px;"></i> ${escapeHtml(cli.obs.slice(0,40))}${cli.obs.length>40?'...':''}</div>` : ''}
               </td>
               <td style="padding:10px 14px;"><div style="font-weight:600;color:#374151;">${cli.responsavel}</div><div style="font-size:11px;color:#9ca3af;">${cli.tel||'—'}</div></td>
               <td style="padding:10px 14px;"><span class="mbadge" style="background:${pl.bg};color:${pl.color};">${pl.label}</span><div style="font-size:10px;color:#9ca3af;margin-top:3px;">${billingLabel[cli.billing]||cli.billing}</div></td>
@@ -1212,7 +1222,7 @@ app.get('/', async (c) => {
           <label class="form-label">Cliente</label>
           <select class="form-control" id="mtEmpresa">
             <option value="">— Selecione o cliente —</option>
-            ${clients.map((cli) => `<option value="${cli.id}">${cli.fantasia || cli.empresa}</option>`).join('')}
+            ${clients.map((cli) => `<option value="${escapeHtml(cli.id)}">${escapeHtml(cli.fantasia || cli.empresa)}</option>`).join('')}
           </select>
         </div>
         <div><label class="form-label">Título *</label><input class="form-control" id="mtTitle" placeholder="Título do chamado..."></div>
@@ -1243,6 +1253,14 @@ app.get('/', async (c) => {
   window._curCliId = null;
   let _curDetTab = 'info';
 
+  // ── Escape seguro para construção dinâmica de HTML no cliente ─────────────────
+  /** Escapa caracteres especiais HTML para uso seguro em innerHTML via concatenação de strings. */
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   // ── Event delegation central (resolve todos os onclick com aspas simples) ─────
   document.addEventListener('click', function(e) {
     const el = e.target;
@@ -1259,6 +1277,7 @@ app.get('/', async (c) => {
       else if (action === 'reactivate')         reativarCliente(id);
       else if (action === 'toggle-master-user') toggleMasterUser(id);
       else if (action === 'migrate-from-detail') { openMigrateModal(id); closeMM('clientDetailModal'); }
+      else if (action === 'new-ticket-for-client') openNovoTicketMasterForClient(id || _curCliId);
       return;
     }
 
@@ -1374,7 +1393,7 @@ app.get('/', async (c) => {
         dRow('Criado em', new Date(cli.criadoEm+'T12:00:00').toLocaleDateString('pt-BR')) +
         dRow('Último acesso', new Date(cli.ultimoAcesso+'T12:00:00').toLocaleDateString('pt-BR')) +
         '</div>';
-      if (cli.obs) html += '<div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;"><div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:3px;">Observações</div><div style="font-size:13px;color:#374151;">'+cli.obs+'</div></div>';
+      if (cli.obs) html += '<div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;"><div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:3px;">Observações</div><div style="font-size:13px;color:#374151;">'+esc(cli.obs)+'</div></div>';
       if (cli.status==='trial') {
         const dl = cli.trialEnd ? Math.ceil((new Date(cli.trialEnd).getTime()-Date.now())/(1000*60*60*24)) : 0;
         html += '<div style="margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px;">' +
@@ -1399,7 +1418,7 @@ app.get('/', async (c) => {
     } else if (tab === 'suporte') {
       html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
         '<div style="font-size:13px;font-weight:700;color:#374151;">Chamados de Suporte</div>' +
-        '<button class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" onclick="openNovoTicketMasterForClient(' + JSON.stringify(id || '_curCliId') + ')">' +
+        '<button class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" data-action="new-ticket-for-client" data-id="' + (id || '') + '">' +
         '<i class="fas fa-plus"></i> Novo Chamado</button></div>';
       html += '<div id="detSupportTickets" style="min-height:80px;"><div style="text-align:center;padding:20px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i></div></div>';
       setTimeout(function() { loadClientSupportTickets(_curCliId); }, 100);
