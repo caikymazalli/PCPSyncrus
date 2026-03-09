@@ -1,0 +1,24 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "pcpsyncrus-support-consumer",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-09",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pcpsyncrus-production",
+      "database_id": "449d62b1-b4f4-4a6f-93c8-ac4954a2d03f"
+    }
+  ],
+
+  "queues": {
+    "consumers": [
+      {
+        "queue": "pcpsyncrus",
+        "max_batch_size": 10,
+        "dead_letter_queue": "pcpsyncrus-support-dlq"
+      }
+    ]
+  }
+}
