@@ -469,6 +469,19 @@ const failingDB = {
   }),
 }
 
+const schemaDriftDB = {
+  prepare: () => ({
+    bind: () => ({
+      run: () => Promise.reject(new Error('no such table: work_instructions')),
+      all: () => Promise.reject(new Error('no such table: work_instructions')),
+      first: () => Promise.reject(new Error('no such table: work_instructions')),
+    }),
+    run: () => Promise.reject(new Error('no such table: work_instructions')),
+    all: () => Promise.reject(new Error('no such table: work_instructions')),
+    first: () => Promise.reject(new Error('no such table: work_instructions')),
+  }),
+}
+
 const successDB = {
   prepare: () => ({
     bind: () => ({
@@ -811,5 +824,35 @@ describe('GET /instrucoes/api/report — empty tenant', () => {
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('instrução(ões)')
+  })
+})
+
+// ── Integração: POST instruction — schema drift ───────────────────────────────
+
+describe('POST /instrucoes/api/instructions — schema drift', () => {
+  beforeEach(() => { setupSession(); setupTenant(false) })
+  afterEach(cleanup)
+
+  it('retorna 500 com schemaDrift: true quando tabela não existe no D1', async () => {
+    const res = await app.request(
+      '/api/instructions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ title: 'Schema Drift Test', code: 'SDT-001' }),
+      },
+      { DB: schemaDriftDB }
+    )
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+    expect(data.schemaDrift).toBe(true)
+    expect(data.error).toContain('Schema desatualizado')
+    // Ensure wrangler migration command is mentioned
+    expect(data.error).toContain('wrangler')
+
+    // Memory must NOT have been updated
+    expect(tenants[TEST_USER_ID].workInstructions.length).toBe(0)
   })
 })

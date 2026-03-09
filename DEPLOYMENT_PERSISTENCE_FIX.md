@@ -123,6 +123,43 @@ if (lastWrite && now - lastWrite < 2000) return  // SKIP por 2s apenas
 - `POST /bancadas` — workbenches
 - `PUT /bancadas/:id` — workbenches
 
+### 5. Módulo de Instruções de Trabalho (instrucoes.ts) — Correções Completas
+
+**Arquivo**: `src/routes/instrucoes.ts`
+
+Todos os endpoints de escrita foram corrigidos para seguir o padrão D1-first:
+
+| Endpoint | Problema anterior | Correção |
+|----------|------------------|----------|
+| `POST /api/instructions` | Sem compensação se versão falhar | Rollback da instrução se versão falhar |
+| `PUT /api/instructions/:id/status` | Memory antes de D1 | D1 primeiro, falha retorna 500 |
+| `POST /api/instructions/:id/versions` | Memory antes de D1 | D1 primeiro com compensação |
+| `DELETE /api/instructions/:id/photos/:photoId` | Memory antes de D1 | D1 primeiro, falha retorna 500 |
+| `DELETE /api/instructions/:id` | Memory antes de D1 (cascade) | D1 cascade delete primeiro |
+| `DELETE /api/instructions/:id/steps/:stepId` | D1 sem verificação de sucesso | Verifica retorno, falha retorna 500 |
+| `POST /api/instructions/:id/photos` | D1 sem verificação de sucesso | Verifica retorno, falha retorna 500 |
+| `POST /api/instructions/:id/photos/upload` | D1 sem verificação de sucesso | Verifica retorno, falha retorna 500 |
+
+**Schema Drift**: Quando a tabela `work_instructions` ou `work_instruction_versions` não existe no D1, a resposta JSON inclui `schemaDrift: true` com instruções claras para corrigir:
+
+```
+1. wrangler d1 migrations apply pcpsyncrus-production --remote
+2. npm run d1:migrate-work-instructions
+```
+
+**Migrations necessárias para instruções de trabalho:**
+- `migrations/0020_work_instructions.sql` — schema inicial
+- `migrations/0027_work_instructions_schema_catchup.sql` — catch-up (IF NOT EXISTS)
+- `migrations/0028_work_instructions_empresa_id_fill.sql` — preenche empresa_id
+- `migrations/0030_fix_work_instructions_schema_drift.sql` — correção de schema drift
+
+**Script de migração para produção:**
+```bash
+npm run d1:migrate-work-instructions
+# ou diretamente:
+npx vite-node scripts/d1-migrate-work-instructions.ts pcpsyncrus-production
+```
+
 ### 5. Logs de Hydration para Diagnóstico
 
 **Arquivo**: `src/userStore.ts`
