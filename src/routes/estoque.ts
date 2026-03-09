@@ -1691,7 +1691,8 @@ app.get('/', (c) => {
     if (!alm) { showEstoqueToast('Almoxarifado não encontrado', 'error'); return; }
     const modal = document.getElementById('editAlmoxarifadoModal');
     if (!modal) return;
-    modal.querySelector('.almEdit-id') && (modal.querySelector('.almEdit-id').value = alm.id);
+    const idField = modal.querySelector('.almEdit-id');
+    if (idField) idField.value = alm.id;
     const nameField = modal.querySelector('[data-field="name"]') || modal.querySelector('input[type="text"]');
     if (nameField) nameField.value = alm.name || '';
     modal.setAttribute('data-alm-id', almId);
