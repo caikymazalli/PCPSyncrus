@@ -2,8 +2,17 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { requireModuleWriteAccess } from '../moduleAccess'
 
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    const blocked = await requireModuleWriteAccess(c, 'apontamento')
+    if (blocked) return blocked
+  }
+  return next()
+})
 
 const NC_LIMIT = 3 // Limite padrão de unidades rejeitadas para gerar NC
 

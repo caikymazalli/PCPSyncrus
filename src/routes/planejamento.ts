@@ -1,8 +1,17 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo } from '../sessionHelper'
+import { requireModuleWriteAccess } from '../moduleAccess'
 
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    const blocked = await requireModuleWriteAccess(c, 'planejamento')
+    if (blocked) return blocked
+  }
+  return next()
+})
 
 app.get('/', (c) => {
   const tenant   = getCtxTenant(c)

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { requireModuleWriteAccess } from '../moduleAccess'
 
 /** Return a 401 JSON response if the user is not authenticated. */
 function ensureAuthOr401(c: any): Response | null {
@@ -22,6 +23,14 @@ function escapeHtml(str: string): string {
 }
 
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    const blocked = await requireModuleWriteAccess(c, 'qualidade')
+    if (blocked) return blocked
+  }
+  return next()
+})
 
 app.get('/', (c) => {
   try {
