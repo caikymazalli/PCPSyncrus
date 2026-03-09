@@ -645,10 +645,10 @@ app.get('/', (c) => {
             <div style="display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;gap:10px;align-items:center;">
                 <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${itemCount} itens</span>
-                <button class="btn btn-sm" style="background:none;border:none;padding:0;font-size:12px;color:#7c3aed;font-weight:600;cursor:pointer;" onclick="openAlmLocationsModal('${alm.id}','${alm.name.replace(/'/g,"\\'")}')" title="Gerenciar endereços"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>${locCount} endereços</button>
+                <button class="btn btn-sm" style="background:none;border:none;padding:0;font-size:12px;color:#7c3aed;font-weight:600;cursor:pointer;" onclick="openAlmLocationsModal('${alm.id}','${alm.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')\" title="Gerenciar endereços"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>${locCount} endereços</button>
               </div>
               <div style="display:flex;gap:6px;">
-                <button class="btn btn-secondary btn-sm" onclick="viewAlmoxarifadoEstoque('${alm.id}','${alm.name.replace(/'/g,"\\'")}','${alm.code||'ALM'}')" title="Ver estoque"><i class="fas fa-eye"></i> Estoque</button>
+                <button class="btn btn-secondary btn-sm" onclick="viewAlmoxarifadoEstoque('${alm.id}','${alm.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${(alm.code||'ALM').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')\" title="Ver estoque"><i class="fas fa-eye"></i> Estoque</button>
                 <button class="btn btn-secondary btn-sm" onclick="editarAlmoxarifado('${alm.id}')"><i class="fas fa-edit"></i></button>
               </div>
             </div>
