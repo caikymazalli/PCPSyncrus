@@ -227,3 +227,159 @@ describe('POST /estoque/api/item/create — D1 com sucesso em produção', () =>
     expect(savedItem).toBeDefined()
   })
 })
+
+// ── Source-code guardrail: viewAlmoxarifadoEstoque ────────────────────────────
+
+describe('estoque.ts source-code: viewAlmoxarifadoEstoque definida', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('função viewAlmoxarifadoEstoque está definida no script client-side', () => {
+    expect(src).toContain('function viewAlmoxarifadoEstoque(')
+  })
+
+  it('viewAlmoxarifadoEstoque abre o modal almoxarifadoEstoqueModal', () => {
+    expect(src).toContain('almoxarifadoEstoqueModal')
+  })
+})
+
+// ── Source-code guardrail: transfer modal uses tenant almoxarifados ───────────
+
+describe('estoque.ts source-code: modal de transferência usa almoxarifados do tenant', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('não contém opções hardcoded de demo no modal de transferência', () => {
+    const modalStart = src.indexOf('novaTransferenciaModal')
+    const modalEnd = src.indexOf('trfItemsList', modalStart)
+    const modalSection = src.slice(modalStart, modalEnd)
+    expect(modalSection).not.toContain('Almoxarifado Central (Alpha)')
+    expect(modalSection).not.toContain('Almoxarifado Nordeste')
+    expect(modalSection).not.toContain('Almoxarifado Sul')
+  })
+
+  it('modal de transferência tem select de origem com id trfOrigem', () => {
+    expect(src).toContain('id="trfOrigem"')
+  })
+
+  it('modal de transferência tem select de destino com id trfDestino', () => {
+    expect(src).toContain('id="trfDestino"')
+  })
+
+  it('modal de transferência tem campo Endereço de Origem', () => {
+    expect(src).toContain('trfEnderecoOrigem')
+  })
+
+  it('modal de transferência tem campo Endereço de Destino', () => {
+    expect(src).toContain('trfEnderecoDestino')
+  })
+})
+
+// ── Source-code guardrail: Liberação S/N tab é lista somente ─────────────────
+
+describe('estoque.ts source-code: aba Liberação S/N é lista somente', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('aba Liberação S/N mostra coluna Almoxarifado', () => {
+    // Find the div with id="tabLiberacaoSerial" (not just the onclick reference)
+    const tabStart = src.indexOf('id="tabLiberacaoSerial"')
+    const tabContent = src.slice(tabStart, tabStart + 4000)
+    expect(tabContent).toContain('Almoxarifado')
+  })
+
+  it('aba Liberação S/N mostra coluna Endereço no Estoque', () => {
+    const tabStart = src.indexOf('id="tabLiberacaoSerial"')
+    const tabContent = src.slice(tabStart, tabStart + 4000)
+    expect(tabContent).toContain('Endereço no Estoque')
+  })
+})
+
+// ── API: POST /estoque/api/transferencia/create ───────────────────────────────
+
+describe('POST /estoque/api/transferencia/create', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('cria transferência com origem/destino válidos', async () => {
+    const res = await authedRequest('/api/transferencia/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        origemId: 'alm1',
+        destinoId: 'alm2',
+        origemName: 'Almoxarifado Principal',
+        destinoName: 'Almoxarifado Filial',
+        enderecoOrigemId: 'loc-001',
+        enderecoDestinoId: 'loc-002',
+        solicitante: 'Test User',
+        items: [{ code: 'ITEM-001', qty: 5, serial: '' }]
+      }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.transferencia).toBeDefined()
+    expect(data.transferencia.status).toBe('pendente')
+    expect(data.transferencia.enderecoOrigemId).toBe('loc-001')
+    expect(data.transferencia.enderecoDestinoId).toBe('loc-002')
+
+    const tfs = (tenants[TEST_USER_ID] as any).transferencias
+    expect(tfs).toHaveLength(1)
+    expect(tfs[0].origemId).toBe('alm1')
+  })
+
+  it('rejeita quando origem e destino são iguais', async () => {
+    const res = await authedRequest('/api/transferencia/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        origemId: 'alm1', destinoId: 'alm1',
+        items: [{ code: 'ITEM-001', qty: 1 }]
+      }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+  })
+
+  it('rejeita quando não há itens', async () => {
+    const res = await authedRequest('/api/transferencia/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origemId: 'alm1', destinoId: 'alm2', items: [] }),
+    })
+    expect(res.status).toBe(400)
+  })
+})
+
+// ── API: POST /estoque/api/warehouse-location/create ─────────────────────────
+
+describe('POST /estoque/api/warehouse-location/create', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('cria endereço de almoxarifado em memória (modo demo)', async () => {
+    const res = await authedRequest('/api/warehouse-location/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1', code: 'A-01-01', description: 'Prateleira A' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.location).toBeDefined()
+    expect(data.location.code).toBe('A-01-01')
+    expect(data.location.almoxarifadoId).toBe('alm1')
+    expect(data.location.status).toBe('active')
+
+    const locs = (tenants[TEST_USER_ID] as any).almoxarifadoLocations
+    expect(locs).toHaveLength(1)
+  })
+
+  it('rejeita quando almoxarifadoId ou code estão ausentes', async () => {
+    const res = await authedRequest('/api/warehouse-location/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1' }),
+    })
+    expect(res.status).toBe(400)
+  })
+})

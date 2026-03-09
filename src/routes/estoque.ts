@@ -28,6 +28,11 @@ app.get('/', (c) => {
   const transferencias   = (mockData as any).transferencias    || []
   const serialPendingItems = (mockData as any).serialPendingItems || []
   const warehouses    = (mockData as any).warehouses || []
+  const almoxarifadoLocations = (mockData as any).almoxarifadoLocations || []
+
+  // Build allAlm once (default + tenant-created), reused in tabs and modals
+  const defaultAlm = { id: 'alm1', name: 'Almoxarifado Principal', code: 'ALM-001', empresa: userInfo.empresa, city: '', state: '', responsible: userInfo.nome, custodian: userInfo.nome, active: true }
+  const allAlm: any[] = [defaultAlm, ...warehouses]
 
   // Badge de liberação pendente
   const pendingSerialCount = serialPendingItems.filter((p: any) => p.status === 'pending' || p.status === 'partial').length
@@ -108,28 +113,41 @@ app.get('/', (c) => {
 
   <!-- Modal: Lista de Números de Série/Lote -->
   <div class="modal-overlay" id="serialListModal">
-    <div class="modal" style="max-width:700px;">
+    <div class="modal" style="max-width:740px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="serialListTitle">
           <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Lista de Números de Série/Lote
         </h3>
         <button onclick="closeModal('serialListModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
-      <div style="padding:16px 24px;">
+      <div style="padding:16px 24px;max-height:70vh;overflow-y:auto;">
         <div id="serialListSubtitle" style="font-size:13px;color:#6c757d;margin-bottom:14px;"></div>
-        <div class="table-wrapper" style="max-height:380px;overflow-y:auto;">
-          <table id="serialListTable">
-            <thead><tr>
-              <th>Número</th><th>Tipo</th><th>Qtd</th><th>Status</th><th>Origem</th><th>OP / Ref.</th><th>Criado em</th><th>Usuário</th>
-            </tr></thead>
-            <tbody id="serialListBody"></tbody>
-          </table>
+        <!-- Pending items section (release queue) -->
+        <div id="serialListPendingSection" style="display:none;margin-bottom:18px;">
+          <div style="font-size:12px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <i class="fas fa-clock"></i> Aguardando Liberação
+          </div>
+          <div id="serialListPendingBody"></div>
         </div>
-        <div id="serialListEmpty" style="display:none;text-align:center;padding:32px;color:#9ca3af;">
-          <i class="fas fa-barcode" style="font-size:32px;margin-bottom:8px;"></i><div>Nenhum número de série/lote cadastrado para este item.</div>
+        <!-- Released serials section -->
+        <div id="serialListReleasedSection">
+          <div class="table-wrapper" style="max-height:280px;overflow-y:auto;">
+            <table id="serialListTable">
+              <thead><tr>
+                <th>Número</th><th>Tipo</th><th>Qtd</th><th>Status</th><th>Origem</th><th>OP / Ref.</th><th>Criado em</th><th>Usuário</th>
+              </tr></thead>
+              <tbody id="serialListBody"></tbody>
+            </table>
+          </div>
+          <div id="serialListEmpty" style="display:none;text-align:center;padding:32px;color:#9ca3af;">
+            <i class="fas fa-barcode" style="font-size:32px;margin-bottom:8px;"></i><div>Nenhum número de série/lote liberado para este item.</div>
+          </div>
         </div>
       </div>
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <button id="serialListReleaseBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openSerialReleaseFromList()">
+          <i class="fas fa-barcode"></i> Liberar S/N
+        </button>
         <button onclick="closeModal('serialListModal')" class="btn btn-secondary">Fechar</button>
       </div>
     </div>
@@ -563,9 +581,7 @@ app.get('/', (c) => {
     <!-- ALMOXARIFADOS TAB -->
     <div class="tab-content" id="tabAlmoxarifados">
       ${(() => {
-        // Build dynamic list: always include the default + any user-created
-        const defaultAlm = { id: 'alm1', name: 'Almoxarifado Principal', code: 'ALM-001', empresa: userInfo.empresa, city: '', state: '', responsible: userInfo.nome, custodian: userInfo.nome, active: true }
-        const allAlm = [defaultAlm, ...warehouses]
+        // allAlm defined at top of handler (defaultAlm + tenant warehouses)
         const activeCount = allAlm.filter(a => a.active !== false).length
         const maintCount = allAlm.filter((a: any) => a.status === 'manutencao').length
         return `
@@ -599,6 +615,7 @@ app.get('/', (c) => {
           const statusLabel = alm.status === 'manutencao' ? 'Manutenção' : 'Ativo'
           const statusBg = alm.status === 'manutencao' ? '#fffbeb' : '#f0fdf4'
           const itemCount = alm.id === 'alm1' ? stockItems.length : 0
+          const locCount = almoxarifadoLocations.filter((l: any) => l.almoxarifadoId === alm.id).length
           return `
         <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${color};">
           <div style="padding:16px 20px;">
@@ -626,9 +643,12 @@ app.get('/', (c) => {
               </div>
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${itemCount} itens</span>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${itemCount} itens</span>
+                <button class="btn btn-sm" style="background:none;border:none;padding:0;font-size:12px;color:#7c3aed;font-weight:600;cursor:pointer;" onclick="openAlmLocationsModal('${alm.id}','${alm.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')\" title="Gerenciar endereços"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>${locCount} endereços</button>
+              </div>
               <div style="display:flex;gap:6px;">
-                <button class="btn btn-secondary btn-sm" onclick="viewAlmoxarifadoEstoque('${alm.id}','${alm.name.replace(/'/g,"\\'")}')" title="Ver estoque"><i class="fas fa-eye"></i> Estoque</button>
+                <button class="btn btn-secondary btn-sm" onclick="viewAlmoxarifadoEstoque('${alm.id}','${alm.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${(alm.code||'ALM').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')\" title="Ver estoque"><i class="fas fa-eye"></i> Estoque</button>
                 <button class="btn btn-secondary btn-sm" onclick="editarAlmoxarifado('${alm.id}')"><i class="fas fa-edit"></i></button>
               </div>
             </div>
@@ -709,79 +729,55 @@ app.get('/', (c) => {
       </div>
     </div>
 
-    <!-- LIBERAÇÃO DE SÉRIE/LOTE TAB -->
+    <!-- LIBERAÇÃO DE SÉRIE/LOTE TAB — Lista de S/N liberados -->
     <div class="tab-content" id="tabLiberacaoSerial">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
         <div>
           <div style="font-size:14px;font-weight:700;color:#1B4F72;">
-            <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Fila de Liberação — Série e Lote
+            <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Números de Série / Lote Liberados
           </div>
           <div style="font-size:12px;color:#6c757d;margin-top:2px;">
-            Produtos importados com controle por Série ou Lote aguardando identificação individual dos itens.
-            Um lote ou grupo só é considerado <strong>completo</strong> quando todos os itens estiverem classificados.
+            Consulte aqui os números de série e lote já identificados e registrados no estoque.
+            Para liberar novos, acesse o card do produto em <strong>Produtos Acabados</strong> ou <strong>Estoque Geral</strong> e clique no botão <i class="fas fa-barcode"></i>.
           </div>
         </div>
-        <a href="/produtos" class="btn btn-secondary btn-sm">
-          <i class="fas fa-file-upload"></i> Importar mais produtos
-        </a>
-        <button class="btn btn-primary btn-sm" onclick="openSerialReleaseByStock()">
-          <i class="fas fa-plus-circle"></i> Liberar por Estoque
-        </button>
       </div>
 
-      ${(serialPendingItems as any[]).length === 0 ? `
+      ${(serialNumbers as any[]).length === 0 ? `
       <!-- Estado vazio -->
       <div class="card" style="padding:56px 20px;text-align:center;">
         <div style="width:64px;height:64px;background:#f5f3ff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
           <i class="fas fa-barcode" style="font-size:28px;color:#7c3aed;opacity:0.5;"></i>
         </div>
-        <div style="font-size:15px;font-weight:700;color:#6c757d;margin-bottom:6px;">Nenhum item aguardando liberação</div>
+        <div style="font-size:15px;font-weight:700;color:#6c757d;margin-bottom:6px;">Nenhum S/N liberado ainda</div>
         <div style="font-size:13px;color:#9ca3af;max-width:380px;margin:0 auto 20px;">
-          Quando você importar produtos com a coluna <strong>ControleSerieOuLote</strong> preenchida, eles aparecerão aqui para identificação individual.
+          Quando você liberar um número de série ou lote a partir do card do produto, ele aparecerá aqui.
         </div>
-        <a href="/produtos" class="btn btn-primary btn-sm">
-          <i class="fas fa-file-upload"></i> Importar Planilha de Produtos
-        </a>
       </div>` : `
-      <!-- Tabela de itens pendentes -->
+      <!-- Tabela de S/N liberados -->
       <div class="card" style="padding:0;overflow:hidden;">
         <table style="width:100%;border-collapse:collapse;">
           <thead>
             <tr style="background:#f8f9fa;border-bottom:2px solid #e5e7eb;">
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Cod.</th>
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Descrição</th>
-              <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Quant.</th>
-              <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Ação</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">S/N</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Almoxarifado</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Endereço no Estoque</th>
             </tr>
           </thead>
           <tbody>
-            ${(serialPendingItems as any[]).map((pi: any, idx: number) => {
-              const ctColor = pi.controlType === 'serie' ? '#7c3aed' : '#d97706'
-              const ctBg    = pi.controlType === 'serie' ? '#ede9fe' : '#fef3c7'
-              const stColor = pi.status === 'complete' ? '#16a34a' : pi.status === 'partial' ? '#2563eb' : '#d97706'
-              const stBg    = pi.status === 'complete' ? '#f0fdf4' : pi.status === 'partial' ? '#eff6ff' : '#fffbeb'
-              const stLabel = pi.status === 'complete' ? 'Completo' : pi.status === 'partial' ? 'Parcial' : 'Pendente'
+            ${(serialNumbers as any[]).map((sn: any, idx: number) => {
+              const relatedProduct = [...products, ...stockItems].find((p: any) => p.code === sn.itemCode)
+              const itemName = relatedProduct?.name || sn.itemCode
+              const almName = allAlm.find((a: any) => a.id === sn.almoxarifadoId)?.name || '—'
               return `
             <tr style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fafafa;' : ''}">
-              <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">${pi.productCode}</td>
-              <td style="padding:12px 16px;">
-                <div style="font-size:13px;font-weight:600;color:#1B4F72;">${pi.productName}</div>
-                <div style="font-size:11px;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                  <span style="background:${ctBg};color:${ctColor};padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">
-                    <i class="fas ${pi.controlType === 'serie' ? 'fa-barcode' : 'fa-layer-group'}" style="font-size:9px;"></i>
-                    ${pi.controlType === 'serie' ? 'Série' : 'Lote'}
-                  </span>
-                  <span style="background:${stBg};color:${stColor};padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">${stLabel} · ${pi.identifiedQty}/${pi.totalQty}</span>
-                </div>
-              </td>
-              <td style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#374151;">${pi.totalQty} <span style="font-size:11px;font-weight:400;color:#9ca3af;">${pi.unit}</span></td>
-              <td style="padding:12px 16px;text-align:right;">
-                ${pi.status !== 'complete' ? `
-                <button class="btn btn-primary btn-sm" onclick="openSerialRelease('${pi.id}')">
-                  <i class="fas fa-barcode" style="margin-right:4px;"></i>Número de série
-                </button>` : `
-                <span style="font-size:12px;color:#16a34a;font-weight:600;"><i class="fas fa-check-circle"></i> Concluído</span>`}
-              </td>
+              <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">${sn.itemCode}</td>
+              <td style="padding:12px 16px;font-size:13px;color:#374151;">${itemName}</td>
+              <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">${sn.number}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#374151;">${almName}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#6c757d;">${sn.location || '—'}</td>
             </tr>`
             }).join('')}
           </tbody>
@@ -863,27 +859,33 @@ app.get('/', (c) => {
 
   <!-- Modal: Nova Transferência -->
   <div class="modal-overlay" id="novaTransferenciaModal">
-    <div class="modal" style="max-width:620px;">
+    <div class="modal" style="max-width:660px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-exchange-alt" style="margin-right:8px;"></i>Nova Transferência entre Almoxarifados</h3>
         <button onclick="closeModal('novaTransferenciaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
-      <div style="padding:24px;">
+      <div style="padding:24px;max-height:75vh;overflow-y:auto;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div class="form-group"><label class="form-label">Almoxarifado Origem *</label>
-            <select class="form-control">
+            <select class="form-control" id="trfOrigem" onchange="loadTrfAddresses('origem')">
               <option value="">Selecionar...</option>
-              <option value="alm1">ALM-001 — Almoxarifado Central (Alpha)</option>
-              <option value="alm2">ALM-002 — Almoxarifado Nordeste</option>
-              <option value="alm3">ALM-003 — Almoxarifado Sul</option>
+              ${allAlm.map((a: any) => `<option value="${a.id}">${a.code ? a.code + ' — ' : ''}${a.name}</option>`).join('')}
             </select>
           </div>
           <div class="form-group"><label class="form-label">Almoxarifado Destino *</label>
-            <select class="form-control">
+            <select class="form-control" id="trfDestino" onchange="loadTrfAddresses('destino')">
               <option value="">Selecionar...</option>
-              <option value="alm1">ALM-001 — Almoxarifado Central (Alpha)</option>
-              <option value="alm2">ALM-002 — Almoxarifado Nordeste</option>
-              <option value="alm3">ALM-003 — Almoxarifado Sul</option>
+              ${allAlm.map((a: any) => `<option value="${a.id}">${a.code ? a.code + ' — ' : ''}${a.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Endereço de Origem</label>
+            <select class="form-control" id="trfEnderecoOrigem">
+              <option value="">— Selecione o almoxarifado primeiro —</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Endereço de Destino</label>
+            <select class="form-control" id="trfEnderecoDestino">
+              <option value="">— Selecione o almoxarifado primeiro —</option>
             </select>
           </div>
           <div class="form-group"><label class="form-label">Solicitante *</label>
@@ -902,9 +904,9 @@ app.get('/', (c) => {
             </select>
           </div>
           <div class="form-group"><label class="form-label">Data Prevista</label>
-            <input class="form-control" type="date" value="2024-02-15">
+            <input class="form-control" type="date" id="trfDataPrevista">
           </div>
-          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><input class="form-control" type="text" placeholder="Motivo da transferência, urgência, etc."></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><input class="form-control" id="trfObs" type="text" placeholder="Motivo da transferência, urgência, etc."></div>
         </div>
 
         <!-- Itens a transferir -->
@@ -917,7 +919,7 @@ app.get('/', (c) => {
             <div class="trf-item" style="display:grid;grid-template-columns:3fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;">
               <select class="form-control" style="font-size:12px;">
                 <option value="">Selecionar item...</option>
-                ${mockData.stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Qtd: ${s.quantity} ${s.unit}</option>`).join('')}
+                ${stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Qtd: ${s.quantity || s.currentQty || 0} ${s.unit}</option>`).join('')}
               </select>
               <input class="form-control" type="number" placeholder="Qtd" min="1">
               <input class="form-control" type="text" placeholder="Nº Série / Lote">
@@ -955,6 +957,74 @@ app.get('/', (c) => {
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('editAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
         <button onclick="showToast('✅ Almoxarifado atualizado!');closeModal('editAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Estoque do Almoxarifado -->
+  <div class="modal-overlay" id="almoxarifadoEstoqueModal">
+    <div class="modal" style="max-width:760px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="almEstoqueTitle">
+          <i class="fas fa-warehouse" style="margin-right:8px;color:#1B4F72;"></i>Estoque do Almoxarifado
+        </h3>
+        <button onclick="closeModal('almoxarifadoEstoqueModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:16px 24px;max-height:65vh;overflow-y:auto;">
+        <div id="almEstoqueSubtitle" style="font-size:13px;color:#6c757d;margin-bottom:14px;"></div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código</th><th>Descrição</th><th>Unid.</th><th>Qty Atual</th><th>Qty Mín.</th><th>Status</th><th>S/N</th>
+            </tr></thead>
+            <tbody id="almEstoqueBody"></tbody>
+          </table>
+        </div>
+        <div id="almEstoqueEmpty" style="display:none;text-align:center;padding:32px;color:#9ca3af;">
+          <i class="fas fa-boxes" style="font-size:32px;margin-bottom:8px;opacity:0.3;"></i>
+          <div>Nenhum item de estoque neste almoxarifado.</div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('almoxarifadoEstoqueModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Endereços do Almoxarifado -->
+  <div class="modal-overlay" id="almLocationsModal">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="almLocationsTitle">
+          <i class="fas fa-map-marker-alt" style="margin-right:8px;color:#7c3aed;"></i>Endereços do Almoxarifado
+        </h3>
+        <button onclick="closeModal('almLocationsModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:16px 24px;max-height:60vh;overflow-y:auto;">
+        <!-- Add new location form -->
+        <div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:16px;border:1px solid #ddd6fe;">
+          <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">
+            <i class="fas fa-plus-circle" style="margin-right:4px;"></i> Novo Endereço
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Código *</label>
+              <input class="form-control" id="newLocCode" type="text" placeholder="Ex: A-01-01" style="font-family:monospace;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Descrição</label>
+              <input class="form-control" id="newLocDesc" type="text" placeholder="Ex: Prateleira A, coluna 1, posição 1">
+            </div>
+            <button class="btn btn-primary" onclick="salvarAlmLocation()">
+              <i class="fas fa-plus"></i> Adicionar
+            </button>
+          </div>
+        </div>
+        <!-- Locations list -->
+        <div id="almLocationsList"></div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('almLocationsModal')" class="btn btn-secondary">Fechar</button>
       </div>
     </div>
   </div>
@@ -1135,6 +1205,14 @@ app.get('/', (c) => {
   <script>
   const serialNumbersData = ${JSON.stringify(serialNumbers)};
   const kardexData = ${JSON.stringify(kardexMovements)};
+  const allAlmData = ${JSON.stringify(allAlm)};
+  const almoxarifadoLocationsData = ${JSON.stringify(almoxarifadoLocations)};
+
+  // Determine available stock items for the almoxarifadoEstoque modal
+  const allStockItemsData = ${JSON.stringify([
+    ...stockItems.map((s: any) => ({ ...s, _source: 'stock' })),
+    ...products.map((p: any) => ({ id: p.id, code: p.code, name: p.name, unit: p.unit, currentQty: p.stockCurrent, minQty: p.stockMin, stockStatus: p.stockStatus, almoxarifadoId: p.almoxarifadoId || 'alm1', _source: 'product' }))
+  ])};
 
   // Filter estoque table
   function filterEstoque() {
@@ -1567,16 +1645,115 @@ app.get('/', (c) => {
     }
   }
 
-  function viewAlmoxarifadoEstoque(almId, almName) {
-    // Switch to Estoque Geral tab and show info
-    document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
-    document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 0));
-    showEstoqueToast('Exibindo estoque de: ' + almName, 'info');
+  function viewAlmoxarifadoEstoque(almId, almName, almCode) {
+    const items = allStockItemsData.filter(s => {
+      // alm1 is the default warehouse — items without almoxarifadoId belong to it
+      const itemAlm = s.almoxarifadoId || 'alm1';
+      return itemAlm === almId;
+    });
+
+    document.getElementById('almEstoqueTitle').innerHTML =
+      '<i class="fas fa-warehouse" style="margin-right:8px;color:#1B4F72;"></i>' +
+      (almCode ? almCode + ' — ' : '') + almName;
+    document.getElementById('almEstoqueSubtitle').textContent =
+      items.length + ' item(s) de estoque neste almoxarifado';
+
+    const tbody = document.getElementById('almEstoqueBody');
+    const empty = document.getElementById('almEstoqueEmpty');
+
+    if (items.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      const statusColors = { critical: '#dc2626', normal: '#16a34a', purchase_needed: '#d97706', manufacture_needed: '#7c3aed' };
+      const statusLabels = { critical: 'Crítico', normal: 'Normal', purchase_needed: 'Nec. Compra', manufacture_needed: 'Nec. Manufatura' };
+      tbody.innerHTML = items.map(s => {
+        const snCount = serialNumbersData.filter(sn => sn.itemCode === s.code).length;
+        const sc = statusColors[s.stockStatus] || '#6c757d';
+        const sl = statusLabels[s.stockStatus] || s.stockStatus || '—';
+        return '<tr>' +
+          '<td style="font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">' + (s.code || '—') + '</td>' +
+          '<td style="font-weight:600;color:#374151;">' + s.name + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (s.unit || 'un') + '</td>' +
+          '<td style="font-weight:700;color:#1B4F72;">' + (s.currentQty !== undefined ? s.currentQty : s.quantity || 0) + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (s.minQty || 0) + '</td>' +
+          '<td><span style="font-size:11px;font-weight:700;color:' + sc + ';">' + sl + '</span></td>' +
+          '<td style="font-size:12px;color:#7c3aed;">' + (snCount > 0 ? snCount + ' S/N' : '—') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    openModal('almoxarifadoEstoqueModal');
   }
 
-  function editarAlmoxarifado(almId) {
-    openModal('editAlmoxarifadoModal');
+  // ── Almoxarifado Locations ─────────────────────────────────────────────────
+  let _currentAlmId = null;
+  let _currentAlmName = null;
+  let _almLocationsCache = almoxarifadoLocationsData.slice();
+
+  function openAlmLocationsModal(almId, almName) {
+    _currentAlmId = almId;
+    _currentAlmName = almName;
+    document.getElementById('almLocationsTitle').innerHTML =
+      '<i class="fas fa-map-marker-alt" style="margin-right:8px;color:#7c3aed;"></i>Endereços — ' + almName;
+    document.getElementById('newLocCode').value = '';
+    document.getElementById('newLocDesc').value = '';
+    renderAlmLocationsList();
+    openModal('almLocationsModal');
   }
+
+  function renderAlmLocationsList() {
+    const locs = _almLocationsCache.filter(l => l.almoxarifadoId === _currentAlmId);
+    const container = document.getElementById('almLocationsList');
+    if (locs.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;"><i class="fas fa-map-marker-alt" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.3;"></i>Nenhum endereço cadastrado.</div>';
+      return;
+    }
+    container.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;">' +
+      locs.map(l => '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;">' +
+        '<div>' +
+          '<span style="font-family:monospace;font-weight:700;color:#1B4F72;margin-right:10px;">' + l.code + '</span>' +
+          '<span style="font-size:13px;color:#374151;">' + (l.description || '—') + '</span>' +
+        '</div>' +
+        '<span style="font-size:11px;color:' + (l.status === 'active' ? '#16a34a' : '#6c757d') + ';font-weight:600;">' + (l.status === 'active' ? 'Ativo' : 'Inativo') + '</span>' +
+      '</div>').join('') + '</div>';
+  }
+
+  async function salvarAlmLocation() {
+    const code = document.getElementById('newLocCode')?.value?.trim();
+    const description = document.getElementById('newLocDesc')?.value?.trim() || '';
+    if (!code) { showEstoqueToast('Informe o código do endereço!', 'error'); return; }
+    if (!_currentAlmId) { showEstoqueToast('Almoxarifado não selecionado!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/warehouse-location/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ almoxarifadoId: _currentAlmId, code, description })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        _almLocationsCache.push(data.location);
+        document.getElementById('newLocCode').value = '';
+        document.getElementById('newLocDesc').value = '';
+        renderAlmLocationsList();
+        showEstoqueToast('✅ Endereço cadastrado!');
+      } else {
+        showEstoqueToast(data.error || 'Erro ao salvar endereço', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Transfer address population ────────────────────────────────────────────
+  function loadTrfAddresses(side) {
+    const almSel = document.getElementById(side === 'origem' ? 'trfOrigem' : 'trfDestino');
+    const addrSel = document.getElementById(side === 'origem' ? 'trfEnderecoOrigem' : 'trfEnderecoDestino');
+    if (!almSel || !addrSel) return;
+    const almId = almSel.value;
+    const locs = _almLocationsCache.filter(l => l.almoxarifadoId === almId && l.status !== 'inactive');
+    addrSel.innerHTML = '<option value="">— Sem endereço específico —</option>' +
+      locs.map(l => '<option value="' + l.id + '">' + l.code + (l.description ? ' — ' + l.description : '') + '</option>').join('');
+  }
+
 
   // Abrir liberação S/N baseado no estoque atual — para produtos com controle de série/lote
   const _allSerialItems = ${JSON.stringify([
@@ -1667,13 +1844,46 @@ app.get('/', (c) => {
   // ══════════════════════════════════════════════════════════════════════
 
   // ---- SERIAL LIST ----
+  let _serialListCurrentCode = null;
+
   function openSerialList(itemCode, itemName, controlType) {
+    _serialListCurrentCode = itemCode;
     const serials = serialNumbersData.filter(sn => sn.itemCode === itemCode);
     document.getElementById('serialListTitle').innerHTML =
       '<i class="fas ' + (controlType==='lote'?'fa-layer-group':'fa-barcode') + '" style="margin-right:8px;color:#7c3aed;"></i>' +
       'Lista de ' + (controlType==='lote'?'Números de Lote':'Números de Série');
-    document.getElementById('serialListSubtitle').textContent = itemName + ' (' + itemCode + ') — ' + serials.length + ' registro(s)';
+    document.getElementById('serialListSubtitle').textContent = itemName + ' (' + itemCode + ') — ' + serials.length + ' registro(s) liberado(s)';
 
+    // ── Pending items section (release queue) ─────────────────────────────
+    const pendingForItem = _serialPendingData.filter(p => p.productCode === itemCode && p.status !== 'complete');
+    const pendingSection = document.getElementById('serialListPendingSection');
+    const pendingBody = document.getElementById('serialListPendingBody');
+    const releaseBtn = document.getElementById('serialListReleaseBtn');
+
+    if (pendingForItem.length > 0) {
+      pendingSection.style.display = 'block';
+      releaseBtn.style.display = 'inline-flex';
+      releaseBtn.setAttribute('data-pending-id', pendingForItem[0].id);
+      const stColor = { complete: '#16a34a', partial: '#2563eb', pending: '#d97706' };
+      const stBg    = { complete: '#f0fdf4', partial: '#eff6ff', pending: '#fffbeb' };
+      const stLabel = { complete: 'Completo', partial: 'Parcial', pending: 'Pendente' };
+      pendingBody.innerHTML = pendingForItem.map(pi => '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;margin-bottom:6px;">' +
+        '<div>' +
+          '<span style="font-size:12px;font-weight:700;color:#1B4F72;">' + pi.productName + '</span>' +
+          '<span style="margin-left:8px;background:' + (stBg[pi.status]||'#fffbeb') + ';color:' + (stColor[pi.status]||'#d97706') + ';padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">' +
+            (stLabel[pi.status]||pi.status) + ' · ' + pi.identifiedQty + '/' + pi.totalQty +
+          '</span>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="openSerialRelease(\'' + pi.id + '\')">' +
+          '<i class="fas fa-barcode" style="margin-right:4px;"></i>Identificar' +
+        '</button>' +
+      '</div>').join('');
+    } else {
+      pendingSection.style.display = 'none';
+      releaseBtn.style.display = 'none';
+    }
+
+    // ── Released serials section ──────────────────────────────────────────
     const tbody = document.getElementById('serialListBody');
     const empty = document.getElementById('serialListEmpty');
 
@@ -1688,17 +1898,39 @@ app.get('/', (c) => {
         const dt = new Date(sn.createdAt + 'T00:00:00').toLocaleDateString('pt-BR');
         return '<tr>' +
           '<td style="font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">' + sn.number + '</td>' +
-          '<td><span class="badge" style="background:' + (sn.type==='serie'?'#ede9fe':'#fef3c7') + ';color:' + (sn.type==='serie'?'#7c3aed':'#d97706') + ';">' + (sn.type==='serie'?'Série':'Lote') + '</span></td>' +
-          '<td style="font-weight:700;color:#374151;">' + sn.quantity + '</td>' +
+          '<td><span class="badge" style="background:' + (sn.type==='serie'||sn.controlType==='serie'?'#ede9fe':'#fef3c7') + ';color:' + (sn.type==='serie'||sn.controlType==='serie'?'#7c3aed':'#d97706') + ';">' + (sn.type==='serie'||sn.controlType==='serie'?'Série':'Lote') + '</span></td>' +
+          '<td style="font-weight:700;color:#374151;">' + (sn.quantity || sn.qty || 1) + '</td>' +
           '<td>' + (statusLabel[sn.status] || sn.status) + '</td>' +
-          '<td style="font-size:12px;color:#6c757d;">' + (originLabel[sn.origin] || sn.origin) + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (originLabel[sn.origin] || sn.origin || '—') + '</td>' +
           '<td style="font-family:monospace;font-size:11px;color:#1B4F72;">' + (sn.orderCode || '—') + '</td>' +
           '<td style="font-size:12px;color:#6c757d;">' + dt + '</td>' +
-          '<td style="font-size:12px;color:#6c757d;">' + sn.createdBy + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (sn.createdBy || '—') + '</td>' +
           '</tr>';
       }).join('');
     }
     openModal('serialListModal');
+  }
+
+  function openSerialReleaseFromList() {
+    const btn = document.getElementById('serialListReleaseBtn');
+    const pendingId = btn?.getAttribute('data-pending-id');
+    if (pendingId) {
+      closeModal('serialListModal');
+      openSerialRelease(pendingId);
+    } else if (_serialListCurrentCode) {
+      // No pending item — create one from stock
+      const item = _allSerialItems.find(i => i.code === _serialListCurrentCode);
+      if (item) {
+        closeModal('serialListModal');
+        fetch('/estoque/api/pending-serial/create', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productCode: item.code, productName: item.name, totalQty: item.qty, unit: item.unit, controlType: item.controlType || 'serie' })
+        }).then(r => r.json()).then(d => {
+          if (d.ok) { showEstoqueToast('Fila criada!'); setTimeout(() => location.reload(), 600); }
+          else showEstoqueToast(d.error || 'Erro', 'error');
+        }).catch(() => showEstoqueToast('Erro de conexão', 'error'));
+      }
+    }
   }
 
   // ---- KARDEX ----
@@ -1783,9 +2015,52 @@ app.get('/', (c) => {
     list.appendChild(div);
   }
 
-  function saveTransferencia() {
-    alert('✅ Solicitação de transferência criada com sucesso!\\n\\nO separador responsável será notificado por e-mail.\\nA transferência ficará com status "Pendente" até a confirmação.');
-    closeModal('novaTransferenciaModal');
+  async function saveTransferencia() {
+    const origemId = document.getElementById('trfOrigem')?.value;
+    const destinoId = document.getElementById('trfDestino')?.value;
+    const enderecoOrigemId = document.getElementById('trfEnderecoOrigem')?.value || '';
+    const enderecoDestinoId = document.getElementById('trfEnderecoDestino')?.value || '';
+    const solicitante = document.getElementById('trfSolicitante')?.value || '';
+    const separador = document.getElementById('trfSeparador')?.value || '';
+    const custodio = document.getElementById('trfCustodio')?.value || '';
+    const dataPrevista = document.getElementById('trfDataPrevista')?.value || '';
+    const obs = document.getElementById('trfObs')?.value || '';
+
+    if (!origemId) { showEstoqueToast('Selecione o almoxarifado de origem!', 'error'); return; }
+    if (!destinoId) { showEstoqueToast('Selecione o almoxarifado de destino!', 'error'); return; }
+    if (origemId === destinoId) { showEstoqueToast('Origem e destino não podem ser o mesmo almoxarifado!', 'error'); return; }
+
+    const itemRows = document.querySelectorAll('#trfItemsList .trf-item');
+    const items = [];
+    for (const row of itemRows) {
+      const sel = row.querySelector('select');
+      const qtyInput = row.querySelector('input[type="number"]');
+      const snInput = row.querySelector('input[type="text"]');
+      const code = sel?.value;
+      const qty = parseInt(qtyInput?.value || '0') || 0;
+      const serial = snInput?.value?.trim() || '';
+      if (code && qty > 0) items.push({ code, qty, serial });
+    }
+    if (items.length === 0) { showEstoqueToast('Adicione ao menos um item!', 'error'); return; }
+
+    const origemName = allAlmData.find(a => a.id === origemId)?.name || origemId;
+    const destinoName = allAlmData.find(a => a.id === destinoId)?.name || destinoId;
+
+    try {
+      const res = await fetch('/estoque/api/transferencia/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origemId, destinoId, origemName, destinoName, enderecoOrigemId, enderecoDestinoId, solicitante, separador, custodio, dataPrevista, obs, items })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showEstoqueToast('✅ Transferência criada com sucesso!');
+        closeModal('novaTransferenciaModal');
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(data.error || 'Erro ao criar transferência', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
 
   function openTransfDetail(id) {
@@ -1947,6 +2222,8 @@ app.post('/api/movement', async (c) => {
 // Recebe entries (número + qty) para um serialPendingItem e atualiza seu status
 app.post('/api/serial-release', async (c) => {
   const tenant = getCtxTenant(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.pendingId || !Array.isArray(body.entries)) return err(c, 'Dados inválidos')
 
@@ -1995,7 +2272,8 @@ app.post('/api/serial-release', async (c) => {
     newEntries.push({ number: normalizedNum, qty: parseInt(entry.qty) || 1, addedAt: new Date().toISOString() })
     existingNumbers.add(normalizedKey)
 
-    // Registrar no serialNumbers do tenant para aparecer na aba Série/Lote do estoque geral
+    // Registrar no serialNumbers do tenant (tenant-aware + location-aware)
+    // almoxarifadoId falls back to 'alm1' (default warehouse) if not set on pending item
     ;(tenant as any).serialNumbers.push({
       id: genId('sn'),
       itemCode: pi.productCode,
@@ -2005,6 +2283,10 @@ app.post('/api/serial-release', async (c) => {
       status: 'em_estoque',
       origin: 'planilha',
       createdAt: new Date().toISOString(),
+      userId,
+      empresaId,
+      almoxarifadoId: pi.almoxarifadoId || 'alm1',
+      location: pi.location || '',
     })
   }
 
@@ -2034,6 +2316,91 @@ app.get('/api/pending-serial', (c) => {
   const tenant = getCtxTenant(c)
   return ok(c, { items: (tenant as any).serialPendingItems || [] })
 })
+
+// ── API: POST /estoque/api/warehouse-location/create ─────────────────────────
+app.post('/api/warehouse-location/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.almoxarifadoId || !body.code) return err(c, 'Almoxarifado e código são obrigatórios')
+  if (!Array.isArray((tenant as any).almoxarifadoLocations)) (tenant as any).almoxarifadoLocations = []
+  // Reject duplicate code within same warehouse
+  const codeNorm = String(body.code).trim().toUpperCase()
+  const duplicate = ((tenant as any).almoxarifadoLocations as any[]).find(
+    (l: any) => l.almoxarifadoId === body.almoxarifadoId && String(l.code).trim().toUpperCase() === codeNorm
+  )
+  if (duplicate) return err(c, `Código de endereço já existe neste almoxarifado: "${body.code}"`)
+  const id = genId('loc')
+  const location = {
+    id, almoxarifadoId: body.almoxarifadoId, code: body.code,
+    description: body.description || '', status: 'active',
+    createdAt: new Date().toISOString(),
+  }
+  ;(tenant as any).almoxarifadoLocations.push(location)
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`INSERT INTO almoxarifado_locations (id, user_id, empresa_id, almoxarifado_id, code, description, status) VALUES (?,?,?,?,?,?,?)`)
+        .bind(id, userId, empresaId, body.almoxarifadoId, body.code, body.description || '', 'active').run()
+    } catch (e) {
+      console.warn(`[ESTOQUE][LOCATIONS] D1 insert failed for location ${id}: ${(e as Error).message}. Migration may not be applied yet.`)
+    }
+  }
+  return ok(c, { location })
+})
+
+// ── API: POST /estoque/api/transferencia/create ──────────────────────────────
+app.post('/api/transferencia/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.origemId || !body.destinoId) return err(c, 'Origem e destino são obrigatórios')
+  if (!Array.isArray(body.items) || body.items.length === 0) return err(c, 'Adicione ao menos um item')
+  if (body.origemId === body.destinoId) return err(c, 'Origem e destino não podem ser iguais')
+
+  if (!Array.isArray((tenant as any).transferencias)) (tenant as any).transferencias = []
+  const seqNum = (tenant as any).transferencias.length + 1
+  const id = 'TRF-' + new Date().getFullYear() + '-' + String(seqNum).padStart(4, '0')
+  const date = new Date().toISOString().split('T')[0]
+
+  // Build readable Origem/Destino names
+  const origemName = body.origemName || body.origemId
+  const destinoName = body.destinoName || body.destinoId
+
+  const transferencia: any = {
+    id, origemId: body.origemId, destinoId: body.destinoId,
+    origem: origemName, destino: destinoName,
+    enderecoOrigemId: body.enderecoOrigemId || '',
+    enderecoDestinoId: body.enderecoDestinoId || '',
+    solicitante: body.solicitante || userInfo.nome,
+    separador: body.separador || '',
+    custodio: body.custodio || '',
+    dataPrevista: body.dataPrevista || '',
+    obs: body.obs || '',
+    status: 'pendente',
+    date,
+    sb: '#fff7ed', sc: '#d97706',
+    items: body.items,
+    item: body.items.map((it: any) => it.code).join(', '),
+    code: body.items[0]?.code || '',
+    qty: body.items.reduce((s: number, it: any) => s + (parseInt(it.qty) || 0), 0),
+    unit: 'un',
+    createdAt: new Date().toISOString(),
+  }
+  ;(tenant as any).transferencias.push(transferencia)
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`INSERT INTO transferencias (id, origem_id, destino_id, solicitante_id, separador_id, custodio_id, status, data_prevista, notes, endereco_origem_id, endereco_destino_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(id, body.origemId, body.destinoId, body.solicitante || userId, body.separador || '', body.custodio || '', 'pendente', body.dataPrevista || null, body.obs || '', body.enderecoOrigemId || null, body.enderecoDestinoId || null).run()
+      console.log(`[ESTOQUE][TRANSFERENCIA] Transferência ${id} persistida em D1`)
+    } catch (e) {
+      console.warn(`[ESTOQUE][TRANSFERENCIA] D1 insert failed for transferencia ${id}: ${(e as Error).message}. Migration may not be applied yet.`)
+    }
+  }
+
+  return ok(c, { transferencia })
+})
+
+
 
 // ── API: POST /estoque/api/warehouse/create ──────────────────────────────────
 app.post('/api/warehouse/create', async (c) => {
