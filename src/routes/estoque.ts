@@ -1686,6 +1686,18 @@ app.get('/', (c) => {
     openModal('almoxarifadoEstoqueModal');
   }
 
+  function editarAlmoxarifado(almId) {
+    const alm = allAlmData.find(function(a) { return a.id === almId; });
+    if (!alm) { showEstoqueToast('Almoxarifado não encontrado', 'error'); return; }
+    const modal = document.getElementById('editAlmoxarifadoModal');
+    if (!modal) return;
+    modal.querySelector('.almEdit-id') && (modal.querySelector('.almEdit-id').value = alm.id);
+    const nameField = modal.querySelector('[data-field="name"]') || modal.querySelector('input[type="text"]');
+    if (nameField) nameField.value = alm.name || '';
+    modal.setAttribute('data-alm-id', almId);
+    openModal('editAlmoxarifadoModal');
+  }
+
   // ── Almoxarifado Locations ─────────────────────────────────────────────────
   let _currentAlmId = null;
   let _currentAlmName = null;
