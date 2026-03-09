@@ -3,7 +3,7 @@ import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { ok, err, genId } from '../dbHelpers'
 
-const app = new Hono()
+const app = new Hono<{ Bindings: { DB: D1Database; pcpsyncrus: Queue } }>()
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -257,8 +257,9 @@ app.post('/api/tickets', async (c) => {
     last_activity_at:   now,
   }
 
-  // D1-first (production)
+  // D1-first (production); se falhar, enfileirar na Queue como fallback durável
   if (db && userId !== 'demo-tenant') {
+    let d1Ok = false
     try {
       const data = { ...ticket, empresa_id: empresaId || '1' }
       const keys = Object.keys(data)
@@ -266,9 +267,36 @@ app.post('/api/tickets', async (c) => {
       await db.prepare(
         `INSERT INTO support_tickets (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`
       ).bind(...vals).run()
+      d1Ok = true
     } catch (e: any) {
-      console.error(`[SUPORTE][CRÍTICO] Falha ao persistir ticket ${id} em D1: ${e?.message}`)
-      return err(c, 'Erro ao salvar chamado no banco de dados', 500)
+      console.error(`[SUPORTE][CRÍTICO][${id}] Falha ao persistir ticket em D1: ${e?.message} — tentando Queue fallback`)
+    }
+
+    if (!d1Ok) {
+      // Fallback: enfileirar na Cloudflare Queue para persistência assíncrona
+      const queue: Queue | undefined = c.env?.pcpsyncrus
+      if (queue) {
+        try {
+          await queue.send({
+            type: 'support_ticket',
+            correlationId: id,
+            ticket: { ...ticket, empresa_id: empresaId || '1' },
+            enqueuedAt: new Date().toISOString(),
+          })
+          console.log(`[SUPORTE][QUEUE][${id}] Ticket enfileirado com sucesso como fallback`)
+          // Retornar 202 com protocolo para rastreabilidade
+          if (!(tenant as any).supportTickets) (tenant as any).supportTickets = []
+          ;(tenant as any).supportTickets.push(ticket)
+          return c.json({ ok: true, queued: true, correlationId: id, protocolo: id,
+            mensagem: 'Chamado recebido e em processamento. Protocolo: ' + id }, 202)
+        } catch (qe: any) {
+          console.error(`[SUPORTE][QUEUE][${id}] Falha ao enfileirar: ${qe?.message}`)
+          return err(c, 'Erro ao salvar chamado. Tente novamente em instantes.', 500)
+        }
+      } else {
+        // Queue indisponível (ambiente local/dev sem binding)
+        return err(c, 'Erro ao salvar chamado no banco de dados', 500)
+      }
     }
   }
 

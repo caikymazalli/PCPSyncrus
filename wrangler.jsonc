@@ -18,5 +18,23 @@
       "binding": "INSTR_PHOTOS_BUCKET",
       "bucket_name": "pcpsyncrus-instr-photos"
     }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "pcpsyncrus",
+        "queue": "pcpsyncrus",
+        "queue_id": "ae0bb95f846d4e1e8d62c7e709f6363e"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "pcpsyncrus",
+        "dead_letter_queue": "pcpsyncrus-support-dlq",
+        "max_retries": 3,
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      }
+    ]
+  }
 }

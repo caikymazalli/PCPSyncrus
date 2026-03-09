@@ -27,6 +27,7 @@ import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTen
 
 type Bindings = {
   DB: D1Database
+  pcpsyncrus: Queue
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -254,4 +255,38 @@ app.notFound((c) => {
   `, 404)
 })
 
-export default app
+// ── Queue consumer handler ─────────────────────────────────────────────────────
+async function handleQueueBatch(batch: MessageBatch<any>, env: Bindings): Promise<void> {
+  for (const msg of batch.messages) {
+    if (msg.body?.type === 'support_ticket') {
+      const ticket = msg.body.ticket
+      const correlationId = msg.body.correlationId || ticket?.id || '?'
+      if (!ticket || !ticket.id) {
+        console.error(`[QUEUE][SUPORTE][${correlationId}] Mensagem inválida — sem payload de ticket`)
+        msg.ack()
+        continue
+      }
+      try {
+        const keys = Object.keys(ticket)
+        const vals = Object.values(ticket)
+        await env.DB.prepare(
+          `INSERT INTO support_tickets (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`
+        ).bind(...vals).run()
+        console.log(`[QUEUE][SUPORTE][${correlationId}] Ticket persistido em D1 com sucesso`)
+        msg.ack()
+      } catch (e: any) {
+        console.error(`[QUEUE][SUPORTE][${correlationId}] Falha ao persistir no D1: ${e?.message} — agendando retry`)
+        msg.retry()
+      }
+    } else {
+      // Mensagem com tipo desconhecido — permitir roteamento para DLQ após retries
+      console.warn(`[QUEUE] Mensagem com tipo desconhecido: ${msg.body?.type}`)
+      msg.retry()
+    }
+  }
+}
+
+export default {
+  fetch: app.fetch.bind(app),
+  queue: handleQueueBatch,
+}
