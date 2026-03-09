@@ -315,3 +315,179 @@ describe('POST /suprimentos/api/quotations/:id/approve — D1 com sucesso em pro
     expect((tenant.purchaseOrders as any[]).length).toBe(initialCount + 1)
   })
 })
+
+// ── source-code guardrail: quotations/create também segue D1-first ────────────
+
+describe('suprimentos.ts source-code guardrails D1-first (quotations/create)', () => {
+  const src = readFileSync(resolve(__dirname, 'suprimentos.ts'), 'utf8')
+
+  it('quotations/create handler: bloco D1 aparece antes de tenant.quotations.push', () => {
+    const handlerStart = src.indexOf("app.post('/api/quotations/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memPushPos = handlerBody.indexOf('tenant.quotations.push')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memPushPos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memPushPos)
+  })
+
+  it('quotations/create handler: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.post('/api/quotations/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+
+  it('product-supplier-links/create handler: bloco D1 antes de productSupplierLinks.push', () => {
+    const handlerStart = src.indexOf("app.post('/api/product-supplier-links/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memPushPos = handlerBody.indexOf('productSupplierLinks')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memPushPos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memPushPos)
+  })
+})
+
+// ── POST /api/quotations/create — modo demo (sem db) ─────────────────────────
+
+describe('POST /suprimentos/api/quotations/create — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e salva cotação em memória no modo demo', async () => {
+    const initialCount = (tenants[TEST_USER_ID].quotations as any[]).length
+
+    const res = await authedRequest('/api/quotations/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        supplierIds: [TEST_SUPPLIER_ID],
+        deadline: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        items: [{ productCode: 'P001', quantity: 5 }],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    expect(data.quotation).toBeDefined()
+
+    expect((tenants[TEST_USER_ID].quotations as any[]).length).toBe(initialCount + 1)
+  })
+})
+
+// ── POST /api/quotations/create — D1 falhando em produção ────────────────────
+
+describe('POST /suprimentos/api/quotations/create — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const initialCount = (tenants[TEST_USER_ID].quotations as any[]).length
+
+    const res = await authedRequest('/api/quotations/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        supplierIds: [TEST_SUPPLIER_ID],
+        deadline: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        items: [{ productCode: 'P001', quantity: 5 }],
+      }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido atualizada
+    expect((tenants[TEST_USER_ID].quotations as any[]).length).toBe(initialCount)
+  })
+})
+
+// ── POST /api/quotations/create — D1 com sucesso em produção ─────────────────
+
+describe('POST /suprimentos/api/quotations/create — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const initialCount = (tenants[TEST_USER_ID].quotations as any[]).length
+
+    const res = await authedRequest('/api/quotations/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        supplierIds: [TEST_SUPPLIER_ID],
+        deadline: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        items: [{ productCode: 'P001', quantity: 5 }],
+      }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    expect(data.quotation).toBeDefined()
+
+    expect((tenants[TEST_USER_ID].quotations as any[]).length).toBe(initialCount + 1)
+  })
+})
+
+// ── POST /api/product-supplier-links/create — D1 falhando ────────────────────
+
+describe('POST /suprimentos/api/product-supplier-links/create — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const initial = ((tenants[TEST_USER_ID] as any).productSupplierLinks as any[] || []).length
+
+    const res = await authedRequest('/api/product-supplier-links/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: 'prod-001',
+        supplier_id: TEST_SUPPLIER_ID,
+        supplier_name: 'Fornecedor Teste',
+      }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    expect(((tenants[TEST_USER_ID] as any).productSupplierLinks as any[] || []).length).toBe(initial)
+  })
+})
+
+// ── POST /api/product-supplier-links/create — D1 com sucesso ─────────────────
+
+describe('POST /suprimentos/api/product-supplier-links/create — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const initial = ((tenants[TEST_USER_ID] as any).productSupplierLinks as any[] || []).length
+
+    const res = await authedRequest('/api/product-supplier-links/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: 'prod-001',
+        supplier_id: TEST_SUPPLIER_ID,
+        supplier_name: 'Fornecedor Teste',
+      }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    expect((data as any).link).toBeDefined()
+
+    expect(((tenants[TEST_USER_ID] as any).productSupplierLinks as any[] || []).length).toBe(initial + 1)
+  })
+})

@@ -1694,7 +1694,6 @@ app.post('/api/quotations/create', async (c) => {
     supplierResponses: [],
   }
   
-  let d1Warning: string | undefined
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'quotations', {
       id, user_id: userId, empresa_id: empresaId, code: quotation.code,
@@ -1702,13 +1701,14 @@ app.post('/api/quotations/create', async (c) => {
       deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations, descricao: quotation.descricao }),
     })
     if (!persistResult.success) {
-      console.error(`[ERROR] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
-      d1Warning = 'Cotação salva localmente. Falha ao salvar no banco. Sincronizará automaticamente.'
+      console.error(`[SUPRIMENTOS][COTAÇÃO][CRÍTICO] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
+      return err(c, 'Erro ao salvar cotação no banco de dados', 500)
     }
+    console.log(`[SUPRIMENTOS][COTAÇÃO] Cotação ${id} persistida em D1 com sucesso`)
   }
   tenant.quotations.push(quotation)
   markTenantModified(userId)
-  return ok(c, d1Warning ? { quotation, code, warning: d1Warning } : { quotation, code })
+  return ok(c, { quotation, code })
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/approve ────────────────────────
@@ -2209,6 +2209,51 @@ app.post('/api/product-imp-field', async (c) => {
     } catch(_) { /* ignora se tabela não existir */ }
   }
   return ok(c, { code, field, value })
+})
+
+// ── API: POST /suprimentos/api/product-supplier-links/create ─────────────────
+app.post('/api/product-supplier-links/create', async (c) => {
+  const db        = getCtxDB(c)
+  const userId    = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant    = getCtxTenant(c)
+  const body      = await c.req.json().catch(() => null)
+
+  if (!body || !body.product_id)   return err(c, 'product_id é obrigatório', 400)
+  if (!body.supplier_id)           return err(c, 'supplier_id é obrigatório', 400)
+  if (!body.supplier_name)         return err(c, 'supplier_name é obrigatório', 400)
+
+  const id  = genId('psl')
+  const now = new Date().toISOString()
+  const link = {
+    id,
+    product_id:     body.product_id,
+    supplier_id:    body.supplier_id,
+    supplier_name:  body.supplier_name,
+    supplier_email: body.supplier_email  || '',
+    supplier_phone: body.supplier_phone  || '',
+    status:         'active',
+    created_at:     now,
+  }
+
+  // D1-first: persist before updating memory
+  if (db && userId !== 'demo-tenant') {
+    const inserted = await dbInsert(db, 'product_supplier_links', {
+      ...link,
+      user_id:    userId,
+      empresa_id: empresaId || '1',
+    })
+    if (!inserted) {
+      console.error(`[SUPRIMENTOS][PSL][CRÍTICO] Falha ao persistir vínculo ${id} em D1`)
+      return err(c, 'Erro ao salvar vínculo fornecedor-produto no banco de dados', 500)
+    }
+    console.log(`[SUPRIMENTOS][PSL] Vínculo ${id} persistido em D1 com sucesso`)
+  }
+
+  if (!tenant.productSupplierLinks) tenant.productSupplierLinks = []
+  tenant.productSupplierLinks.push(link)
+  markTenantModified(userId)
+  return ok(c, { link })
 })
 
 export default app
