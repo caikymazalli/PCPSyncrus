@@ -934,6 +934,9 @@ app.get('/', async (c) => {
     <button class="panel-tab active" id="tabClientes" data-tab="clientes">
       <i class="fas fa-building" style="margin-right:6px;"></i>Clientes <span id="badgeClientes" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${clients.length}</span>
     </button>
+    <button class="panel-tab" id="tabSuporte" data-tab="suporte">
+      <i class="fas fa-headset" style="margin-right:6px;"></i>Suporte
+    </button>
     <button class="panel-tab" id="tabUsuarios" data-tab="usuarios">
       <i class="fas fa-user-shield" style="margin-right:6px;"></i>Usuários Master <span id="badgeUsuarios" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${masterUsers.length}</span>
     </button>
@@ -969,6 +972,41 @@ app.get('/', async (c) => {
       </div>
     </div>
     ${clientRowsHtml}
+  </div>
+
+  <!-- Painel: Suporte -->
+  <div id="panelSuporte" class="card" style="padding:20px;display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1B4F72;"><i class="fas fa-headset" style="margin-right:8px;color:#7c3aed;"></i>Dashboard de Suporte</div>
+        <div style="font-size:12px;color:#6c757d;margin-top:2px;">Chamados abertos por clientes da plataforma</div>
+      </div>
+      <button class="btn btn-primary" style="background:#7c3aed;" id="btnNovoTicketMaster">
+        <i class="fas fa-plus"></i> Novo Chamado
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px;" id="supportKPIs">
+      <div class="master-kpi" style="border-left:4px solid #2980B9;">
+        <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:6px;">Abertos</div>
+        <div style="font-size:28px;font-weight:900;color:#2980B9;" id="kpiOpen">—</div>
+      </div>
+      <div class="master-kpi" style="border-left:4px solid #16a34a;">
+        <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:6px;">Resolvidos</div>
+        <div style="font-size:28px;font-weight:900;color:#16a34a;" id="kpiResolved">—</div>
+      </div>
+      <div class="master-kpi" style="border-left:4px solid #dc2626;">
+        <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:6px;">SLA Vencido</div>
+        <div style="font-size:28px;font-weight:900;color:#dc2626;" id="kpiBreached">—</div>
+      </div>
+      <div class="master-kpi" style="border-left:4px solid #d97706;">
+        <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:6px;">Críticos</div>
+        <div style="font-size:28px;font-weight:900;color:#d97706;" id="kpiCritical">—</div>
+      </div>
+    </div>
+    <!-- Kanban board -->
+    <div id="supportKanban" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;min-height:200px;">
+      <div style="text-align:center;padding:40px;color:#9ca3af;width:100%;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><div style="margin-top:8px;">Carregando chamados...</div></div>
+    </div>
   </div>
 
   <!-- Painel: Usuários Master -->
@@ -1028,6 +1066,7 @@ app.get('/', async (c) => {
       <div style="display:flex;border-bottom:1px solid #e9ecef;padding:0 22px;background:#f8f9fa;flex-shrink:0;overflow-x:auto;">
         <button class="mtab active" id="detTabInfo"       data-det-tab="info">Informações</button>
         <button class="mtab"        id="detTabModulos"    data-det-tab="modulos">Módulos</button>
+        <button class="mtab"        id="detTabSuporte"    data-det-tab="suporte">Suporte</button>
         <button class="mtab"        id="detTabPagamentos" data-det-tab="pagamentos">Pagamentos</button>
         <button class="mtab"        id="detTabAtividade"  data-det-tab="atividade">Atividade</button>
       </div>
@@ -1161,6 +1200,41 @@ app.get('/', async (c) => {
     </div>
   </div>
 
+  <!-- Modal: Novo Chamado de Suporte (Master) -->
+  <div class="moverlay" id="novoTicketMasterModal">
+    <div class="mmodal" style="max-width:500px;">
+      <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:15px;font-weight:700;color:#7c3aed;"><i class="fas fa-ticket-alt" style="margin-right:8px;"></i>Novo Chamado de Suporte</h3>
+        <button onclick="closeMM('novoTicketMasterModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
+      </div>
+      <div style="padding:22px;display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label class="form-label">Cliente</label>
+          <select class="form-control" id="mtEmpresa">
+            <option value="">— Selecione o cliente —</option>
+            ${clients.map((cli) => `<option value="${cli.id}">${cli.fantasia || cli.empresa}</option>`).join('')}
+          </select>
+        </div>
+        <div><label class="form-label">Título *</label><input class="form-control" id="mtTitle" placeholder="Título do chamado..."></div>
+        <div><label class="form-label">Descrição *</label><textarea class="form-control" id="mtDescription" rows="3" placeholder="Descreva o problema..."></textarea></div>
+        <div><label class="form-label">Prioridade</label>
+          <select class="form-control" id="mtPriority">
+            <option value="low">🟢 Baixa</option>
+            <option value="medium" selected>🟡 Média</option>
+            <option value="high">🟠 Alta</option>
+            <option value="critical">🔴 Crítica</option>
+          </select>
+        </div>
+      </div>
+      <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeMM('novoTicketMasterModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarTicketMaster()" class="btn btn-primary" id="btnSalvarTicketMaster" style="background:#7c3aed;">
+          <i class="fas fa-paper-plane"></i> Criar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
   // ── Dados locais ──────────────────────────────────────────────────────────────
   let masterClientsData = ${JSON.stringify(clients)};
@@ -1206,6 +1280,7 @@ app.get('/', async (c) => {
     if (!btn) return;
     switch (btn.id) {
       case 'btnNovoCliente':         openMM('addClientModal'); break;
+      case 'btnNovoTicketMaster':    openNovoTicketMasterModal(); break;
       case 'btnExportCSV':           exportClientCSV(); break;
       case 'btnNovoMasterUser':      openMM('addMasterUserModal'); break;
       case 'btnMigrarDetalhe':       openMigrateModal(window._curCliId); closeMM('clientDetailModal'); break;
@@ -1222,8 +1297,8 @@ app.get('/', async (c) => {
 
   // ── Abas do painel ────────────────────────────────────────────────────────────
   function switchPanelTab(tab) {
-    const panels = { clientes: 'panelClientes', usuarios: 'panelUsuarios', auditoria: 'panelAuditoria' };
-    const tabs   = { clientes: 'tabClientes',   usuarios: 'tabUsuarios',   auditoria: 'tabAuditoria'   };
+    const panels = { clientes: 'panelClientes', suporte: 'panelSuporte', usuarios: 'panelUsuarios', auditoria: 'panelAuditoria' };
+    const tabs   = { clientes: 'tabClientes',   suporte: 'tabSuporte',   usuarios: 'tabUsuarios',   auditoria: 'tabAuditoria'   };
 
     Object.keys(panels).forEach(key => {
       const panel = document.getElementById(panels[key]);
@@ -1231,6 +1306,8 @@ app.get('/', async (c) => {
       if (panel) panel.style.display = (key === tab) ? '' : 'none';
       if (btn)   btn.className = 'panel-tab' + (key === tab ? ' active' : '');
     });
+
+    if (tab === 'suporte') loadSupportTickets();
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────────
@@ -1259,7 +1336,7 @@ app.get('/', async (c) => {
     const titleEl = document.getElementById('detailTitle');
     if (titleEl) titleEl.innerHTML = '<i class="fas fa-building" style="margin-right:8px;"></i>' + (cli.fantasia || cli.empresa);
     _curDetTab = 'info';
-    ['info','modulos','pagamentos','atividade'].forEach(t => {
+    ['info','modulos','suporte','pagamentos','atividade'].forEach(t => {
       const btn = document.getElementById('detTab' + t.charAt(0).toUpperCase() + t.slice(1));
       if (btn) btn.className = 'mtab' + (t==='info'?' active':'');
     });
@@ -1269,7 +1346,7 @@ app.get('/', async (c) => {
 
   function switchDetTab(tab) {
     _curDetTab = tab;
-    ['info','modulos','pagamentos','atividade'].forEach(t => {
+    ['info','modulos','suporte','pagamentos','atividade'].forEach(t => {
       const btn = document.getElementById('detTab' + t.charAt(0).toUpperCase() + t.slice(1));
       if (btn) btn.className = 'mtab' + (t===tab?' active':'');
     });
@@ -1319,6 +1396,13 @@ app.get('/', async (c) => {
           '<i class="fas '+(on?'fa-check':'fa-times')+'" style="margin-right:5px;font-size:10px;"></i>'+m+'</span>';
       });
       html += '</div>';
+    } else if (tab === 'suporte') {
+      html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:13px;font-weight:700;color:#374151;">Chamados de Suporte</div>' +
+        '<button class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" onclick="openNovoTicketMasterForClient(' + JSON.stringify(id || '_curCliId') + ')">' +
+        '<i class="fas fa-plus"></i> Novo Chamado</button></div>';
+      html += '<div id="detSupportTickets" style="min-height:80px;"><div style="text-align:center;padding:20px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i></div></div>';
+      setTimeout(function() { loadClientSupportTickets(_curCliId); }, 100);
     } else if (tab === 'pagamentos') {
       if (!cli.pagamentos || cli.pagamentos.length === 0) {
         html = '<div style="text-align:center;padding:24px;color:#9ca3af;"><i class="fas fa-receipt" style="font-size:32px;display:block;margin-bottom:8px;opacity:0.4;"></i>Nenhum pagamento registrado</div>';
@@ -1589,10 +1673,258 @@ app.get('/', async (c) => {
       else { showToast('Erro ao atualizar usuário.', 'error'); }
     } catch { showToast('Erro de conexão.', 'error'); }
   }
+
+  // ── Suporte: funções ──────────────────────────────────────────────────────────
+  const SUPPORT_STATUS_ORDER = ['Criada','Analisando','N1','N2','N3','Resolvendo','Resolvida'];
+  const PRIORITY_COLORS = { critical:'#dc2626', high:'#ea580c', medium:'#d97706', low:'#16a34a' };
+  const PRIORITY_LABELS_PT = { critical:'Crítica', high:'Alta', medium:'Média', low:'Baixa' };
+
+  let _masterTickets = [];
+  let _newTicketCliId = null;
+
+  async function loadSupportTickets() {
+    try {
+      const res = await fetch('/master/api/support/tickets');
+      if (!res.ok) { renderKanban([]); return; }
+      const data = await res.json().catch(() => ({ tickets: [] }));
+      _masterTickets = data.tickets || [];
+      const now = Date.now();
+      const open     = _masterTickets.filter(t => t.status !== 'Resolvida').length;
+      const resolved = _masterTickets.filter(t => t.status === 'Resolvida').length;
+      const breached = _masterTickets.filter(t => t.status !== 'Resolvida' && t.due_at && new Date(t.due_at).getTime() < now).length;
+      const critical = _masterTickets.filter(t => t.priority === 'critical' && t.status !== 'Resolvida').length;
+      const kpiOpen     = document.getElementById('kpiOpen');
+      const kpiResolved = document.getElementById('kpiResolved');
+      const kpiBreached = document.getElementById('kpiBreached');
+      const kpiCritical = document.getElementById('kpiCritical');
+      if (kpiOpen)     kpiOpen.textContent     = open;
+      if (kpiResolved) kpiResolved.textContent = resolved;
+      if (kpiBreached) kpiBreached.textContent = breached;
+      if (kpiCritical) kpiCritical.textContent = critical;
+      renderKanban(_masterTickets);
+    } catch(e) {
+      renderKanban([]);
+    }
+  }
+
+  function renderKanban(tickets) {
+    const kanban = document.getElementById('supportKanban');
+    if (!kanban) return;
+    const now = Date.now();
+    const cols = SUPPORT_STATUS_ORDER.map(function(status) {
+      const colTickets = tickets.filter(function(t) { return t.status === status; });
+      const cards = colTickets.map(function(t) {
+        const pc = PRIORITY_COLORS[t.priority] || '#6c757d';
+        const pl = PRIORITY_LABELS_PT[t.priority] || t.priority;
+        const overdue = t.due_at && new Date(t.due_at).getTime() < now && t.status !== 'Resolvida';
+        const cliName = (masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—';
+        return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
+          '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:4px;line-height:1.3;">' + (t.title || '—') + '</div>' +
+          '<div style="font-size:10px;color:#6c757d;margin-bottom:6px;">' + cliName + '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+          '<span style="font-size:10px;font-weight:700;color:' + pc + ';background:' + pc + '18;padding:1px 6px;border-radius:4px;">' + pl + '</span>' +
+          (overdue ? '<span style="font-size:9px;font-weight:700;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i> SLA</span>' : '') +
+          '</div>' +
+          (t.due_at ? '<div style="font-size:9px;color:' + (overdue?'#dc2626':'#9ca3af') + ';margin-top:4px;">Prazo: ' + new Date(t.due_at).toLocaleDateString('pt-BR') + '</div>' : '') +
+          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(\'' + t.id + '\',this.value)">' +
+          SUPPORT_STATUS_ORDER.map(function(s) { return '<option value="' + s + '" ' + (s===t.status?'selected':'') + '>' + s + '</option>'; }).join('') +
+          '</select>' +
+          '</div>';
+      }).join('');
+      return '<div style="min-width:160px;flex:1;max-width:200px;">' +
+        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#6c757d;margin-bottom:10px;padding:6px 10px;background:#f8f9fa;border-radius:6px;display:flex;align-items:center;justify-content:space-between;">' +
+        status + '<span style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;">' + colTickets.length + '</span></div>' +
+        (cards || '<div style="text-align:center;padding:16px;color:#d1d5db;font-size:11px;">—</div>') +
+        '</div>';
+    }).join('');
+    kanban.innerHTML = cols;
+  }
+
+  async function updateTicketStatus(ticketId, newStatus) {
+    try {
+      await fetch('/master/api/support/tickets/' + ticketId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const ticket = _masterTickets.find(function(t) { return t.id === ticketId; });
+      if (ticket) { ticket.status = newStatus; renderKanban(_masterTickets); }
+      showToast('Status atualizado!', 'success');
+    } catch { showToast('Erro ao atualizar status.', 'error'); }
+  }
+
+  async function loadClientSupportTickets(empresaId) {
+    const container = document.getElementById('detSupportTickets');
+    if (!container) return;
+    try {
+      const res = await fetch('/master/api/support/tickets?empresa_id=' + encodeURIComponent(empresaId));
+      const data = await res.json().catch(() => ({ tickets: [] }));
+      const tickets = data.tickets || [];
+      if (tickets.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;"><i class="fas fa-ticket-alt" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.3;"></i>Nenhum chamado para este cliente</div>';
+        return;
+      }
+      const now = Date.now();
+      container.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        tickets.sort(function(a,b) { return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); }).map(function(t) {
+          const pc = PRIORITY_COLORS[t.priority] || '#6c757d';
+          const pl = PRIORITY_LABELS_PT[t.priority] || t.priority;
+          const overdue = t.due_at && new Date(t.due_at).getTime() < now && t.status !== 'Resolvida';
+          return '<div style="padding:10px 12px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;">' +
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">' +
+            '<div style="font-size:12px;font-weight:700;color:#1B4F72;">' + (t.title || '—') + '</div>' +
+            '<span style="font-size:10px;font-weight:700;color:' + pc + ';white-space:nowrap;">' + pl + '</span></div>' +
+            '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;">' +
+            '<span style="font-size:10px;background:#e9ecef;color:#374151;padding:1px 7px;border-radius:10px;font-weight:600;">' + t.status + '</span>' +
+            (overdue ? '<span style="font-size:10px;color:#dc2626;font-weight:700;"><i class="fas fa-exclamation-triangle"></i> SLA vencido</span>' : '') +
+            '<span style="font-size:10px;color:#9ca3af;margin-left:auto;">' + new Date(t.created_at).toLocaleDateString('pt-BR') + '</span></div></div>';
+        }).join('') + '</div>';
+    } catch {
+      container.innerHTML = '<div style="text-align:center;padding:16px;color:#9ca3af;font-size:12px;">Erro ao carregar chamados</div>';
+    }
+  }
+
+  function openNovoTicketMasterModal(cliId) {
+    _newTicketCliId = cliId || _curCliId || null;
+    const modal = document.getElementById('novoTicketMasterModal');
+    if (modal) { modal.style.display = 'flex'; modal.classList.add('open'); }
+  }
+
+  function openNovoTicketMasterForClient(cliId) {
+    openNovoTicketMasterModal(cliId === '_curCliId' ? _curCliId : cliId);
+  }
+
+  async function salvarTicketMaster() {
+    const title       = document.getElementById('mtTitle')?.value?.trim();
+    const description = document.getElementById('mtDescription')?.value?.trim();
+    const priority    = document.getElementById('mtPriority')?.value || 'medium';
+    const empresaId   = document.getElementById('mtEmpresa')?.value || _newTicketCliId || '';
+    if (!title)       { showToast('Informe o título do chamado.', 'error'); return; }
+    if (!description) { showToast('Informe a descrição.', 'error'); return; }
+    const btn = document.getElementById('btnSalvarTicketMaster');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+    try {
+      const res = await fetch('/master/api/support/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, priority, empresa_id: empresaId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        const modal = document.getElementById('novoTicketMasterModal');
+        if (modal) { modal.style.display = 'none'; modal.classList.remove('open'); }
+        showToast('✅ Chamado criado!', 'success');
+        loadSupportTickets();
+        if (_curDetTab === 'suporte') loadClientSupportTickets(_curCliId);
+      } else {
+        showToast('Erro ao criar chamado: ' + (data.error || ''), 'error');
+      }
+    } catch { showToast('Erro de conexão.', 'error'); }
+    finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Criar'; } }
+  }
   </script>
   `
 
   return c.html(masterLayout(`${totalClients} Clientes`, content, loggedUser?.name || auth.name))
+})
+
+// ── API: GET /api/support/tickets ─────────────────────────────────────────────
+app.get('/api/support/tickets', async (c) => {
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const db = c.env?.DB || null
+  const empresaId = c.req.query('empresa_id') || ''
+
+  // Try D1 first, fall back to in-memory (no per-master-session tenant store)
+  if (db) {
+    try {
+      const where = empresaId ? 'WHERE empresa_id = ?' : ''
+      const stmt = db.prepare(`SELECT * FROM support_tickets ${where} ORDER BY updated_at DESC LIMIT 200`)
+      const res = empresaId ? await stmt.bind(empresaId).all() : await stmt.all()
+      return c.json({ ok: true, tickets: res.results || [] })
+    } catch {
+      return c.json({ ok: true, tickets: [] })
+    }
+  }
+  return c.json({ ok: true, tickets: [] })
+})
+
+// ── API: POST /api/support/tickets ────────────────────────────────────────────
+app.post('/api/support/tickets', async (c) => {
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const db   = c.env?.DB || null
+  const body = await c.req.json().catch(() => null) as any
+  if (!body || !body.title) return c.json({ ok: false, error: 'Título é obrigatório' }, 400)
+
+  const SLA_MS: Record<string, number> = {
+    critical: 4  * 60 * 60 * 1000,
+    high:     24 * 60 * 60 * 1000,
+    medium:   72 * 60 * 60 * 1000,
+    low:      7  * 24 * 60 * 60 * 1000,
+  }
+  const priority  = ['low','medium','high','critical'].includes(body.priority) ? body.priority : 'medium'
+  const id        = 'tkt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
+  const now       = new Date().toISOString()
+  const dueAt     = new Date(Date.now() + (SLA_MS[priority] || SLA_MS.medium)).toISOString()
+  const empresaId = body.empresa_id || ''
+
+  const ticket = {
+    id, empresa_id: empresaId, user_id: 'master',
+    created_by_name: 'Master Admin', created_by_email: 'master@syncrus.com.br',
+    assigned_to_user_id: null,
+    title: body.title, description: body.description || '',
+    priority, status: 'Criada',
+    created_at: now, updated_at: now, resolved_at: null,
+    due_at: dueAt, last_activity_at: now,
+  }
+
+  if (db) {
+    try {
+      const keys = Object.keys(ticket)
+      const vals = Object.values(ticket)
+      await db.prepare(
+        `INSERT INTO support_tickets (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`
+      ).bind(...vals).run()
+    } catch (e: any) {
+      console.error(`[MASTER][SUPPORT][CRÍTICO] Falha ao persistir ticket ${id}: ${e?.message}`)
+      return c.json({ ok: false, error: 'Erro ao salvar chamado no banco de dados' }, 500)
+    }
+  }
+
+  return c.json({ ok: true, ticket })
+})
+
+// ── API: PATCH /api/support/tickets/:id ───────────────────────────────────────
+app.patch('/api/support/tickets/:id', async (c) => {
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const db       = c.env?.DB || null
+  const ticketId = c.req.param('id')
+  const body     = await c.req.json().catch(() => null) as any
+  if (!body) return c.json({ ok: false, error: 'Dados inválidos' }, 400)
+
+  const now = new Date().toISOString()
+  const updates: Record<string, any> = { updated_at: now, last_activity_at: now }
+  if (body.status) {
+    const validStatuses = ['Criada','Analisando','N1','N2','N3','Resolvendo','Resolvida']
+    if (!validStatuses.includes(body.status)) return c.json({ ok: false, error: 'Status inválido' }, 400)
+    updates.status = body.status
+    if (body.status === 'Resolvida') updates.resolved_at = now
+  }
+  if (body.priority) updates.priority = body.priority
+  if (body.assigned_to_user_id !== undefined) updates.assigned_to_user_id = body.assigned_to_user_id
+
+  if (db) {
+    try {
+      const keys = Object.keys(updates)
+      const vals = Object.values(updates)
+      const setClause = keys.map(k => `${k} = ?`).join(', ')
+      await db.prepare(`UPDATE support_tickets SET ${setClause} WHERE id = ?`).bind(...vals, ticketId).run()
+    } catch (e: any) {
+      console.error(`[MASTER][SUPPORT][CRÍTICO] Falha ao atualizar ticket ${ticketId}: ${e?.message}`)
+      return c.json({ ok: false, error: 'Erro ao atualizar chamado' }, 500)
+    }
+  }
+
+  return c.json({ ok: true })
 })
 
 // ── Helper: tabela de usuários master ─────────────────────────────────────────

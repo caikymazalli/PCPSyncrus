@@ -48,6 +48,22 @@ async function ensureAuthenticatedOr401(c: any): Promise<Response | null> {
   return null
 }
 
+/** Returns true if the error message indicates a schema drift (missing table or column). */
+function isSchemaDriftError(msg: string): boolean {
+  return /no such table|no such column|table.*not found|column.*not found/i.test(msg)
+}
+
+/** Build a clear 500 error response with migration instructions when schema is out of date. */
+function schemaDriftError(c: any, detail: string): Response {
+  const message =
+    `Schema desatualizado no banco de dados D1. ` +
+    `Detalhe: ${detail}. ` +
+    `Execute os comandos abaixo para corrigir:\n` +
+    `  1. wrangler d1 migrations apply pcpsyncrus-production --remote\n` +
+    `  2. npx vite-node scripts/d1-migrate-work-instructions.ts pcpsyncrus-production`
+  return c.json({ ok: false, error: message, schemaDrift: true }, 500)
+}
+
 // ── UI: GET /instrucoes ──
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
@@ -805,14 +821,36 @@ app.post('/api/instructions', async (c) => {
 
   // D1-first (production)
   if (db && userId !== 'demo-tenant') {
-    const savedInstruction = await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
-    if (!savedInstruction) {
-      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir instrução ${id} em D1`)
+    try {
+      const instrData = { ...instruction, user_id: userId, empresa_id: empresaId || '1' }
+      const instrKeys = Object.keys(instrData)
+      const instrVals = Object.values(instrData)
+      await db.prepare(
+        `INSERT INTO work_instructions (${instrKeys.join(', ')}) VALUES (${instrKeys.map(() => '?').join(', ')})`
+      ).bind(...instrVals).run()
+    } catch (e: any) {
+      const msg = e?.message || String(e)
+      if (isSchemaDriftError(msg)) {
+        console.error(`[INSTRUCOES][SCHEMA] Schema drift detectado ao inserir instrução ${id}: ${msg}`)
+        return schemaDriftError(c, msg)
+      }
+      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir instrução ${id} em D1: ${msg}`)
       return err(c, 'Erro ao salvar instrução no banco de dados', 500)
     }
-    const savedVersion = await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
-    if (!savedVersion) {
-      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir versão ${versionId} em D1`)
+    try {
+      const versionData = { ...version, is_current: 1, user_id: userId, empresa_id: empresaId || '1' }
+      const versionKeys = Object.keys(versionData)
+      const versionVals = Object.values(versionData)
+      await db.prepare(
+        `INSERT INTO work_instruction_versions (${versionKeys.join(', ')}) VALUES (${versionKeys.map(() => '?').join(', ')})`
+      ).bind(...versionVals).run()
+    } catch (e: any) {
+      const msg = e?.message || String(e)
+      if (isSchemaDriftError(msg)) {
+        console.error(`[INSTRUCOES][SCHEMA] Schema drift detectado ao inserir versão ${versionId}: ${msg}`)
+        return schemaDriftError(c, msg)
+      }
+      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir versão ${versionId} em D1: ${msg}`)
       return err(c, 'Erro ao salvar versão no banco de dados', 500)
     }
     console.log(`[INSTRUCOES] Instrução ${id} e versão ${versionId} persistidas em D1 com sucesso`)

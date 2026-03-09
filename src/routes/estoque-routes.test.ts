@@ -383,3 +383,17 @@ describe('POST /estoque/api/warehouse-location/create', () => {
     expect(res.status).toBe(400)
   })
 })
+
+// ── Source-code guardrail: editarAlmoxarifado definida ───────────────────────
+
+describe('estoque.ts source-code: editarAlmoxarifado definida', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('função editarAlmoxarifado está definida no script client-side', () => {
+    expect(src).toContain('function editarAlmoxarifado(')
+  })
+
+  it('editarAlmoxarifado abre o modal editAlmoxarifadoModal', () => {
+    expect(src).toContain('editAlmoxarifadoModal')
+  })
+})

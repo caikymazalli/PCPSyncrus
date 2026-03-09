@@ -252,6 +252,9 @@ export function layout(title: string, content: string, activePage: string = '', 
     <a href="/admin" class="nav-item ${activePage === 'admin' ? 'active' : ''}" title="Administração de Usuários e Empresa">
       <span class="icon"><i class="fas fa-users-cog"></i></span> Administração
     </a>
+    <a href="/suporte" class="nav-item ${activePage === 'suporte' ? 'active' : ''}" title="Suporte Técnico — Abrir e acompanhar chamados">
+      <span class="icon"><i class="fas fa-headset"></i></span> Suporte
+    </a>
     <a href="/assinatura" class="nav-item ${activePage === 'assinatura' ? 'active' : ''}" title="Planos e Licenças">
       <span class="icon"><i class="fas fa-credit-card"></i></span> Plano & Licença
     </a>
