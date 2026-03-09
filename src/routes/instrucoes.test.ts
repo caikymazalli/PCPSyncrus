@@ -174,6 +174,23 @@ describe('instrucoes.ts source-code safeguards', () => {
     expect(viewUrlExpr).not.toMatch(/`/)
     expect(viewUrlExpr).toContain("'/instrucoes/api/photos/'")
   })
+
+  it('saveInstruction reads body as text before JSON.parse (resilient error handling)', () => {
+    const MAX_FUNCTION_LENGTH = 2000
+    const fnStart = src.indexOf('async function saveInstruction')
+    // Find the closing brace of the function by looking for the next top-level function declaration
+    const nextFnStart = src.indexOf('\n  async function ', fnStart + 1)
+    const fnEnd = nextFnStart > fnStart ? nextFnStart : fnStart + MAX_FUNCTION_LENGTH
+    const fnBody = src.slice(fnStart, fnEnd)
+    // Must NOT call res.json() directly — that masks non-JSON 500 bodies
+    expect(fnBody).not.toContain('res.json()')
+    // Must read body as text first
+    expect(fnBody).toContain('res.text()')
+    // Must attempt JSON.parse
+    expect(fnBody).toContain('JSON.parse')
+    // Error alert must include the HTTP status code
+    expect(fnBody).toContain('res.status')
+  })
 })
 
 // ── Route integration tests ───────────────────────────────────────────────────
