@@ -803,13 +803,22 @@ app.post('/api/instructions', async (c) => {
     created_by: userId,
   }
 
-  // D1
+  // D1-first (production)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
-    await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
+    const savedInstruction = await dbInsert(db, 'work_instructions', { ...instruction, user_id: userId, empresa_id: empresaId })
+    if (!savedInstruction) {
+      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir instrução ${id} em D1`)
+      return err(c, 'Erro ao salvar instrução no banco de dados', 500)
+    }
+    const savedVersion = await dbInsert(db, 'work_instruction_versions', { ...version, is_current: 1, user_id: userId, empresa_id: empresaId })
+    if (!savedVersion) {
+      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir versão ${versionId} em D1`)
+      return err(c, 'Erro ao salvar versão no banco de dados', 500)
+    }
+    console.log(`[INSTRUCOES] Instrução ${id} e versão ${versionId} persistidas em D1 com sucesso`)
   }
 
-  // Memória (after D1 or in demo/no-db mode)
+  // Memória (after D1 success or in demo/no-db mode)
   if (!tenant.workInstructions) tenant.workInstructions = []
   if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
   tenant.workInstructions.push(instruction)
@@ -850,12 +859,17 @@ app.post('/api/instructions/:id/steps', async (c) => {
     created_by: userId,
   }
 
-  // D1
+  // D1-first (production)
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instruction_steps', { ...step, user_id: userId, empresa_id: empresaId })
+    const saved = await dbInsert(db, 'work_instruction_steps', { ...step, user_id: userId, empresa_id: empresaId })
+    if (!saved) {
+      console.error(`[INSTRUCOES][ETAPAS][CRÍTICO] Falha ao persistir etapa ${stepId} em D1`)
+      return err(c, 'Erro ao salvar etapa no banco de dados', 500)
+    }
+    console.log(`[INSTRUCOES][ETAPAS] Etapa ${stepId} persistida em D1 com sucesso`)
   }
 
-  // Memória (after D1 or in demo/no-db mode)
+  // Memória (after D1 success or in demo/no-db mode)
   if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
   tenant.workInstructionSteps.push(step)
   markTenantModified(userId)

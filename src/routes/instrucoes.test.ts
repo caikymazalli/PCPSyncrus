@@ -482,6 +482,58 @@ const successDB = {
   }),
 }
 
+// ── Source-code guardrails: D1-first in POST create handlers ─────────────────
+
+describe('instrucoes.ts source-code guardrails D1-first (POST create instruction)', () => {
+  const { readFileSync } = require('fs')
+  const { resolve } = require('path')
+  const src: string = readFileSync(resolve(__dirname, 'instrucoes.ts'), 'utf8')
+
+  it('POST instruction handler: bloco D1 aparece antes da mutação de memória', () => {
+    const handlerStart = src.indexOf("app.post('/api/instructions',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memUpdatePos = handlerBody.indexOf('tenant.workInstructions.push(instruction)')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memUpdatePos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memUpdatePos)
+  })
+
+  it('POST instruction handler: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.post('/api/instructions',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+})
+
+describe('instrucoes.ts source-code guardrails D1-first (POST add step)', () => {
+  const { readFileSync } = require('fs')
+  const { resolve } = require('path')
+  const src: string = readFileSync(resolve(__dirname, 'instrucoes.ts'), 'utf8')
+
+  it('POST step handler: bloco D1 aparece antes da mutação de memória', () => {
+    const handlerStart = src.indexOf("app.post('/api/instructions/:id/steps',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memUpdatePos = handlerBody.indexOf('tenant.workInstructionSteps.push(step)')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memUpdatePos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memUpdatePos)
+  })
+
+  it('POST step handler: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.post('/api/instructions/:id/steps',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+})
+
 // ── Source-code guardrail: D1-first in PUT step handler ──────────────────────
 
 describe('instrucoes.ts source-code guardrails D1-first (PUT step)', () => {
@@ -605,6 +657,116 @@ describe('PUT /instrucoes/api/instructions/:id/steps/:stepId — modo demo (sem 
 
     const stepInMem = tenants[TEST_USER_ID].workInstructionSteps[0]
     expect(stepInMem.title).toBe('Etapa Demo')
+  })
+})
+
+// ── Integração: POST instruction — D1 falhando ───────────────────────────────
+
+describe('POST /instrucoes/api/instructions — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(false) })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO adiciona instrução à memória quando D1 falha', async () => {
+    const initialCount = tenants[TEST_USER_ID].workInstructions.length
+
+    const res = await app.request(
+      '/api/instructions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ title: 'Nova Instrução', code: 'NI-001' }),
+      },
+      { DB: failingDB }
+    )
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido alterada
+    expect(tenants[TEST_USER_ID].workInstructions.length).toBe(initialCount)
+  })
+})
+
+describe('POST /instrucoes/api/instructions — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(false) })
+  afterEach(cleanup)
+
+  it('retorna 200 e adiciona instrução à memória quando D1 tem sucesso', async () => {
+    const res = await app.request(
+      '/api/instructions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ title: 'Instrução Produção OK', code: 'PROD-001' }),
+      },
+      { DB: successDB }
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ instruction: { title: string }; version: { version: string } }>
+    expect(data.ok).toBe(true)
+    expect(data.instruction?.title).toBe('Instrução Produção OK')
+    expect(data.version?.version).toBe('1.0')
+
+    // Memória deve ter sido atualizada
+    const found = tenants[TEST_USER_ID].workInstructions.find((i: any) => i.title === 'Instrução Produção OK')
+    expect(found).toBeDefined()
+  })
+})
+
+// ── Integração: POST step — D1 falhando ──────────────────────────────────────
+
+describe('POST /instrucoes/api/instructions/:id/steps — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO adiciona etapa à memória quando D1 falha', async () => {
+    const initialCount = tenants[TEST_USER_ID].workInstructionSteps.length
+
+    const res = await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/steps',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ step_number: 1, title: 'Etapa D1 Fail' }),
+      },
+      { DB: failingDB }
+    )
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido alterada
+    expect(tenants[TEST_USER_ID].workInstructionSteps.length).toBe(initialCount)
+  })
+})
+
+describe('POST /instrucoes/api/instructions/:id/steps — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e adiciona etapa à memória quando D1 tem sucesso', async () => {
+    const res = await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/steps',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ step_number: 1, title: 'Etapa Produção OK' }),
+      },
+      { DB: successDB }
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ step: { title: string; step_number: number } }>
+    expect(data.ok).toBe(true)
+    expect(data.step?.title).toBe('Etapa Produção OK')
+    expect(data.step?.step_number).toBe(1)
+
+    // Memória deve ter sido atualizada
+    const found = tenants[TEST_USER_ID].workInstructionSteps.find((s: any) => s.title === 'Etapa Produção OK')
+    expect(found).toBeDefined()
   })
 })
 
