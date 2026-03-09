@@ -806,40 +806,45 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }))
     }
     // Load product-supplier linkages
-    const prodSupp = await db.prepare(
-      `SELECT id, product_id, product_code, supplier_id, priority, internal_production FROM product_suppliers WHERE user_id = ?${byEmpresa} ORDER BY product_code ASC`
-    ).bind(...bindEmpresa([userId])).all()
-    if (prodSupp.results && prodSupp.results.length > 0) {
-      const grouped: Record<string, any> = {}
-      for (const row of prodSupp.results as any[]) {
-        const code = row.product_code
-        if (!code) continue
-        if (!grouped[code]) {
-          grouped[code] = {
-            id: row.id,
-            productCode: code,
-            productId: row.product_id || '',
-            supplierIds: [],
-            supplierIdSet: new Set<string>(),
-            priorities: {},
-            type: row.internal_production ? 'internal' : 'external',
-            internalProduction: row.internal_production === 1,
+    try {
+      const prodSupp = await db.prepare(
+        `SELECT id, product_id, product_code, supplier_id, priority, internal_production FROM product_suppliers WHERE user_id = ?${byEmpresa} ORDER BY product_code ASC`
+      ).bind(...bindEmpresa([userId])).all()
+      if (prodSupp.results && prodSupp.results.length > 0) {
+        const grouped: Record<string, any> = {}
+        for (const row of prodSupp.results as any[]) {
+          const code = row.product_code
+          if (!code) continue
+          if (!grouped[code]) {
+            grouped[code] = {
+              id: row.id,
+              productCode: code,
+              productId: row.product_id || '',
+              supplierIds: [],
+              supplierIdSet: new Set<string>(),
+              priorities: {},
+              type: row.internal_production ? 'internal' : 'external',
+              internalProduction: row.internal_production === 1,
+            }
+          }
+          if (row.supplier_id && !grouped[code].supplierIdSet.has(row.supplier_id)) {
+            grouped[code].supplierIdSet.add(row.supplier_id)
+            grouped[code].supplierIds.push(row.supplier_id)
+            grouped[code].priorities[row.supplier_id] = row.priority || 1
           }
         }
-        if (row.supplier_id && !grouped[code].supplierIdSet.has(row.supplier_id)) {
-          grouped[code].supplierIdSet.add(row.supplier_id)
-          grouped[code].supplierIds.push(row.supplier_id)
-          grouped[code].priorities[row.supplier_id] = row.priority || 1
-        }
+        const dbEntries = Object.values(grouped).map((g: any) => {
+          const { supplierIdSet: _, ...rest } = g
+          return rest
+        })
+        // D1 é a fonte de verdade em produção: substitui memória pelo estado do D1.
+        // Entradas apenas em memória (nunca persistidas) são descartadas para evitar
+        // divergência após deploy/cold-start.
+        tenant.productSuppliers = dbEntries
       }
-      const dbEntries = Object.values(grouped).map((g: any) => {
-        const { supplierIdSet: _, ...rest } = g
-        return rest
-      })
-      // D1 é a fonte de verdade em produção: substitui memória pelo estado do D1.
-      // Entradas apenas em memória (nunca persistidas) são descartadas para evitar
-      // divergência após deploy/cold-start.
-      tenant.productSuppliers = dbEntries
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar product_suppliers:', (e as any).message)
+      if (!tenant.productSuppliers) tenant.productSuppliers = []
     }
     // Load quotations
     try {
@@ -974,10 +979,42 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           updated_by: r.updated_by,
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructions.length} instruções de trabalho carregadas`)
+      } else if (!tenant.workInstructions) {
+        tenant.workInstructions = []
       }
     } catch (e) {
-      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instructions:', (e as any).message)
-      tenant.workInstructions = []
+      const msg = (e as any).message || ''
+      if (msg.includes('no such column: empresa_id')) {
+        // Legacy schema fallback: work_instructions table exists but lacks empresa_id column
+        console.warn('[HYDRATION] ⚠️ [LEGACY] Coluna empresa_id ausente em work_instructions — usando fallback sem filtro de empresa. Execute: npm run d1:migrate-work-instructions')
+        try {
+          const instrs = await db.prepare('SELECT * FROM work_instructions WHERE user_id = ? ORDER BY created_at DESC')
+            .bind(userId).all()
+          if (instrs.results && instrs.results.length > 0) {
+            tenant.workInstructions = (instrs.results as any[]).map(r => ({
+              id: r.id,
+              code: r.code,
+              title: r.title,
+              description: r.description || '',
+              current_version: r.current_version,
+              status: r.status || 'draft',
+              created_at: r.created_at,
+              created_by: r.created_by,
+              updated_at: r.updated_at,
+              updated_by: r.updated_by,
+            }))
+            console.log(`[HYDRATION] ✅ [LEGACY] ${tenant.workInstructions.length} instruções carregadas via fallback sem empresa_id`)
+          } else if (!tenant.workInstructions) {
+            tenant.workInstructions = []
+          }
+        } catch (e2) {
+          console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instructions (legacy fallback):', (e2 as any).message)
+          if (!tenant.workInstructions) tenant.workInstructions = []
+        }
+      } else {
+        console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instructions:', msg)
+        if (!tenant.workInstructions) tenant.workInstructions = []
+      }
     }
 
     // Load work instruction versions
@@ -997,10 +1034,17 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           created_by: r.created_by,
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructionVersions.length} versões carregadas`)
+      } else if (!tenant.workInstructionVersions) {
+        tenant.workInstructionVersions = []
       }
     } catch (e) {
-      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_versions:', (e as any).message)
-      tenant.workInstructionVersions = []
+      const msg = (e as any).message || ''
+      if (msg.includes('no such table')) {
+        console.warn('[HYDRATION] ⚠️ [LEGACY] Tabela work_instruction_versions não existe — schema legado. Execute migrations/0027 e scripts/d1-migrate-work-instructions.ts')
+      } else {
+        console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_versions:', msg)
+      }
+      if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
     }
 
     // Load work instruction steps
@@ -1019,10 +1063,17 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           created_by: r.created_by,
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructionSteps.length} etapas carregadas`)
+      } else if (!tenant.workInstructionSteps) {
+        tenant.workInstructionSteps = []
       }
     } catch (e) {
-      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_steps:', (e as any).message)
-      tenant.workInstructionSteps = []
+      const msg = (e as any).message || ''
+      if (msg.includes('no such table')) {
+        console.warn('[HYDRATION] ⚠️ [LEGACY] Tabela work_instruction_steps não existe — schema legado. Execute migrations/0027 e scripts/d1-migrate-work-instructions.ts')
+      } else {
+        console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_steps:', msg)
+      }
+      if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
     }
 
     // Load work instruction photos
@@ -1041,10 +1092,17 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           content_type: r.content_type || '',
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructionPhotos.length} fotos carregadas`)
+      } else if (!tenant.workInstructionPhotos) {
+        tenant.workInstructionPhotos = []
       }
     } catch (e) {
-      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_photos:', (e as any).message)
-      tenant.workInstructionPhotos = []
+      const msg = (e as any).message || ''
+      if (msg.includes('no such table')) {
+        console.warn('[HYDRATION] ⚠️ [LEGACY] Tabela work_instruction_photos não existe — schema legado.')
+      } else {
+        console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_photos:', msg)
+      }
+      if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
     }
 
     // Load work instruction audit log
@@ -1062,10 +1120,17 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           ip_address: r.ip_address,
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructionAuditLog.length} registros de auditoria carregados`)
+      } else if (!tenant.workInstructionAuditLog) {
+        tenant.workInstructionAuditLog = []
       }
     } catch (e) {
-      console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_audit_log:', (e as any).message)
-      tenant.workInstructionAuditLog = []
+      const msg = (e as any).message || ''
+      if (msg.includes('no such table')) {
+        console.warn('[HYDRATION] ⚠️ [LEGACY] Tabela work_instruction_audit_log não existe — schema legado.')
+      } else {
+        console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_audit_log:', msg)
+      }
+      if (!tenant.workInstructionAuditLog) tenant.workInstructionAuditLog = []
     }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)

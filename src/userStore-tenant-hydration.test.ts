@@ -310,4 +310,126 @@ describe('loadTenantFromDB — empresaId fallback', () => {
     const tenant = tenants[TEST_USER_ID]
     expect(tenant.productSupplierLinks).toHaveLength(1)
   })
+
+  it('falls back to legacy query when work_instructions lacks empresa_id column', async () => {
+    const mockInstruction = {
+      id: 'instr-legacy-001',
+      code: 'IT-LEGACY',
+      title: 'Instrução Legada',
+      description: 'Legado',
+      current_version: '1.0',
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by: TEST_USER_ID,
+      updated_by: TEST_USER_ID,
+      user_id: TEST_USER_ID,
+    }
+
+    // DB that simulates legacy schema: empresa_id filter on work_instructions throws,
+    // but a plain user_id query succeeds.
+    const db = makeMockDB(
+      { 'registered_users WHERE id': { empresa_id: TEST_EMPRESA_ID } },
+      {}
+    )
+    const originalPrepare = db.prepare.bind(db)
+    db.prepare = (sql: string) => {
+      // Simulate "no such column: empresa_id" when the filtered query is used
+      if (sql.includes('work_instructions') && sql.includes('empresa_id')) {
+        return {
+          bind: (..._args: any[]) => ({
+            first: () => Promise.resolve(null),
+            all: () => Promise.reject(new Error('no such column: empresa_id')),
+            run: () => Promise.resolve({ success: true, results: [] }),
+          }),
+          first: () => Promise.resolve(null),
+          all: () => Promise.reject(new Error('no such column: empresa_id')),
+          run: () => Promise.resolve({ success: true, results: [] }),
+        }
+      }
+      // Plain work_instructions query (legacy fallback) succeeds
+      if (sql.includes('work_instructions WHERE user_id')) {
+        return {
+          bind: (..._args: any[]) => ({
+            first: () => Promise.resolve(mockInstruction),
+            all: () => Promise.resolve({ results: [mockInstruction] }),
+            run: () => Promise.resolve({ success: true, results: [] }),
+          }),
+          first: () => Promise.resolve(mockInstruction),
+          all: () => Promise.resolve({ results: [mockInstruction] }),
+          run: () => Promise.resolve({ success: true, results: [] }),
+        }
+      }
+      return originalPrepare(sql)
+    }
+
+    await loadTenantFromDB(TEST_USER_ID, db as any, undefined)
+
+    const tenant = tenants[TEST_USER_ID]
+    expect(tenant.workInstructions).toBeDefined()
+    expect(tenant.workInstructions.length).toBeGreaterThan(0)
+    expect(tenant.workInstructions[0].title).toBe('Instrução Legada')
+  })
+
+  it('does not wipe in-memory work_instructions when normalized tables are missing', async () => {
+    // Pre-populate tenant with in-memory instructions
+    const existingInstruction = {
+      id: 'instr-mem-001',
+      code: 'IT-MEM',
+      title: 'Instrução em Memória',
+      description: '',
+      current_version: '1.0',
+      status: 'active',
+      created_at: new Date().toISOString(),
+    }
+    const tenant = tenants[TEST_USER_ID] || {}
+    tenant.workInstructions = [existingInstruction]
+    tenants[TEST_USER_ID] = tenant
+    resetTenantHydrationCache(TEST_USER_ID)
+
+    // DB simulates "no such table" for all work_instruction_* tables
+    const db = makeMockDB(
+      { 'registered_users WHERE id': { empresa_id: TEST_EMPRESA_ID } },
+      {}
+    )
+    const originalPrepare = db.prepare.bind(db)
+    db.prepare = (sql: string) => {
+      if (sql.includes('work_instruction_versions') || sql.includes('work_instruction_steps') ||
+          sql.includes('work_instruction_photos') || sql.includes('work_instruction_audit_log')) {
+        return {
+          bind: (..._args: any[]) => ({
+            first: () => Promise.resolve(null),
+            all: () => Promise.reject(new Error('no such table: ' + sql.match(/work_instruction_\w+/)?.[0])),
+            run: () => Promise.resolve({ success: true, results: [] }),
+          }),
+          first: () => Promise.resolve(null),
+          all: () => Promise.reject(new Error('no such table')),
+          run: () => Promise.resolve({ success: true, results: [] }),
+        }
+      }
+      // work_instructions (normalized) succeeds and returns one row
+      if (sql.includes('work_instructions')) {
+        return {
+          bind: (..._args: any[]) => ({
+            first: () => Promise.resolve(existingInstruction),
+            all: () => Promise.resolve({ results: [existingInstruction] }),
+            run: () => Promise.resolve({ success: true, results: [] }),
+          }),
+          first: () => Promise.resolve(existingInstruction),
+          all: () => Promise.resolve({ results: [existingInstruction] }),
+          run: () => Promise.resolve({ success: true, results: [] }),
+        }
+      }
+      return originalPrepare(sql)
+    }
+
+    await loadTenantFromDB(TEST_USER_ID, db as any, undefined)
+
+    // workInstructions loaded from DB (same row was returned)
+    expect(tenants[TEST_USER_ID].workInstructions).toHaveLength(1)
+    expect(tenants[TEST_USER_ID].workInstructions[0].title).toBe('Instrução em Memória')
+    // Normalized tables fallback gracefully to empty array (not undefined)
+    expect(tenants[TEST_USER_ID].workInstructionVersions).toBeDefined()
+    expect(tenants[TEST_USER_ID].workInstructionSteps).toBeDefined()
+  })
 })
