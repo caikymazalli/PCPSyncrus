@@ -1745,7 +1745,7 @@ app.get('/', async (c) => {
           (overdue ? '<span style="font-size:9px;font-weight:700;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i> SLA</span>' : '') +
           '</div>' +
           (t.due_at ? '<div style="font-size:9px;color:' + (overdue?'#dc2626':'#9ca3af') + ';margin-top:4px;">Prazo: ' + new Date(t.due_at).toLocaleDateString('pt-BR') + '</div>' : '') +
-          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(\'' + t.id + '\',this.value)">' +
+          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(' + JSON.stringify(t.id) + ', this.value)">' +
           SUPPORT_STATUS_ORDER.map(function(s) { return '<option value="' + s + '" ' + (s===t.status?'selected':'') + '>' + s + '</option>'; }).join('') +
           '</select>' +
           '</div>';
