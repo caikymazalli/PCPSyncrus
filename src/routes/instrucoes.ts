@@ -189,8 +189,10 @@ app.get('/', (c) => {
         body: JSON.stringify({ code, title, description: desc })
       })
 
-      const data = await res.json()
-      if (data.ok) {
+      const text = await res.text()
+      let data = null
+      try { data = JSON.parse(text) } catch (parseError) { data = null }
+      if (res.ok && data && data.ok) {
         alert('✅ Instrução criada com sucesso!')
         document.getElementById('instrCode').value = ''
         document.getElementById('instrTitle').value = ''
@@ -198,7 +200,8 @@ app.get('/', (c) => {
         closeModal('novaInstrucaoModal')
         setTimeout(() => location.reload(), 800)
       } else {
-        alert('❌ Erro: ' + (data.error || 'Desconhecido'))
+        const msg = (data && (data.error || data.message)) || text
+        alert('❌ Erro ' + res.status + ': ' + msg)
       }
     } catch (e) {
       alert('❌ Erro de conexão: ' + (e && e.message ? e.message : e))
