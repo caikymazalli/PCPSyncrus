@@ -846,6 +846,17 @@ app.post('/api/instructions', async (c) => {
       ).bind(...versionVals).run()
     } catch (e: any) {
       const msg = e?.message || String(e)
+      // Compensate: rollback instruction insert to avoid orphaned rows in D1
+      try {
+        const rollback = await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(id, userId).run()
+        if (rollback.success) {
+          console.log(`[INSTRUCOES][ROLLBACK] Instrução ${id} removida do D1 em compensação pela falha na versão`)
+        } else {
+          console.error(`[INSTRUCOES][ROLLBACK] Rollback de instrução ${id} não removeu nenhuma linha (pode já ter falhado)`)
+        }
+      } catch (rollbackErr: any) {
+        console.error(`[INSTRUCOES][ROLLBACK] Falha ao remover instrução ${id} em compensação: ${rollbackErr?.message}`)
+      }
       if (isSchemaDriftError(msg)) {
         console.error(`[INSTRUCOES][SCHEMA] Schema drift detectado ao inserir versão ${versionId}: ${msg}`)
         return schemaDriftError(c, msg)
@@ -1031,16 +1042,20 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
 
   const step = tenant.workInstructionSteps[stepIdx]
 
-  // D1
+  // D1 first
   if (db && userId !== 'demo-tenant') {
-    await dbDelete(db, 'work_instruction_steps', stepId, userId)
+    const deleted = await dbDelete(db, 'work_instruction_steps', stepId, userId)
+    if (!deleted) {
+      console.error(`[INSTRUCOES][ETAPAS][CRÍTICO] Falha ao deletar etapa ${stepId} em D1`)
+      return err(c, 'Erro ao remover etapa do banco de dados', 500)
+    }
     const photosInDb = await db.prepare('SELECT id FROM work_instruction_photos WHERE step_id = ?').bind(stepId).all()
     for (const photo of photosInDb.results || []) {
       await dbDelete(db, 'work_instruction_photos', (photo as any).id, userId)
     }
   }
 
-  // Memória (after D1 or in demo/no-db mode)
+  // Memória (after D1 success or demo/no-db mode)
   tenant.workInstructionSteps.splice(stepIdx, 1)
 
   // Remover fotos associadas
@@ -1110,12 +1125,16 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
     content_type: resolvedContentType,
   }
 
-  // D1
+  // D1 first
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+    const saved = await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+    if (!saved) {
+      console.error(`[INSTRUCOES][FOTO][CRÍTICO] Falha ao persistir foto ${photoId} (upload R2) em D1`)
+      return err(c, 'Erro ao salvar foto no banco de dados', 500)
+    }
   }
 
-  // Memória (after D1 or in demo/no-db mode)
+  // Memória (after D1 success or demo/no-db mode)
   if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
   tenant.workInstructionPhotos.push(photo)
   markTenantModified(userId)
@@ -1203,12 +1222,16 @@ app.post('/api/instructions/:id/photos', async (c) => {
     content_type: body.content_type || '',
   }
 
-  // D1
+  // D1 first
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+    const saved = await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
+    if (!saved) {
+      console.error(`[INSTRUCOES][FOTO][CRÍTICO] Falha ao persistir foto ${photoId} em D1`)
+      return err(c, 'Erro ao salvar foto no banco de dados', 500)
+    }
   }
 
-  // Memória (after D1 or in demo/no-db mode)
+  // Memória (after D1 success or demo/no-db mode)
   if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
   tenant.workInstructionPhotos.push(photo)
   markTenantModified(userId)
@@ -1235,8 +1258,15 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
   if (photoIdx === -1) return err(c, 'Foto não encontrada', 404)
 
   const photo = photosArr[photoIdx]
-  photosArr.splice(photoIdx, 1)
-  markTenantModified(userId)
+
+  // D1 first
+  if (db && userId !== 'demo-tenant') {
+    const deleted = await dbDelete(db, 'work_instruction_photos', photoId, userId)
+    if (!deleted) {
+      console.error(`[INSTRUCOES][FOTO][CRÍTICO] Falha ao deletar foto ${photoId} em D1`)
+      return err(c, 'Erro ao remover foto do banco de dados', 500)
+    }
+  }
 
   // Delete from R2 if object_key exists
   const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
@@ -1248,10 +1278,9 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
     }
   }
 
-  // D1
-  if (db && userId !== 'demo-tenant') {
-    await dbDelete(db, 'work_instruction_photos', photoId, userId)
-  }
+  // Memory (after D1 success or demo/no-db mode)
+  photosArr.splice(photoIdx, 1)
+  markTenantModified(userId)
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_DELETED', {
     photoId,
     fileName: photo.file_name
@@ -1277,14 +1306,6 @@ app.post('/api/instructions/:id/versions', async (c) => {
   const currentVersion = (tenant.workInstructionVersions || []).find((v: any) => v.instruction_id === instructionId && v.is_current)
   if (!currentVersion) return err(c, 'Versão atual não encontrada', 404)
 
-  // Marcar versão anterior como não-atual
-  currentVersion.is_current = false
-  markTenantModified(userId)
-
-  if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 0 })
-  }
-
   // Criar nova versão
   const newVersionId = genId('instrv')
   const newVersion = {
@@ -1298,24 +1319,42 @@ app.post('/api/instructions/:id/versions', async (c) => {
     created_at: new Date().toISOString(),
     created_by: userId,
   }
+  const updatedAt = new Date().toISOString()
 
-  // Memória
-  if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
-  tenant.workInstructionVersions.push(newVersion)
-  instruction.current_version = body.new_version
-  instruction.updated_at = new Date().toISOString()
-  instruction.updated_by = userId
-  markTenantModified(userId)
-
-  // D1
+  // D1 first
   if (db && userId !== 'demo-tenant') {
-    await dbInsert(db, 'work_instruction_versions', { ...newVersion, is_current: 1, user_id: userId, empresa_id: empresaId })
+    const prevUpdated = await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 0 })
+    if (!prevUpdated) {
+      console.error(`[INSTRUCOES][VERSION][CRÍTICO] Falha ao atualizar versão anterior ${currentVersion.id} em D1`)
+      return err(c, 'Erro ao salvar versão no banco de dados', 500)
+    }
+    const inserted = await dbInsert(db, 'work_instruction_versions', { ...newVersion, is_current: 1, user_id: userId, empresa_id: empresaId })
+    if (!inserted) {
+      // Compensate: restore previous version as current
+      const restored = await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 1 })
+      if (!restored) {
+        console.error(`[INSTRUCOES][VERSION][CRÍTICO] Compensação falhou: não foi possível restaurar is_current da versão ${currentVersion.id}`)
+      } else {
+        console.log(`[INSTRUCOES][VERSION][ROLLBACK] Versão anterior ${currentVersion.id} restaurada como is_current em compensação`)
+      }
+      console.error(`[INSTRUCOES][VERSION][CRÍTICO] Falha ao inserir nova versão ${newVersionId} em D1`)
+      return err(c, 'Erro ao salvar nova versão no banco de dados', 500)
+    }
     await dbUpdate(db, 'work_instructions', instructionId, userId, {
       current_version: body.new_version,
-      updated_at: instruction.updated_at,
+      updated_at: updatedAt,
       updated_by: userId,
     })
   }
+
+  // Memory (after D1 success or demo/no-db mode)
+  currentVersion.is_current = false
+  if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
+  tenant.workInstructionVersions.push(newVersion)
+  instruction.current_version = body.new_version
+  instruction.updated_at = updatedAt
+  instruction.updated_by = userId
+  markTenantModified(userId)
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'VERSION_CREATED', {
     versionBefore: currentVersion.version,
     versionAfter: body.new_version
@@ -1353,30 +1392,37 @@ app.put('/api/instructions/:id/status', async (c) => {
   }
 
   const oldStatus = instruction.status
-  instruction.status = newStatus
-  instruction.updated_at = new Date().toISOString()
-  instruction.updated_by = userId
+  const updatedAt = new Date().toISOString()
 
-  // Also update the current version's status to stay in sync
+  // Also look up current version for sync
   const currentVersion = (tenant.workInstructionVersions || []).find(
     (v: any) => v.instruction_id === instructionId && v.is_current
   )
-  if (currentVersion) {
-    currentVersion.status = newStatus
-  }
-  markTenantModified(userId)
 
-  // D1
+  // D1 first
   if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'work_instructions', instructionId, userId, {
+    const saved = await dbUpdate(db, 'work_instructions', instructionId, userId, {
       status: newStatus,
-      updated_at: instruction.updated_at,
+      updated_at: updatedAt,
       updated_by: userId,
     })
+    if (!saved) {
+      console.error(`[INSTRUCOES][STATUS][CRÍTICO] Falha ao atualizar status de ${instructionId} em D1`)
+      return err(c, 'Erro ao salvar status no banco de dados', 500)
+    }
     if (currentVersion) {
       await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { status: newStatus })
     }
   }
+
+  // Memory (after D1 success or demo/no-db mode)
+  instruction.status = newStatus
+  instruction.updated_at = updatedAt
+  instruction.updated_by = userId
+  if (currentVersion) {
+    currentVersion.status = newStatus
+  }
+  markTenantModified(userId)
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'STATUS_CHANGED', {
     from: oldStatus,
     to: newStatus,
@@ -1406,31 +1452,10 @@ app.delete('/api/instructions/:id', async (c) => {
     .filter((s: any) => versionIds.includes(s.version_id))
     .map((s: any) => s.id)
 
-  // Collect photos to delete from R2 before removing from memory
+  // Collect photos to delete from R2 before any mutations
   const photosToDelete = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.includes(p.step_id))
 
-  // Remove from memory (cascade)
-  tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => !stepIds.includes(p.step_id))
-  tenant.workInstructionSteps = (tenant.workInstructionSteps || []).filter((s: any) => !versionIds.includes(s.version_id))
-  tenant.workInstructionVersions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id !== instructionId)
-  tenant.workInstructions.splice(idx, 1)
-  markTenantModified(userId)
-
-  // Delete R2 objects for photos that have object_key
-  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
-  if (bucket) {
-    for (const p of photosToDelete) {
-      if (p.object_key) {
-        try {
-          await bucket.delete(p.object_key)
-        } catch (e) {
-          console.warn('[R2][DELETE] Falha ao remover objeto do R2:', (e as any)?.message)
-        }
-      }
-    }
-  }
-
-  // D1 (cascade delete — use IN clauses to reduce round trips)
+  // D1 first (cascade delete — use IN clauses to reduce round trips)
   if (db && userId !== 'demo-tenant') {
     if (stepIds.length > 0) {
       const stepPlaceholders = stepIds.map(() => '?').join(', ')
@@ -1446,6 +1471,27 @@ app.delete('/api/instructions/:id', async (c) => {
     }
     await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
   }
+
+  // Delete R2 objects for photos that have object_key
+  const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
+  if (bucket) {
+    for (const p of photosToDelete) {
+      if (p.object_key) {
+        try {
+          await bucket.delete(p.object_key)
+        } catch (e) {
+          console.warn('[R2][DELETE] Falha ao remover objeto do R2:', (e as any)?.message)
+        }
+      }
+    }
+  }
+
+  // Memory (after D1 success or demo/no-db mode)
+  tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => !stepIds.includes(p.step_id))
+  tenant.workInstructionSteps = (tenant.workInstructionSteps || []).filter((s: any) => !versionIds.includes(s.version_id))
+  tenant.workInstructionVersions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id !== instructionId)
+  tenant.workInstructions.splice(idx, 1)
+  markTenantModified(userId)
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'DELETED', { title: instruction.title }, tenant)
 
   return ok(c, { deleted: true })
