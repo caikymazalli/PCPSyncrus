@@ -580,7 +580,7 @@ app.get('/client/:clientId', async (c) => {
     </div>
     <div style="font-size:12px;color:#6c757d;margin-bottom:20px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;">
       <i class="fas fa-info-circle" style="color:#0284c7;margin-right:6px;"></i>
-      <strong>Liberado</strong>: acesso total &nbsp;·&nbsp; <strong>Somente Leitura</strong>: cliente pode visualizar mas não editar &nbsp;·&nbsp; <strong>Negado</strong>: módulo bloqueado para escrita
+      <strong>Liberado</strong>: acesso total &nbsp;·&nbsp; <strong>Somente Leitura</strong>: cliente pode visualizar mas não editar &nbsp;·&nbsp; <strong>Negado</strong>: cliente não pode editar (writes bloqueados pelo servidor)
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;" id="modulesGrid">
       ${ALL_MODULES.map(mod => {

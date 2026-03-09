@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS empresa_modules (
   module_key  TEXT NOT NULL,
   access_level TEXT NOT NULL DEFAULT 'allowed',
   updated_at  TEXT NOT NULL,
-  updated_by  TEXT NOT NULL DEFAULT ''
+  updated_by  TEXT DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_empresa_modules_empresa

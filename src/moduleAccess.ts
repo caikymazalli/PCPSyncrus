@@ -49,10 +49,10 @@ export async function requireModuleWriteAccess(
   if (!session || session.isDemo) return null
 
   // Para membros convidados (ownerId preenchido), usa o userId do dono da empresa
-  const empresaId = session.ownerId || session.userId
+  const effectiveEmpresaId = session.ownerId || session.userId
   const db: D1Database | null = c.env?.DB || null
 
-  const access = await getEmpresaModuleAccess(db, empresaId, moduleKey)
+  const access = await getEmpresaModuleAccess(db, effectiveEmpresaId, moduleKey)
   if (access !== 'allowed') {
     return c.json({ ok: false, error: 'Módulo negado (somente leitura).' }, 403)
   }
