@@ -970,13 +970,12 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           id: r.id,
           code: r.code,
           title: r.title,
-          description: r.description || '',
-          current_version: r.current_version,
+          description: '',        // filled from work_instruction_versions after load
+          current_version: '',    // filled from work_instruction_versions after load
           status: r.status || 'draft',
           created_at: r.created_at,
-          created_by: r.created_by,
+          created_by: '',         // filled from work_instruction_versions after load
           updated_at: r.updated_at,
-          updated_by: r.updated_by,
         }))
         console.log(`[HYDRATION] ✅ ${tenant.workInstructions.length} instruções de trabalho carregadas`)
       } else if (!tenant.workInstructions) {
@@ -995,13 +994,12 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
               id: r.id,
               code: r.code,
               title: r.title,
-              description: r.description || '',
-              current_version: r.current_version,
+              description: '',        // filled from work_instruction_versions after load
+              current_version: '',    // filled from work_instruction_versions after load
               status: r.status || 'draft',
               created_at: r.created_at,
-              created_by: r.created_by,
+              created_by: '',         // filled from work_instruction_versions after load
               updated_at: r.updated_at,
-              updated_by: r.updated_by,
             }))
             console.log(`[HYDRATION] ✅ [LEGACY] ${tenant.workInstructions.length} instruções carregadas via fallback sem empresa_id`)
           } else if (!tenant.workInstructions) {
@@ -1045,6 +1043,20 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         console.warn('[HYDRATION] ⚠️ Não foi possível carregar work_instruction_versions:', msg)
       }
       if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
+    }
+
+    // Enrich work instructions with metadata from current version
+    if (tenant.workInstructions && tenant.workInstructionVersions) {
+      for (const instr of tenant.workInstructions as any[]) {
+        const currentVer = (tenant.workInstructionVersions as any[]).find(
+          (v: any) => v.instruction_id === instr.id && v.is_current
+        )
+        if (currentVer) {
+          instr.description = currentVer.description || ''
+          instr.current_version = currentVer.version || ''
+          instr.created_by = currentVer.created_by || ''
+        }
+      }
     }
 
     // Load work instruction steps

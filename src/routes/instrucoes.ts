@@ -1438,7 +1438,6 @@ app.put('/api/instructions/:id/status', async (c) => {
     const saved = await dbUpdate(db, 'work_instructions', instructionId, userId, {
       status: newStatus,
       updated_at: updatedAt,
-      updated_by: userId,
     })
     if (!saved) {
       console.error(`[INSTRUCOES][STATUS][CRÍTICO] Falha ao atualizar status de ${instructionId} em D1`)

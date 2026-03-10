@@ -426,7 +426,39 @@ describe('PUT /instrucoes/api/instructions/:id/status', () => {
   })
 })
 
-// ── List page button behaviour ────────────────────────────────────────────────
+// ── Source-code guardrail: PUT status must not write updated_by to D1 ─────────
+
+describe('instrucoes.ts source-code guardrail — PUT status handler schema safety', () => {
+  const srcPath = resolve(__dirname, 'instrucoes.ts')
+  const src = readFileSync(srcPath, 'utf8')
+
+  it('PUT status dbUpdate call must NOT include updated_by (column does not exist in work_instructions)', () => {
+    const handlerStart = src.indexOf("app.put('/api/instructions/:id/status',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    // Find the dbUpdate call for work_instructions and extract its entire object argument
+    const dbUpdateStart = handlerBody.indexOf("dbUpdate(db, 'work_instructions'")
+    expect(dbUpdateStart).toBeGreaterThan(-1)
+    // Find the closing '})' that ends this dbUpdate call's object argument
+    const objectOpen = handlerBody.indexOf('{', dbUpdateStart)
+    const objectClose = handlerBody.indexOf('})', objectOpen)
+    const dbUpdateBlock = handlerBody.slice(dbUpdateStart, objectClose + 2)
+
+    expect(dbUpdateBlock).not.toContain('updated_by')
+  })
+
+  it('PUT status handler updates work_instructions with status and updated_at only', () => {
+    const handlerStart = src.indexOf("app.put('/api/instructions/:id/status',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const dbUpdateStart = handlerBody.indexOf("dbUpdate(db, 'work_instructions'")
+    expect(dbUpdateStart).toBeGreaterThan(-1)
+    expect(handlerBody.slice(dbUpdateStart, dbUpdateStart + 200)).toContain('status:')
+    expect(handlerBody.slice(dbUpdateStart, dbUpdateStart + 200)).toContain('updated_at:')
+  })
+})
 
 describe('GET /instrucoes list page button behaviour', () => {
   beforeEach(() => { setupSession(); setupTenant(true) })
@@ -798,6 +830,94 @@ describe('POST /instrucoes/api/instructions/:id/steps — D1 com sucesso em prod
     // Memória deve ter sido atualizada
     const found = tenants[TEST_USER_ID].workInstructionSteps.find((s: any) => s.title === 'Etapa Produção OK')
     expect(found).toBeDefined()
+  })
+})
+
+// ── Integração: PUT status — D1 falhando em produção ─────────────────────────
+
+describe('PUT /instrucoes/api/instructions/:id/status — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const initialStatus = tenants[TEST_USER_ID].workInstructions[0]?.status
+
+    const res = await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ status: 'active' }),
+      },
+      { DB: failingDB }
+    )
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido alterada
+    expect(tenants[TEST_USER_ID].workInstructions[0]?.status).toBe(initialStatus)
+  })
+})
+
+// ── Integração: PUT status — D1 com sucesso em produção ──────────────────────
+
+describe('PUT /instrucoes/api/instructions/:id/status — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória para active quando D1 tem sucesso', async () => {
+    const res = await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ status: 'active' }),
+      },
+      { DB: successDB }
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ instruction: { status: string } }>
+    expect(data.ok).toBe(true)
+    expect(data.instruction?.status).toBe('active')
+
+    // Memória deve ter sido atualizada
+    expect(tenants[TEST_USER_ID].workInstructions[0]?.status).toBe('active')
+  })
+
+  it('não grava updated_by na chamada D1 (sem essa coluna no schema)', async () => {
+    const sqlCalls: string[] = []
+    const capturingDB = {
+      prepare: (sql: string) => {
+        sqlCalls.push(sql)
+        return {
+          bind: () => ({
+            run: () => Promise.resolve({ success: true, results: [] }),
+            all: () => Promise.resolve({ results: [] }),
+            first: () => Promise.resolve(null),
+          }),
+          run: () => Promise.resolve({ success: true, results: [] }),
+          all: () => Promise.resolve({ results: [] }),
+          first: () => Promise.resolve(null),
+        }
+      },
+    }
+
+    await app.request(
+      '/api/instructions/' + TEST_INSTR_ID + '/status',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ status: 'active' }),
+      },
+      { DB: capturingDB }
+    )
+
+    const workInstrUpdateSQL = sqlCalls.find(s => s.includes('UPDATE work_instructions'))
+    expect(workInstrUpdateSQL).toBeDefined()
+    expect(workInstrUpdateSQL).not.toContain('updated_by')
   })
 })
 
