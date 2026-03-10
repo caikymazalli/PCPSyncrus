@@ -1893,7 +1893,9 @@ app.get('/', (c) => {
       '</div>').join('');
     } else {
       pendingSection.style.display = 'none';
-      releaseBtn.style.display = 'none';
+      releaseBtn.removeAttribute('data-pending-id');
+      const stockItem = _allSerialItems.find(i => i.code === itemCode);
+      releaseBtn.style.display = ((stockItem?.qty ?? 0) > 0) ? 'inline-flex' : 'none';
     }
 
     // ── Released serials section ──────────────────────────────────────────
