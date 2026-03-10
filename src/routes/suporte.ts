@@ -243,10 +243,13 @@ app.post('/api/tickets', async (c) => {
   const ticket = {
     id,
     empresa_id:         empresaId || '1',
+    empresa_name:       session.empresa || null,
     user_id:            userId,
     created_by_name:    session.nome || '',
     created_by_email:   session.email || '',
     assigned_to_user_id: null,
+    atendente_id:       null,
+    atendente_name:     null,
     title:              body.title,
     description:        body.description,
     priority,

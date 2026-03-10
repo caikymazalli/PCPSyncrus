@@ -5,10 +5,13 @@ export interface Env {
 interface SupportTicket {
   id: string
   empresa_id: string
+  empresa_name: string | null
   user_id: string
   created_by_name: string | null
   created_by_email: string | null
   assigned_to_user_id: string | null
+  atendente_id: string | null
+  atendente_name: string | null
   title: string
   description: string
   priority: string
@@ -29,8 +32,9 @@ interface SupportTicketMessage {
 
 /** Allowed columns for INSERT — prevents SQL injection from arbitrary keys. */
 const ALLOWED_COLUMNS: ReadonlyArray<keyof SupportTicket> = [
-  'id', 'empresa_id', 'user_id', 'created_by_name', 'created_by_email',
-  'assigned_to_user_id', 'title', 'description', 'priority', 'status',
+  'id', 'empresa_id', 'empresa_name', 'user_id', 'created_by_name', 'created_by_email',
+  'assigned_to_user_id', 'atendente_id', 'atendente_name',
+  'title', 'description', 'priority', 'status',
   'created_at', 'updated_at', 'resolved_at', 'due_at', 'last_activity_at',
 ]
 
