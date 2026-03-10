@@ -50,7 +50,7 @@ async function ensureAuthenticatedOr401(c: any): Promise<Response | null> {
 
 /** Returns true if the error message indicates a schema drift (missing table or column). */
 function isSchemaDriftError(msg: string): boolean {
-  return /no such table|no such column|table.*not found|column.*not found/i.test(msg)
+  return /no such table|no such column|table.*not found|column.*not found|has no column named/i.test(msg)
 }
 
 /** Build a clear 500 error response with migration instructions when schema is out of date. */
@@ -786,17 +786,23 @@ app.get('/:id/view', async (c) => {
 
 // ── API: POST /api/instructions (Criar Instrução) ──
 app.post('/api/instructions', async (c) => {
+  const authErr = await ensureAuthenticatedOr401(c)
+  if (authErr) return authErr
+
   const db = getCtxDB(c)
-  const userId = getCtxUserId(c)
+  const session = getCtxSession(c)!
+  const userId = session.userId
   const empresaId = getCtxEmpresaId(c)
   const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
 
-  if (!body || !body.title) return err(c, 'Título é obrigatório')
+  if (!body || !body.title) return err(c, 'Título é obrigatório', 400)
 
+  const now = new Date().toISOString()
   const id = genId('instr')
   const versionId = genId('instrv')
 
+  // In-memory instruction object (may contain extra fields for frontend compatibility)
   const instruction = {
     id,
     code: body.code || 'INSTR-' + Date.now(),
@@ -804,10 +810,8 @@ app.post('/api/instructions', async (c) => {
     description: body.description || '',
     current_version: '1.0',
     status: 'draft',
-    created_at: new Date().toISOString(),
-    created_by: userId,
-    updated_at: new Date().toISOString(),
-    updated_by: userId,
+    created_at: now,
+    updated_at: now,
   }
 
   const version = {
@@ -818,14 +822,28 @@ app.post('/api/instructions', async (c) => {
     description: body.description || '',
     is_current: true,
     status: 'draft',
-    created_at: new Date().toISOString(),
+    created_at: now,
     created_by: userId,
   }
 
-  // D1-first (production)
-  if (db && userId !== 'demo-tenant') {
+  // D1-first (production): only insert columns that exist in work_instructions schema
+  // Schema: id, user_id, empresa_id, code, title, version, status, created_at, updated_at
+  // NOTE: description, current_version, created_by, updated_by are NOT in work_instructions;
+  //       description belongs exclusively in work_instruction_versions.
+  if (db) {
+    console.log(`[INSTRUCOES] Persistindo instrução ${id} (user=${userId}, empresa=${empresaId})`)
     try {
-      const instrData = { ...instruction, user_id: userId, empresa_id: empresaId || '1' }
+      const instrData: Record<string, unknown> = {
+        id,
+        user_id: userId,
+        empresa_id: empresaId,
+        code: instruction.code,
+        title: instruction.title,
+        version: '1.0',
+        status: instruction.status,
+        created_at: now,
+        updated_at: now,
+      }
       const instrKeys = Object.keys(instrData)
       const instrVals = Object.values(instrData)
       await db.prepare(
@@ -841,7 +859,20 @@ app.post('/api/instructions', async (c) => {
       return err(c, 'Erro ao salvar instrução no banco de dados', 500)
     }
     try {
-      const versionData = { ...version, is_current: 1, user_id: userId, empresa_id: empresaId || '1' }
+      // description is persisted here in work_instruction_versions (normalized model)
+      const versionData: Record<string, unknown> = {
+        id: versionId,
+        user_id: userId,
+        empresa_id: empresaId,
+        instruction_id: id,
+        version: '1.0',
+        title: body.title,
+        description: body.description || '',
+        is_current: 1,
+        status: 'draft',
+        created_at: now,
+        created_by: userId,
+      }
       const versionKeys = Object.keys(versionData)
       const versionVals = Object.values(versionData)
       await db.prepare(
