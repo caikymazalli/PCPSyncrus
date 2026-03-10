@@ -1245,6 +1245,113 @@ app.get('/', async (c) => {
     </div>
   </div>
 
+  <!-- Modal: Detalhe / Edição de Chamado (Master) -->
+  <div class="moverlay" id="ticketDetailModal">
+    <div class="mmodal" style="max-width:560px;max-height:92vh;display:flex;flex-direction:column;">
+      <div style="padding:16px 22px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <h3 id="tdModalTitle" style="margin:0;font-size:15px;font-weight:700;color:#7c3aed;"><i class="fas fa-ticket-alt" style="margin-right:8px;"></i>Chamado</h3>
+        <button onclick="closeMM('ticketDetailModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
+      </div>
+
+      <!-- View Section -->
+      <div id="tdViewSection" style="overflow-y:auto;flex:1;">
+        <div style="padding:22px;display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Título</div>
+            <div id="tdvTitle" style="font-size:14px;font-weight:700;color:#1B4F72;"></div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Descrição</div>
+            <div id="tdvDescription" style="font-size:13px;color:#374151;white-space:pre-wrap;background:#f8f9fa;border-radius:6px;padding:10px 12px;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Cliente / Empresa</div>
+              <div id="tdvCliente" style="font-size:12px;font-weight:600;color:#374151;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Solicitante</div>
+              <div id="tdvSolicitante" style="font-size:12px;color:#374151;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Atendente</div>
+              <div id="tdvAtendente" style="font-size:12px;color:#374151;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Prioridade</div>
+              <div id="tdvPriority" style="font-size:12px;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Status / Etapa</div>
+              <div id="tdvStatus" style="font-size:12px;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Prazo SLA</div>
+              <div id="tdvDueAt" style="font-size:12px;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Aberto em</div>
+              <div id="tdvCreatedAt" style="font-size:12px;color:#6c757d;"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:3px;">Atualizado em</div>
+              <div id="tdvUpdatedAt" style="font-size:12px;color:#6c757d;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+          <button onclick="closeMM('ticketDetailModal')" class="btn btn-secondary">Fechar</button>
+          <button onclick="switchToEditMode()" class="btn btn-primary" style="background:#7c3aed;"><i class="fas fa-edit" style="margin-right:6px;"></i>Editar</button>
+        </div>
+      </div>
+
+      <!-- Edit Section -->
+      <div id="tdEditSection" style="display:none;overflow-y:auto;flex:1;">
+        <div style="padding:22px;display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label class="form-label">Título <span style="color:#dc2626;">*</span></label>
+            <input class="form-control" id="tdeTitle" placeholder="Título do chamado...">
+          </div>
+          <div>
+            <label class="form-label">Descrição</label>
+            <textarea class="form-control" id="tdeDescription" rows="4" placeholder="Descrição do chamado..."></textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Prioridade</label>
+              <select class="form-control" id="tdePriority">
+                <option value="low">🟢 Baixa</option>
+                <option value="medium">🟡 Média</option>
+                <option value="high">🟠 Alta</option>
+                <option value="critical">🔴 Crítica</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Etapa / Status</label>
+              <select class="form-control" id="tdeStatus">
+                <option value="Criada">Criada</option>
+                <option value="Analisando">Analisando</option>
+                <option value="N1">N1</option>
+                <option value="N2">N2</option>
+                <option value="N3">N3</option>
+                <option value="Resolvendo">Resolvendo</option>
+                <option value="Resolvida">Resolvida</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Atendente (nome do operador)</label>
+            <input class="form-control" id="tdeAtendente" placeholder="Nome do atendente...">
+          </div>
+        </div>
+        <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">
+          <button onclick="switchToViewMode()" class="btn btn-secondary">Cancelar</button>
+          <button onclick="saveTicketEdit()" class="btn btn-primary" id="btnSaveTicketEdit" style="background:#7c3aed;"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
   // ── Dados locais ──────────────────────────────────────────────────────────────
   let masterClientsData = ${JSON.stringify(clients)};
@@ -1252,6 +1359,8 @@ app.get('/', async (c) => {
   let _curCliId = null;
   window._curCliId = null;
   let _curDetTab = 'info';
+  let _viewingTicketId = null;
+  let _editingTicketId = null;
 
   // ── Escape seguro para construção dinâmica de HTML no cliente ─────────────────
   /** Escapa caracteres especiais HTML para uso seguro em innerHTML via concatenação de strings. */
@@ -1736,18 +1845,27 @@ app.get('/', async (c) => {
         const pc = PRIORITY_COLORS[t.priority] || '#6c757d';
         const pl = PRIORITY_LABELS_PT[t.priority] || t.priority;
         const overdue = t.due_at && new Date(t.due_at).getTime() < now && t.status !== 'Resolvida';
-        const cliName = (masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—';
+        // Prefer stored empresa_name; fall back to masterClientsData lookup then raw id
+        const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
+          ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
+        const tid = JSON.stringify(t.id);
         return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
-          '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:4px;line-height:1.3;">' + (t.title || '—') + '</div>' +
-          '<div style="font-size:10px;color:#6c757d;margin-bottom:6px;">' + cliName + '</div>' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+          '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:2px;line-height:1.3;">' + esc(t.title || '—') + '</div>' +
+          '<div style="font-size:10px;color:#6c757d;margin-bottom:2px;">' + esc(cliName) + '</div>' +
+          (t.created_by_name ? '<div style="font-size:9px;color:#9ca3af;margin-bottom:2px;"><i class="fas fa-user" style="margin-right:3px;opacity:0.6;"></i>' + esc(t.created_by_name) + '</div>' : '') +
+          (t.atendente_name ? '<div style="font-size:9px;color:#7c3aed;margin-bottom:4px;"><i class="fas fa-headset" style="margin-right:3px;"></i>' + esc(t.atendente_name) + '</div>' : '') +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">' +
           '<span style="font-size:10px;font-weight:700;color:' + pc + ';background:' + pc + '18;padding:1px 6px;border-radius:4px;">' + pl + '</span>' +
           (overdue ? '<span style="font-size:9px;font-weight:700;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i> SLA</span>' : '') +
           '</div>' +
           (t.due_at ? '<div style="font-size:9px;color:' + (overdue?'#dc2626':'#9ca3af') + ';margin-top:4px;">Prazo: ' + new Date(t.due_at).toLocaleDateString('pt-BR') + '</div>' : '') +
-          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(' + JSON.stringify(t.id) + ', this.value)">' +
+          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(' + tid + ', this.value)">' +
           SUPPORT_STATUS_ORDER.map(function(s) { return '<option value="' + s + '" ' + (s===t.status?'selected':'') + '>' + s + '</option>'; }).join('') +
           '</select>' +
+          '<div style="display:flex;gap:4px;margin-top:6px;">' +
+          '<button onclick="viewTicket(' + tid + ')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
+          '<button onclick="editTicket(' + tid + ')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
+          '</div>' +
           '</div>';
       }).join('');
       return '<div style="min-width:160px;flex:1;max-width:200px;">' +
@@ -1770,6 +1888,154 @@ app.get('/', async (c) => {
       if (ticket) { ticket.status = newStatus; renderKanban(_masterTickets); }
       showToast('Status atualizado!', 'success');
     } catch { showToast('Erro ao atualizar status.', 'error'); }
+  }
+
+  function viewTicket(ticketId) {
+    const t = _masterTickets.find(function(x) { return x.id === ticketId; });
+    if (!t) return;
+    _viewingTicketId = ticketId;
+    const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
+      ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
+    const pc = PRIORITY_COLORS[t.priority] || '#6c757d';
+    const pl = PRIORITY_LABELS_PT[t.priority] || t.priority;
+    const now = Date.now();
+    const overdue = t.due_at && new Date(t.due_at).getTime() < now && t.status !== 'Resolvida';
+
+    var title = document.getElementById('tdModalTitle');
+    var tdvTitle = document.getElementById('tdvTitle');
+    var tdvDescription = document.getElementById('tdvDescription');
+    var tdvCliente = document.getElementById('tdvCliente');
+    var tdvSolicitante = document.getElementById('tdvSolicitante');
+    var tdvAtendente = document.getElementById('tdvAtendente');
+    var tdvPriority = document.getElementById('tdvPriority');
+    var tdvStatus = document.getElementById('tdvStatus');
+    var tdvDueAt = document.getElementById('tdvDueAt');
+    var tdvCreatedAt = document.getElementById('tdvCreatedAt');
+    var tdvUpdatedAt = document.getElementById('tdvUpdatedAt');
+
+    if (title) title.innerHTML = '<i class="fas fa-ticket-alt" style="margin-right:8px;"></i>' + esc(t.title || 'Chamado');
+    if (tdvTitle) tdvTitle.textContent = t.title || '—';
+    if (tdvDescription) tdvDescription.textContent = t.description || '—';
+    if (tdvCliente) tdvCliente.textContent = cliName;
+    if (tdvSolicitante) tdvSolicitante.textContent = t.created_by_name || '—';
+    if (tdvAtendente) {
+      tdvAtendente.innerHTML = t.atendente_name
+        ? '<span style="color:#7c3aed;font-weight:600;">' + esc(t.atendente_name) + '</span>'
+        : '<span style="color:#9ca3af;font-style:italic;">Não atribuído</span>';
+    }
+    if (tdvPriority) tdvPriority.innerHTML = '<span style="font-size:11px;font-weight:700;color:' + pc + ';background:' + pc + '18;padding:2px 8px;border-radius:4px;">' + pl + '</span>';
+    if (tdvStatus) tdvStatus.innerHTML = '<span style="font-size:11px;background:#e9ecef;color:#374151;padding:2px 8px;border-radius:10px;font-weight:600;">' + esc(t.status) + '</span>' +
+      (overdue ? ' <span style="color:#dc2626;font-size:10px;font-weight:700;"><i class="fas fa-exclamation-triangle"></i> SLA vencido</span>' : '');
+    if (tdvDueAt) tdvDueAt.textContent = t.due_at ? new Date(t.due_at).toLocaleString('pt-BR') : '—';
+    if (tdvCreatedAt) tdvCreatedAt.textContent = t.created_at ? new Date(t.created_at).toLocaleString('pt-BR') : '—';
+    if (tdvUpdatedAt) tdvUpdatedAt.textContent = t.updated_at ? new Date(t.updated_at).toLocaleString('pt-BR') : '—';
+
+    var viewSec = document.getElementById('tdViewSection');
+    var editSec = document.getElementById('tdEditSection');
+    if (viewSec) viewSec.style.display = '';
+    if (editSec) editSec.style.display = 'none';
+    openMM('ticketDetailModal');
+  }
+
+  function switchToViewMode() {
+    var viewSec = document.getElementById('tdViewSection');
+    var editSec = document.getElementById('tdEditSection');
+    if (viewSec) viewSec.style.display = '';
+    if (editSec) editSec.style.display = 'none';
+  }
+
+  function switchToEditMode() {
+    var t = _viewingTicketId ? _masterTickets.find(function(x) { return x.id === _viewingTicketId; }) : null;
+    if (t) {
+      var f = document.getElementById('tdeTitle');
+      var d = document.getElementById('tdeDescription');
+      var p = document.getElementById('tdePriority');
+      var s = document.getElementById('tdeStatus');
+      var a = document.getElementById('tdeAtendente');
+      if (f) f.value = t.title || '';
+      if (d) d.value = t.description || '';
+      if (p) p.value = t.priority || 'medium';
+      if (s) s.value = t.status || 'Criada';
+      if (a) a.value = t.atendente_name || '';
+      _editingTicketId = _viewingTicketId;
+    }
+    var viewSec = document.getElementById('tdViewSection');
+    var editSec = document.getElementById('tdEditSection');
+    if (viewSec) viewSec.style.display = 'none';
+    if (editSec) editSec.style.display = '';
+  }
+
+  function editTicket(ticketId) {
+    var t = _masterTickets.find(function(x) { return x.id === ticketId; });
+    if (!t) return;
+    _editingTicketId = ticketId;
+    _viewingTicketId = ticketId;
+    var title = document.getElementById('tdModalTitle');
+    if (title) title.innerHTML = '<i class="fas fa-edit" style="margin-right:8px;"></i>' + esc(t.title || 'Editar Chamado');
+    var f = document.getElementById('tdeTitle');
+    var d = document.getElementById('tdeDescription');
+    var p = document.getElementById('tdePriority');
+    var s = document.getElementById('tdeStatus');
+    var a = document.getElementById('tdeAtendente');
+    if (f) f.value = t.title || '';
+    if (d) d.value = t.description || '';
+    if (p) p.value = t.priority || 'medium';
+    if (s) s.value = t.status || 'Criada';
+    if (a) a.value = t.atendente_name || '';
+    var viewSec = document.getElementById('tdViewSection');
+    var editSec = document.getElementById('tdEditSection');
+    if (viewSec) viewSec.style.display = 'none';
+    if (editSec) editSec.style.display = '';
+    openMM('ticketDetailModal');
+  }
+
+  async function saveTicketEdit() {
+    var id = _editingTicketId;
+    if (!id) return;
+    var titleEl = document.getElementById('tdeTitle');
+    var descEl  = document.getElementById('tdeDescription');
+    var priEl   = document.getElementById('tdePriority');
+    var statEl  = document.getElementById('tdeStatus');
+    var ateEl   = document.getElementById('tdeAtendente');
+    var title       = titleEl ? titleEl.value.trim() : '';
+    var description = descEl  ? descEl.value : '';
+    var priority    = priEl   ? priEl.value  : 'medium';
+    var status      = statEl  ? statEl.value : 'Criada';
+    var atendente_name = ateEl ? ateEl.value.trim() : '';
+
+    if (!title) { showToast('Informe o título do chamado.', 'error'); return; }
+
+    var btn = document.getElementById('btnSaveTicketEdit');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+
+    try {
+      var res = await fetch('/master/api/support/tickets/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, priority, status, atendente_name }),
+      });
+      var data = await res.json().catch(function() { return {}; });
+      if (res.ok && data.ok) {
+        var ticket = _masterTickets.find(function(x) { return x.id === id; });
+        if (ticket) {
+          ticket.title = title;
+          ticket.description = description;
+          ticket.priority = priority;
+          ticket.status = status;
+          ticket.atendente_name = atendente_name || null;
+          ticket.updated_at = new Date().toISOString();
+        }
+        closeMM('ticketDetailModal');
+        renderKanban(_masterTickets);
+        showToast('✅ Chamado atualizado!', 'success');
+      } else {
+        showToast('Erro: ' + (data.error || 'Falha ao salvar.'), 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão.', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save" style="margin-right:6px;"></i>Salvar'; }
+    }
   }
 
   async function loadClientSupportTickets(empresaId) {
@@ -1853,13 +2119,16 @@ app.get('/api/support/tickets', async (c) => {
   const db = c.env?.DB || null
   const empresaId = c.req.query('empresa_id') || ''
 
-  // Try D1 first, fall back to in-memory (no per-master-session tenant store)
+  // Try D1 first, fall back to empty list (no per-master-session tenant store)
   if (db) {
     try {
       const where = empresaId ? 'WHERE empresa_id = ?' : ''
       const stmt = db.prepare(`SELECT * FROM support_tickets ${where} ORDER BY updated_at DESC LIMIT 200`)
       const res = empresaId ? await stmt.bind(empresaId).all() : await stmt.all()
-      return c.json({ ok: true, tickets: res.results || [] })
+      const tickets: any[] = res.results || []
+      // Back-fill empresa_name for legacy rows (created before migration 0032)
+      await fillMissingEmpresaNames(db, tickets)
+      return c.json({ ok: true, tickets })
     } catch {
       return c.json({ ok: true, tickets: [] })
     }
@@ -1867,12 +2136,62 @@ app.get('/api/support/tickets', async (c) => {
   return c.json({ ok: true, tickets: [] })
 })
 
+// ── API: GET /api/support/tickets/:id ────────────────────────────────────────
+app.get('/api/support/tickets/:id', async (c) => {
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const db       = c.env?.DB || null
+  const ticketId = c.req.param('id')
+
+  if (db) {
+    try {
+      const row: any = await db.prepare('SELECT * FROM support_tickets WHERE id = ?').bind(ticketId).first()
+      if (!row) return c.json({ ok: false, error: 'Chamado não encontrado' }, 404)
+      await fillMissingEmpresaNames(db, [row])
+      return c.json({ ok: true, ticket: row })
+    } catch {
+      return c.json({ ok: false, error: 'Erro ao buscar chamado' }, 500)
+    }
+  }
+  return c.json({ ok: false, error: 'Banco de dados indisponível' }, 503)
+})
+
+/**
+ * Back-fills empresa_name in-place for rows that were created before
+ * migration 0032 (i.e., empresa_name is NULL or empty).
+ * Uses a single query to resolve all missing IDs at once.
+ */
+async function fillMissingEmpresaNames(db: D1Database, tickets: any[]): Promise<void> {
+  const missing = tickets.filter(t => !t.empresa_name)
+  if (missing.length === 0) return
+  const ids = [...new Set(missing.map((t: any) => t.empresa_id as string))]
+  try {
+    const placeholders = ids.map(() => '?').join(',')
+    const usersRes = await db.prepare(
+      `SELECT user_id, empresa FROM registered_users WHERE user_id IN (${placeholders}) AND (owner_id IS NULL OR owner_id = '')`
+    ).bind(...ids).all()
+    const nameMap: Record<string, string> = {}
+    for (const u of (usersRes.results || []) as any[]) {
+      nameMap[u.user_id] = u.empresa
+    }
+    for (const t of missing) {
+      t.empresa_name = nameMap[t.empresa_id] || t.empresa_id || ''
+    }
+  } catch {
+    // Non-fatal: empresa_name will remain null; frontend falls back to masterClientsData lookup
+  }
+}
+
 // ── API: POST /api/support/tickets ────────────────────────────────────────────
 app.post('/api/support/tickets', async (c) => {
-  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
   const db   = c.env?.DB || null
   const body = await c.req.json().catch(() => null) as any
   if (!body || !body.title) return c.json({ ok: false, error: 'Título é obrigatório' }, 400)
+
+  const masterUser = masterUsers.find(u => u.email === auth.email)
+  const actorId   = masterUser?.id   || null
+  const actorName = masterUser?.name || auth.name
 
   const SLA_MS: Record<string, number> = {
     critical: 4  * 60 * 60 * 1000,
@@ -1880,17 +2199,27 @@ app.post('/api/support/tickets', async (c) => {
     medium:   72 * 60 * 60 * 1000,
     low:      7  * 24 * 60 * 60 * 1000,
   }
-  const priority  = ['low','medium','high','critical'].includes(body.priority) ? body.priority : 'medium'
-  const id        = 'tkt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
-  const now       = new Date().toISOString()
-  const dueAt     = new Date(Date.now() + (SLA_MS[priority] || SLA_MS.medium)).toISOString()
-  const empresaId = body.empresa_id || ''
+  const priority   = ['low','medium','high','critical'].includes(body.priority) ? body.priority : 'medium'
+  const id         = 'tkt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)
+  const now        = new Date().toISOString()
+  const dueAt      = new Date(Date.now() + (SLA_MS[priority] || SLA_MS.medium)).toISOString()
+  const empresaId  = body.empresa_id || ''
+  // Resolve company name from masterClients list (already rebuilt on page load)
+  const cliRecord  = masterClients.find(cl => cl.id === empresaId)
+  const empresaName = body.empresa_name || (cliRecord ? (cliRecord.fantasia || cliRecord.empresa) : null) || empresaId || null
 
   const ticket = {
-    id, empresa_id: empresaId, user_id: 'master',
-    created_by_name: 'Master Admin', created_by_email: 'master@syncrus.com.br',
+    id,
+    empresa_id:          empresaId,
+    empresa_name:        empresaName,
+    user_id:             actorId || 'master',
+    created_by_name:     actorName,
+    created_by_email:    auth.email,
     assigned_to_user_id: null,
-    title: body.title, description: body.description || '',
+    atendente_id:        actorId,
+    atendente_name:      actorName || null,
+    title:               body.title,
+    description:         body.description || '',
     priority, status: 'Criada',
     created_at: now, updated_at: now, resolved_at: null,
     due_at: dueAt, last_activity_at: now,
@@ -1928,7 +2257,15 @@ app.patch('/api/support/tickets/:id', async (c) => {
     updates.status = body.status
     if (body.status === 'Resolvida') updates.resolved_at = now
   }
-  if (body.priority) updates.priority = body.priority
+  if (body.priority) {
+    const validPriorities = ['low','medium','high','critical']
+    if (!validPriorities.includes(body.priority)) return c.json({ ok: false, error: 'Prioridade inválida' }, 400)
+    updates.priority = body.priority
+  }
+  if (body.title !== undefined)              updates.title              = String(body.title).trim()
+  if (body.description !== undefined)        updates.description        = String(body.description)
+  if (body.atendente_id !== undefined)       updates.atendente_id       = body.atendente_id
+  if (body.atendente_name !== undefined)     updates.atendente_name     = body.atendente_name
   if (body.assigned_to_user_id !== undefined) updates.assigned_to_user_id = body.assigned_to_user_id
 
   if (db) {

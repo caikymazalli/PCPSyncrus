@@ -186,6 +186,36 @@ describe('POST /suporte/api/tickets — D1 com sucesso em produção', () => {
     expect(((tenants[TEST_USER_ID] as any).supportTickets as any[] || []).length).toBe(initial + 1)
   })
 
+  it('ticket criado contém empresa_name a partir da sessão', async () => {
+    const res = await authedRequest('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Ticket com empresa', description: 'Teste empresa_name', priority: 'medium' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    // empresa_name deve conter o nome da empresa da sessão (não o ID/código)
+    const ticket = data.ticket as Record<string, unknown>
+    expect(ticket).toBeDefined()
+    expect(ticket.empresa_name).toBe('Test Corp')
+  })
+
+  it('ticket criado contém atendente_id e atendente_name nulos (abertura pelo cliente)', async () => {
+    const res = await authedRequest('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Ticket cliente', description: 'Sem atendente', priority: 'low' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    const ticket = data.ticket as Record<string, unknown>
+    expect(ticket.atendente_id).toBeNull()
+    expect(ticket.atendente_name).toBeNull()
+  })
+
   it('retorna erro quando title está ausente', async () => {
     const res = await authedRequest('/api/tickets', {
       method: 'POST',
