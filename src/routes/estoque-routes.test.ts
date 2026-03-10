@@ -424,6 +424,8 @@ describe('produtos.ts source-code: botão Série/Lote para serialControlled', ()
 
 describe('estoque.ts source-code: openSerialListFromUrl via querystring', () => {
   const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+  const fnStart = src.indexOf('function openSerialListFromUrl(')
+  const fnBody = src.slice(fnStart, fnStart + 1000)
 
   it('openSerialListFromUrl está definida no script client-side', () => {
     expect(src).toContain('function openSerialListFromUrl(')
@@ -438,14 +440,14 @@ describe('estoque.ts source-code: openSerialListFromUrl via querystring', () => 
   })
 
   it('openSerialListFromUrl lê parâmetro code da URL', () => {
-    const fnStart = src.indexOf('function openSerialListFromUrl(')
-    const fnBody = src.slice(fnStart, fnStart + 600)
     expect(fnBody).toContain("params.get('code')")
   })
 
   it('openSerialListFromUrl chama openSerialList ao encontrar o item', () => {
-    const fnStart = src.indexOf('function openSerialListFromUrl(')
-    const fnBody = src.slice(fnStart, fnStart + 800)
     expect(fnBody).toContain('openSerialList(')
+  })
+
+  it('openSerialListFromUrl chama openSerialRelease diretamente quando há pendente', () => {
+    expect(fnBody).toContain('openSerialRelease(')
   })
 })

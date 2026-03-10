@@ -2149,10 +2149,16 @@ app.get('/', (c) => {
       document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 7));
       document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 7));
       if (code) {
-        const item = _allSerialItems.find(i => i.code === code);
-        if (item) {
-          // Small delay so DOM tab switch is applied before modal opens
-          setTimeout(() => openSerialList(item.code, item.name, item.controlType || 'serie'), 50);
+        const pending = _serialPendingData.find(p => p.productCode === code && p.status !== 'complete');
+        if (pending) {
+          // Direct path: open release modal when a pending item already exists
+          setTimeout(() => openSerialRelease(pending.id), 50);
+        } else {
+          const item = _allSerialItems.find(i => i.code === code);
+          if (item) {
+            // Small delay so DOM tab switch is applied before modal opens
+            setTimeout(() => openSerialList(item.code, item.name, item.controlType || 'serie'), 50);
+          }
         }
       }
     }
