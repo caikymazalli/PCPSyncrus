@@ -95,6 +95,7 @@ app.get('/', (c) => {
       '</td>' +
       '<td style="padding:8px 12px;text-align:center;white-space:nowrap;">' +
         '<a href="/engenharia" class="btn btn-secondary btn-sm" style="padding:4px 7px;" title="Ver BOM"><i class="fas fa-list-ul"></i></a>' +
+        (p.serialControlled ? '<button class="btn btn-sm" style="padding:4px 7px;margin-left:2px;background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="goToSerialRelease(' + JSON.stringify(p.code) + ')" title="Série/Lote"><i class="fas fa-barcode"></i></button>' : '') +
         '<button class="btn btn-danger btn-sm" style="padding:4px 7px;margin-left:2px;" onclick="deleteProduto(\'' + p.id + '\')" title="Excluir"><i class="fas fa-trash"></i></button>' +
       '</td>' +
     '</tr>'
@@ -856,6 +857,11 @@ app.get('/', (c) => {
       if (data.ok) { showToast('Produto exclu\u00eddo!'); setTimeout(function() { location.reload(); }, 500); }
       else showToast(data.error || 'Erro ao excluir', 'error');
     } catch(e) { showToast('Erro de conex\u00e3o', 'error'); }
+  }
+
+  // ── Redirecionar para Estoque → Liberação S/N ──────────────────────────
+  function goToSerialRelease(code) {
+    window.location.href = '/estoque?tab=liberacao_sn&code=' + encodeURIComponent(code);
   }
 
   // ── Toast ────────────────────────────────────────────────────────────────

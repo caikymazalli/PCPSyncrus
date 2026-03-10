@@ -397,3 +397,55 @@ describe('estoque.ts source-code: editarAlmoxarifado definida', () => {
     expect(src).toContain('editAlmoxarifadoModal')
   })
 })
+
+// ── Source-code guardrail: produtos.ts tem botão goToSerialRelease ────────────
+
+describe('produtos.ts source-code: botão Série/Lote para serialControlled', () => {
+  const src = readFileSync(resolve(__dirname, 'produtos.ts'), 'utf8')
+
+  it('buildProdRow usa goToSerialRelease quando serialControlled', () => {
+    expect(src).toContain('goToSerialRelease(')
+  })
+
+  it('goToSerialRelease está definida como função no script client-side', () => {
+    expect(src).toContain('function goToSerialRelease(')
+  })
+
+  it('goToSerialRelease redireciona para /estoque?tab=liberacao_sn', () => {
+    expect(src).toContain('/estoque?tab=liberacao_sn')
+  })
+
+  it('botão barcode usa JSON.stringify para escapar o código do produto', () => {
+    expect(src).toContain('JSON.stringify(p.code)')
+  })
+})
+
+// ── Source-code guardrail: estoque.ts lê querystring tab/code ────────────────
+
+describe('estoque.ts source-code: openSerialListFromUrl via querystring', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('openSerialListFromUrl está definida no script client-side', () => {
+    expect(src).toContain('function openSerialListFromUrl(')
+  })
+
+  it('openSerialListFromUrl é chamada na inicialização da página', () => {
+    expect(src).toContain('openSerialListFromUrl();')
+  })
+
+  it('openSerialListFromUrl lê parâmetro tab=liberacao_sn da URL', () => {
+    expect(src).toContain("'liberacao_sn'")
+  })
+
+  it('openSerialListFromUrl lê parâmetro code da URL', () => {
+    const fnStart = src.indexOf('function openSerialListFromUrl(')
+    const fnBody = src.slice(fnStart, fnStart + 600)
+    expect(fnBody).toContain("params.get('code')")
+  })
+
+  it('openSerialListFromUrl chama openSerialList ao encontrar o item', () => {
+    const fnStart = src.indexOf('function openSerialListFromUrl(')
+    const fnBody = src.slice(fnStart, fnStart + 800)
+    expect(fnBody).toContain('openSerialList(')
+  })
+})
