@@ -524,7 +524,8 @@ describe('instrucoes.ts source-code guardrails D1-first (POST create instruction
     const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
     const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
 
-    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    // The D1 block is now guarded by `if (db)` (auth is enforced by ensureAuthenticatedOr401 earlier)
+    const d1BlockPos = handlerBody.indexOf('if (db)')
     const memUpdatePos = handlerBody.indexOf('tenant.workInstructions.push(instruction)')
     expect(d1BlockPos).toBeGreaterThan(-1)
     expect(memUpdatePos).toBeGreaterThan(-1)
@@ -871,5 +872,84 @@ describe('POST /instrucoes/api/instructions — schema drift', () => {
 
     // Memory must NOT have been updated
     expect(tenants[TEST_USER_ID].workInstructions.length).toBe(0)
+  })
+})
+
+// ── POST /api/instructions — auth and input validation ───────────────────────
+
+describe('POST /instrucoes/api/instructions — sem sessão retorna 401', () => {
+  afterEach(cleanup)
+
+  it('retorna 401 quando não há cookie de sessão', async () => {
+    setupTenant(false)
+    const res = await app.request('/api/instructions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Test', code: 'T-001' }),
+    })
+    expect(res.status).toBe(401)
+    const data = await res.json() as { error: string }
+    expect(data.error).toBeTruthy()
+  })
+})
+
+describe('POST /instrucoes/api/instructions — título ausente retorna 400', () => {
+  beforeEach(() => { setupSession(); setupTenant(false) })
+  afterEach(cleanup)
+
+  it('retorna 400 quando title está ausente', async () => {
+    const res = await authedRequest('/api/instructions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'T-001' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+    expect(data.error).toContain('Título')
+  })
+})
+
+describe('POST /instrucoes/api/instructions — modo sem D1 (memória)', () => {
+  beforeEach(() => { setupSession(); setupTenant(false) })
+  afterEach(cleanup)
+
+  it('cria instrução em memória e retorna 200 quando não há D1', async () => {
+    const res = await authedRequest('/api/instructions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'INSTR_001', title: 'TANDA COLOR', description: 'Desc test' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse<{ instruction: any; version: any }>
+    expect(data.ok).toBe(true)
+    expect(data.instruction?.title).toBe('TANDA COLOR')
+    expect(data.instruction?.code).toBe('INSTR_001')
+    expect(data.version?.description).toBe('Desc test')
+    expect(data.version?.is_current).toBe(true)
+    const found = tenants[TEST_USER_ID].workInstructions.find((i: any) => i.title === 'TANDA COLOR')
+    expect(found).toBeDefined()
+  })
+
+  it('description é persistida na versão (e não na instrução D1)', () => {
+    // Source-code guardrail: instrData for work_instructions must NOT include description
+    const { readFileSync } = require('fs')
+    const { resolve } = require('path')
+    const src: string = readFileSync(resolve(__dirname, 'instrucoes.ts'), 'utf8')
+    const handlerStart = src.indexOf("app.post('/api/instructions',")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    // The instrData object (for work_instructions insert) must not contain description
+    const instrDataStart = handlerBody.indexOf('const instrData')
+    const instrDataEnd = handlerBody.indexOf('\n    }', instrDataStart) + 6
+    const instrDataBlock = handlerBody.slice(instrDataStart, instrDataEnd)
+    expect(instrDataBlock).not.toContain('description')
+
+    // The versionData object must contain description (work_instruction_versions.description)
+    const versionDataStart = handlerBody.indexOf('const versionData')
+    const versionDataEnd = handlerBody.indexOf('\n      }', versionDataStart) + 8
+    const versionDataBlock = handlerBody.slice(versionDataStart, versionDataEnd)
+    expect(versionDataBlock).toContain('description')
   })
 })
