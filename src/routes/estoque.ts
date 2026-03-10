@@ -2139,6 +2139,25 @@ app.get('/', (c) => {
       }
     } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
   }
+
+  // ── Abertura automática via querystring (?tab=liberacao_sn&code=...) ───────
+  function openSerialListFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const code = params.get('code');
+    if (tab === 'liberacao_sn') {
+      document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 7));
+      document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 7));
+      if (code) {
+        const item = _allSerialItems.find(i => i.code === code);
+        if (item) {
+          // Small delay so DOM tab switch is applied before modal opens
+          setTimeout(() => openSerialList(item.code, item.name, item.controlType || 'serie'), 50);
+        }
+      }
+    }
+  }
+  openSerialListFromUrl();
   </script>
   `
   return c.html(layout('Estoque', content, 'estoque', userInfo))
