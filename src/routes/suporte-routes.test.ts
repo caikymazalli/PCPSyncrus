@@ -216,6 +216,22 @@ describe('POST /suporte/api/tickets — D1 com sucesso em produção', () => {
     expect(ticket.atendente_name).toBeNull()
   })
 
+  it('ticket criado com empresaId=1 usa userId como empresa_id (não o placeholder)', async () => {
+    // Session has empresaId='1' (placeholder) → must fall back to userId for empresa_id
+    const res = await authedRequest('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Ticket empresa_id', description: 'Teste resolve empresa', priority: 'medium' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    const ticket = data.ticket as Record<string, unknown>
+    // empresa_id must NOT be '1' (the placeholder); it must be the real userId
+    expect(ticket.empresa_id).not.toBe('1')
+    expect(ticket.empresa_id).toBe(TEST_USER_ID)
+  })
+
   it('retorna erro quando title está ausente', async () => {
     const res = await authedRequest('/api/tickets', {
       method: 'POST',
@@ -279,5 +295,59 @@ describe('master.ts source-code: filtros opcionais de suporte', () => {
   it('safeJsonForScriptTag está definida e usada para masterClientsData', () => {
     expect(masterSrc).toContain('function safeJsonForScriptTag(')
     expect(masterSrc).toContain('safeJsonForScriptTag(clients)')
+  })
+})
+
+// ── Source-code guardrails: master.ts JS fixes ───────────────────────────────
+
+describe('master.ts source-code: JS fixes and security', () => {
+  const masterSrc = readFileSync(resolve(__dirname, 'master.ts'), 'utf8')
+
+  it('renderKanban: does not use JSON.stringify for onclick (would cause SyntaxError in HTML attributes)', () => {
+    // JSON.stringify produces double-quoted strings that break onclick="..." attributes
+    const renderKanbanStart = masterSrc.indexOf('function renderKanban(')
+    const renderKanbanEnd   = masterSrc.indexOf('\n  async function updateTicketStatus', renderKanbanStart)
+    const renderBody = masterSrc.slice(renderKanbanStart, renderKanbanEnd)
+    expect(renderBody).not.toContain('JSON.stringify(t.id)')
+  })
+
+  it('renderKanban: uses esc() for ticket IDs in onclick/onchange attributes', () => {
+    const renderKanbanStart = masterSrc.indexOf('function renderKanban(')
+    const renderKanbanEnd   = masterSrc.indexOf('\n  async function updateTicketStatus', renderKanbanStart)
+    const renderBody = masterSrc.slice(renderKanbanStart, renderKanbanEnd)
+    // Must use esc() for safe HTML escaping of ticket IDs
+    expect(renderBody).toContain('esc(t.id)')
+    // onclick handlers must reference viewTicket and editTicket with safe quoting
+    expect(renderBody).toContain('viewTicket(')
+    expect(renderBody).toContain('editTicket(')
+    expect(renderBody).toContain('updateTicketStatus(')
+    // Must NOT pass raw JSON.stringify result (double-quoted) into HTML attribute
+    expect(renderBody).not.toMatch(/onclick="viewTicket\(" \+ JSON/)
+  })
+
+  it('openClientDetail: uses esc() to prevent XSS in modal title', () => {
+    const detailFnStart = masterSrc.indexOf('function openClientDetail(')
+    const detailFnEnd   = masterSrc.indexOf('\n  function switchDetTab(', detailFnStart)
+    const detailBody = masterSrc.slice(detailFnStart, detailFnEnd)
+    expect(detailBody).toContain('esc(cli.fantasia || cli.empresa)')
+  })
+
+  it('salvarTicketMaster: sends empresa_name in payload to display company name (not ID code)', () => {
+    const fnStart = masterSrc.indexOf('async function salvarTicketMaster(')
+    const fnEnd   = masterSrc.indexOf('\n  </script>', fnStart)
+    const fnBody  = masterSrc.slice(fnStart, fnEnd)
+    expect(fnBody).toContain('empresa_name')
+    expect(fnBody).toContain('masterClientsData.find')
+  })
+
+  it('fillMissingEmpresaNames: uses correct "id" column (not non-existent "user_id")', () => {
+    const fnStart = masterSrc.indexOf('async function fillMissingEmpresaNames(')
+    const fnEnd   = masterSrc.indexOf('\n// ── API: POST /api/support/tickets', fnStart)
+    const fnBody  = masterSrc.slice(fnStart, fnEnd)
+    // Must use column 'id', not 'user_id' (which does not exist in registered_users)
+    expect(fnBody).toContain('SELECT id, empresa FROM registered_users WHERE id IN')
+    expect(fnBody).not.toContain('WHERE user_id IN')
+    expect(fnBody).toContain('nameMap[u.id]')
+    expect(fnBody).not.toContain('nameMap[u.user_id]')
   })
 })

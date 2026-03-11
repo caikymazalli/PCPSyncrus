@@ -1515,7 +1515,7 @@ app.get('/', async (c) => {
     if (!cli) { showToast('Cliente não encontrado', 'error'); return; }
     _curCliId = id; window._curCliId = id;
     const titleEl = document.getElementById('detailTitle');
-    if (titleEl) titleEl.innerHTML = '<i class="fas fa-building" style="margin-right:8px;"></i>' + (cli.fantasia || cli.empresa);
+    if (titleEl) titleEl.innerHTML = '<i class="fas fa-building" style="margin-right:8px;"></i>' + esc(cli.fantasia || cli.empresa);
     _curDetTab = 'info';
     ['info','modulos','suporte','pagamentos','atividade'].forEach(t => {
       const btn = document.getElementById('detTab' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -1927,7 +1927,9 @@ app.get('/', async (c) => {
         // Prefer stored empresa_name; fall back to masterClientsData lookup then raw id
         const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
           ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
-        const tid = JSON.stringify(t.id);
+        // Use esc() + single-quoted JS strings to avoid breaking HTML attribute values
+        // (JSON.stringify produces double-quoted strings that would terminate onclick="...")
+        const tidAttr = esc(t.id);
         return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
           '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:2px;line-height:1.3;">' + esc(t.title || '—') + '</div>' +
           '<div style="font-size:10px;color:#6c757d;margin-bottom:2px;">' + esc(cliName) + '</div>' +
@@ -1938,12 +1940,12 @@ app.get('/', async (c) => {
           (overdue ? '<span style="font-size:9px;font-weight:700;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i> SLA</span>' : '') +
           '</div>' +
           (t.due_at ? '<div style="font-size:9px;color:' + (overdue?'#dc2626':'#9ca3af') + ';margin-top:4px;">Prazo: ' + new Date(t.due_at).toLocaleDateString('pt-BR') + '</div>' : '') +
-          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(' + tid + ', this.value)">' +
+          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(\'' + tidAttr + '\', this.value)">' +
           SUPPORT_STATUS_ORDER.map(function(s) { return '<option value="' + s + '" ' + (s===t.status?'selected':'') + '>' + s + '</option>'; }).join('') +
           '</select>' +
           '<div style="display:flex;gap:4px;margin-top:6px;">' +
-          '<button onclick="viewTicket(' + tid + ')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
-          '<button onclick="editTicket(' + tid + ')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
+          '<button onclick="viewTicket(\'' + tidAttr + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
+          '<button onclick="editTicket(\'' + tidAttr + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
           '</div>' +
           '</div>';
       }).join('');
@@ -2163,6 +2165,9 @@ app.get('/', async (c) => {
     const description = document.getElementById('mtDescription')?.value?.trim();
     const priority    = document.getElementById('mtPriority')?.value || 'medium';
     const empresaId   = document.getElementById('mtEmpresa')?.value || _newTicketCliId || '';
+    // Resolve company name to always show fantasia/empresa, not the ID code
+    const cliRecord   = masterClientsData.find(function(c) { return c.id === empresaId; });
+    const empresaName = cliRecord ? (cliRecord.fantasia || cliRecord.empresa || '') : '';
     if (!title)       { showToast('Informe o título do chamado.', 'error'); return; }
     if (!description) { showToast('Informe a descrição.', 'error'); return; }
     const btn = document.getElementById('btnSalvarTicketMaster');
@@ -2171,7 +2176,7 @@ app.get('/', async (c) => {
       const res = await fetch('/master/api/support/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, priority, empresa_id: empresaId }),
+        body: JSON.stringify({ title, description, priority, empresa_id: empresaId, empresa_name: empresaName || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
@@ -2269,11 +2274,11 @@ async function fillMissingEmpresaNames(db: D1Database, tickets: any[]): Promise<
     // são vinculados via .bind(...ids) evitando injeção SQL.
     const placeholders = ids.map(() => '?').join(',')
     const usersRes = await db.prepare(
-      `SELECT user_id, empresa FROM registered_users WHERE user_id IN (${placeholders}) AND (owner_id IS NULL OR owner_id = '')`
+      `SELECT id, empresa FROM registered_users WHERE id IN (${placeholders}) AND (owner_id IS NULL OR owner_id = '')`
     ).bind(...ids).all()
     const nameMap: Record<string, string> = {}
     for (const u of (usersRes.results || []) as any[]) {
-      nameMap[u.user_id] = u.empresa
+      nameMap[u.id] = u.empresa
     }
     for (const t of missing) {
       t.empresa_name = nameMap[t.empresa_id] || t.empresa_id || ''

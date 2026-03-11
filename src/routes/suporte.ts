@@ -240,9 +240,16 @@ app.post('/api/tickets', async (c) => {
   const now = new Date().toISOString()
   const dueAt = computeDueAt(priority)
 
+  // Use ownerId or userId as empresa_id when session lacks a proper empresa_id (placeholder '1').
+  // This ensures master panel can resolve company name via masterClientsData (indexed by userId).
+  const PLACEHOLDER_EMPRESA_ID = '1'
+  const effectiveEmpresaId = (empresaId && empresaId !== PLACEHOLDER_EMPRESA_ID)
+    ? empresaId
+    : (session.ownerId || session.userId || '1')
+
   const ticket = {
     id,
-    empresa_id:         empresaId || '1',
+    empresa_id:         effectiveEmpresaId,
     empresa_name:       session.empresa || null,
     user_id:            userId,
     created_by_name:    session.nome || '',
@@ -265,7 +272,7 @@ app.post('/api/tickets', async (c) => {
   if (db && userId !== 'demo-tenant') {
     let d1Ok = false
     try {
-      const data = { ...ticket, empresa_id: empresaId || '1' }
+      const data = { ...ticket }
       const keys = Object.keys(data)
       const vals = Object.values(data)
       await db.prepare(
