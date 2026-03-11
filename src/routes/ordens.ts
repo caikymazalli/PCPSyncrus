@@ -33,6 +33,8 @@ app.get('/', (c) => {
   }
 
   const countByStatus = (s: string) => productionOrders.filter(o => o.status === s).length
+  const escA = (s: string) => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const escJs = (s: string) => String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'\\r').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029')
 
   const content = `
   <!-- Header -->
@@ -48,7 +50,7 @@ app.get('/', (c) => {
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-secondary" onclick="openModal('filterModal')" title="Filtrar ordens por critérios"><i class="fas fa-filter"></i> Filtrar</button>
-      <button class="btn btn-primary" onclick="openModal('novaOrdemModal')" title="Criar nova ordem de produção"><i class="fas fa-plus"></i> Nova Ordem</button>
+      <button class="btn btn-primary" onclick="openNovaOrdemModal()" title="Criar nova ordem de produção"><i class="fas fa-plus"></i> Nova Ordem</button>
     </div>
   </div>
 
@@ -106,17 +108,17 @@ app.get('/', (c) => {
             const pedido = (o as any).pedido || ''
             const cliente = (o as any).cliente || ''
             return `
-            <tr data-status="${o.status}" data-priority="${o.priority}" data-plant="${o.plantName}" data-search="${o.code.toLowerCase()} ${o.productName.toLowerCase()} ${pedido.toLowerCase()} ${cliente.toLowerCase()}">
+            <tr data-status="${o.status}" data-priority="${o.priority}" data-plant="${escA(o.plantName)}" data-search="${escA(o.code.toLowerCase())} ${escA(o.productName.toLowerCase())} ${escA(pedido.toLowerCase())} ${escA(cliente.toLowerCase())}">
               <td>
-                <div style="font-weight:700;color:#1B4F72;">${o.code}</div>
+                <div style="font-weight:700;color:#1B4F72;">${escA(o.code)}</div>
                 ${isLate ? '<div style="font-size:10px;color:#E74C3C;"><i class="fas fa-exclamation-triangle"></i> Atrasada</div>' : ''}
               </td>
               <td>
-                ${pedido ? `<div style="font-weight:600;color:#374151;font-size:12px;"><i class="fas fa-file-invoice" style="color:#2980B9;margin-right:4px;"></i>${pedido}</div>` : '<div style="font-size:11px;color:#9ca3af;">—</div>'}
-                ${cliente ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;"><i class="fas fa-building" style="margin-right:4px;"></i>${cliente}</div>` : ''}
+                ${pedido ? `<div style="font-weight:600;color:#374151;font-size:12px;"><i class="fas fa-file-invoice" style="color:#2980B9;margin-right:4px;"></i>${escA(pedido)}</div>` : '<div style="font-size:11px;color:#9ca3af;">—</div>'}
+                ${cliente ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;"><i class="fas fa-building" style="margin-right:4px;"></i>${escA(cliente)}</div>` : ''}
               </td>
               <td>
-                <div style="font-weight:500;color:#374151;">${o.productName}</div>
+                <div style="font-weight:500;color:#374151;">${escA(o.productName)}</div>
               </td>
               <td style="font-weight:600;">${o.quantity.toLocaleString('pt-BR')}</td>
               <td style="font-weight:600;color:${(o as any).completedQuantity >= o.quantity ? '#27AE60' : '#374151'};">${(o as any).completedQuantity.toLocaleString('pt-BR')}</td>
@@ -132,7 +134,7 @@ app.get('/', (c) => {
               <td style="color:${isLate ? '#E74C3C' : '#6c757d'};font-size:12px;font-weight:${isLate ? '700' : '400'};">
                 ${new Date(o.endDate + 'T12:00:00').toLocaleDateString('pt-BR')}
               </td>
-              <td style="font-size:12px;color:#6c757d;">${o.plantName}</td>
+              <td style="font-size:12px;color:#6c757d;">${escA(o.plantName)}</td>
               <td>
                 <span style="font-size:12px;font-weight:700;color:${priorityColors[o.priority]};">
                   <i class="fas fa-circle" style="font-size:7px;"></i> ${priorityLabel[o.priority]}
@@ -142,10 +144,10 @@ app.get('/', (c) => {
               <td>
                 <div style="display:flex;gap:4px;">
                   <div class="tooltip-wrap" data-tooltip="Ver detalhes"><button class="btn btn-secondary btn-sm" onclick="showOrderDetail('${o.id}')"><i class="fas fa-eye"></i></button></div>
-                  <div class="tooltip-wrap" data-tooltip="Editar ordem"><button class="btn btn-secondary btn-sm" onclick="openModal('novaOrdemModal')"><i class="fas fa-edit"></i></button></div>
-                  ${o.status === 'planned' ? `<div class="tooltip-wrap" data-tooltip="Iniciar produção"><button class="btn btn-success btn-sm" onclick="updateOrderStatus('${o.id}','in_progress','${o.code}')"><i class="fas fa-play"></i></button></div>` : ''}
-                  ${o.status === 'in_progress' ? `<div class="tooltip-wrap" data-tooltip="Concluir ordem"><button class="btn btn-warning btn-sm" onclick="updateOrderStatus('${o.id}','completed','${o.code}')"><i class="fas fa-check"></i></button></div>` : ''}
-                  ${(o.status === 'planned' || o.status === 'in_progress') ? `<div class="tooltip-wrap" data-tooltip="Cancelar ordem"><button class="btn btn-danger btn-sm" onclick="updateOrderStatus('${o.id}','cancelled','${o.code}')"><i class="fas fa-times"></i></button></div>` : ''}
+                  <div class="tooltip-wrap" data-tooltip="Editar ordem"><button class="btn btn-secondary btn-sm" onclick="editOrdem('${o.id}')"><i class="fas fa-edit"></i></button></div>
+                  ${o.status === 'planned' ? `<div class="tooltip-wrap" data-tooltip="Iniciar produção"><button class="btn btn-success btn-sm" onclick="updateOrderStatus('${o.id}','in_progress','${escJs(o.code)}')"><i class="fas fa-play"></i></button></div>` : ''}
+                  ${o.status === 'in_progress' ? `<div class="tooltip-wrap" data-tooltip="Concluir ordem"><button class="btn btn-warning btn-sm" onclick="updateOrderStatus('${o.id}','completed','${escJs(o.code)}')"><i class="fas fa-check"></i></button></div>` : ''}
+                  ${(o.status === 'planned' || o.status === 'in_progress') ? `<div class="tooltip-wrap" data-tooltip="Cancelar ordem"><button class="btn btn-danger btn-sm" onclick="updateOrderStatus('${o.id}','cancelled','${escJs(o.code)}')"><i class="fas fa-times"></i></button></div>` : ''}
                 </div>
               </td>
             </tr>`
@@ -169,7 +171,7 @@ app.get('/', (c) => {
   <div class="modal-overlay" id="novaOrdemModal">
     <div class="modal" style="max-width:620px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-plus-circle" style="margin-right:8px;"></i>Nova Ordem de Produção</h3>
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i id="novaOrdemModalIcon" class="fas fa-plus-circle" style="margin-right:8px;"></i><span id="novaOrdemModalTitleText">Nova Ordem de Produção</span></h3>
         <button onclick="closeModal('novaOrdemModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:20px 24px;">
@@ -237,7 +239,7 @@ app.get('/', (c) => {
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('novaOrdemModal')" class="btn btn-secondary">Cancelar</button>
-        <button onclick="salvarOrdem()" class="btn btn-primary" id="btnCriarOrdem"><i class="fas fa-save"></i> Criar Ordem</button>
+        <button onclick="salvarOrdem()" class="btn btn-primary" id="btnCriarOrdem"><i class="fas fa-save"></i> <span id="btnCriarOrdemText">Criar Ordem</span></button>
       </div>
     </div>
   </div>
@@ -254,7 +256,48 @@ app.get('/', (c) => {
   </div>
 
   <script>
-  const orders = ${JSON.stringify(productionOrders)};
+  const orders = ${JSON.stringify(productionOrders).replace(/</g,'\\u003c').replace(/>/g,'\\u003e')};
+  let _editOrdemId = null;
+
+  function openNovaOrdemModal() {
+    _editOrdemId = null;
+    document.getElementById('novaOrdemCode').value = '';
+    document.getElementById('novaOrdemProduct').value = '';
+    document.getElementById('novaOrdemQty').value = '';
+    document.getElementById('novaOrdemStart').value = '';
+    document.getElementById('novaOrdemEnd').value = '';
+    document.getElementById('novaOrdemPriority').value = 'medium';
+    document.getElementById('novaOrdemStatus').value = 'planned';
+    document.getElementById('novaOrdemCliente').value = '';
+    document.getElementById('novaOrdemPedido').value = '';
+    document.getElementById('novaOrdemNotes').value = '';
+    document.getElementById('novaOrdemPlant').value = '';
+    document.getElementById('novaOrdemModalIcon').className = 'fas fa-plus-circle';
+    document.getElementById('novaOrdemModalTitleText').textContent = 'Nova Ordem de Produção';
+    document.getElementById('btnCriarOrdemText').textContent = 'Criar Ordem';
+    openModal('novaOrdemModal');
+  }
+
+  function editOrdem(id) {
+    const o = orders.find(x => x.id === id);
+    if (!o) { showToast('Ordem não encontrada', 'error'); return; }
+    _editOrdemId = id;
+    document.getElementById('novaOrdemCode').value = o.code || '';
+    document.getElementById('novaOrdemProduct').value = o.productName || '';
+    document.getElementById('novaOrdemQty').value = o.quantity || '';
+    document.getElementById('novaOrdemStart').value = o.startDate || '';
+    document.getElementById('novaOrdemEnd').value = o.endDate || '';
+    document.getElementById('novaOrdemPriority').value = o.priority || 'medium';
+    document.getElementById('novaOrdemStatus').value = o.status || 'planned';
+    document.getElementById('novaOrdemCliente').value = o.cliente || '';
+    document.getElementById('novaOrdemPedido').value = o.pedido || '';
+    document.getElementById('novaOrdemNotes').value = o.notes || '';
+    document.getElementById('novaOrdemPlant').value = o.plantId || '';
+    document.getElementById('novaOrdemModalIcon').className = 'fas fa-edit';
+    document.getElementById('novaOrdemModalTitleText').textContent = 'Editar Ordem de Produção';
+    document.getElementById('btnCriarOrdemText').textContent = 'Salvar Alterações';
+    openModal('novaOrdemModal');
+  }
 
   function filterOrders() {
     const search = document.getElementById('searchInput').value.toLowerCase();
@@ -344,22 +387,36 @@ app.get('/', (c) => {
     const cliente = document.getElementById('novaOrdemCliente')?.value?.trim() || '';
     const pedido = document.getElementById('novaOrdemPedido')?.value?.trim() || '';
     const notes = document.getElementById('novaOrdemNotes')?.value?.trim() || '';
-    
+    const plantSel = document.getElementById('novaOrdemPlant');
+    const plantId = plantSel?.value || '';
+    const plantName = plantSel?.options[plantSel.selectedIndex]?.text || '';
+
     if (!productName) { showToast('Informe o produto!', 'error'); return; }
-    
+
+    const payload = { code, productName, quantity, startDate, endDate, priority, status, cliente, pedido, notes, plantId, plantName };
+
     try {
-      const res = await fetch('/ordens/api/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, productName, quantity, startDate, endDate, priority, status, cliente, pedido, notes })
-      });
+      let res;
+      if (_editOrdemId) {
+        res = await fetch('/ordens/api/' + _editOrdemId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch('/ordens/api/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
       const data = await res.json();
       if (data.ok) {
-        showToast('✅ Ordem criada com sucesso!');
+        showToast(_editOrdemId ? '✅ Ordem atualizada com sucesso!' : '✅ Ordem criada com sucesso!');
         closeModal('novaOrdemModal');
         setTimeout(() => location.reload(), 800);
       } else {
-        showToast(data.error || 'Erro ao criar ordem', 'error');
+        showToast(data.error || 'Erro ao salvar ordem', 'error');
       }
     } catch(e) {
       showToast('Erro de conexão', 'error');
@@ -457,13 +514,20 @@ app.put('/api/:id', async (c) => {
   if (idx === -1) return err(c, 'Ordem não encontrada', 404)
 
   if (db && userId !== 'demo-tenant') {
-    await dbUpdate(db, 'production_orders', id, userId, {
-      status: body.status,
-      priority: body.priority,
-      completed_quantity: body.completedQuantity,
-      end_date: body.endDate,
-      notes: body.notes,
-    })
+    const updateData: Record<string, any> = {}
+    if (body.status !== undefined) updateData.status = body.status
+    if (body.priority !== undefined) updateData.priority = body.priority
+    if (body.completedQuantity !== undefined) updateData.completed_quantity = body.completedQuantity
+    if (body.code !== undefined) updateData.code = body.code
+    if (body.productName !== undefined) updateData.product_name = body.productName
+    if (body.quantity !== undefined) updateData.quantity = body.quantity
+    if (body.startDate !== undefined) updateData.start_date = body.startDate
+    if (body.endDate !== undefined) updateData.end_date = body.endDate
+    if (body.plantId !== undefined) updateData.plant_id = body.plantId
+    if (body.notes !== undefined) updateData.notes = body.notes
+    if (Object.keys(updateData).length > 0) {
+      await dbUpdate(db, 'production_orders', id, userId, updateData)
+    }
   }
 
   Object.assign(tenant.productionOrders[idx], body)
@@ -492,6 +556,15 @@ app.delete('/api/:id', async (c) => {
 app.get('/api/list', async (c) => {
   const tenant = getCtxTenant(c)
   return ok(c, { orders: tenant.productionOrders })
+})
+
+// ── API: GET /ordens/api/:id ─────────────────────────────────────────────────
+app.get('/api/:id', async (c) => {
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const order = tenant.productionOrders.find((o: any) => o.id === id)
+  if (!order) return err(c, 'Ordem não encontrada', 404)
+  return ok(c, { order })
 })
 
 export default app
