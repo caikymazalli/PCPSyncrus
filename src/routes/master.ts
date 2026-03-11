@@ -29,10 +29,11 @@ function escapeHtml(str: any): string {
  * Unicode U+2028/U+2029 que são inválidos em string literals JavaScript.
  */
 function safeJsonForScriptTag(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/<\//g, '<\\/')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
+  // JSON.stringify(undefined) returns undefined (not a string); coerce to null for safety
+  return JSON.stringify(value ?? null)
+    .replace(/<\//g, '<\\/')      // prevent premature </script> tag termination
+    .replace(/\u2028/g, '\\u2028') // U+2028 Line Separator invalid in JS string literals (ES2018-)
+    .replace(/\u2029/g, '\\u2029') // U+2029 Paragraph Separator same
 }
 
 // ── Utilidades ─────────────────────────────────────────────────────────────────
@@ -1020,7 +1021,9 @@ app.get('/', async (c) => {
         <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</label>
         <select id="supportFilterStatus" class="form-control" style="font-size:12px;padding:5px 8px;">
           <option value="">— Todos —</option>
-          <option>Aberta</option><option>Em Andamento</option><option>Aguardando Cliente</option><option>Resolvida</option>
+          <option value="Criada">Criada</option><option value="Analisando">Analisando</option>
+          <option value="N1">N1</option><option value="N2">N2</option><option value="N3">N3</option>
+          <option value="Resolvendo">Resolvendo</option><option value="Resolvida">Resolvida</option>
         </select>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">
@@ -1927,9 +1930,9 @@ app.get('/', async (c) => {
         // Prefer stored empresa_name; fall back to masterClientsData lookup then raw id
         const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
           ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
-        // Use esc() + single-quoted JS strings to avoid breaking HTML attribute values
-        // (JSON.stringify produces double-quoted strings that would terminate onclick="...")
-        const tidAttr = esc(t.id);
+        // Encode ticket id for safe HTML attribute injection inside double-quoted onclick="..."
+        // JSON.stringify("id") → "\"id\"" which would close the attribute early without escaping.
+        const tid = JSON.stringify(t.id).replace(/"/g, '&quot;');
         return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
           '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:2px;line-height:1.3;">' + esc(t.title || '—') + '</div>' +
           '<div style="font-size:10px;color:#6c757d;margin-bottom:2px;">' + esc(cliName) + '</div>' +
@@ -2138,10 +2141,10 @@ app.get('/', async (c) => {
           const overdue = t.due_at && new Date(t.due_at).getTime() < now && t.status !== 'Resolvida';
           return '<div style="padding:10px 12px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;">' +
             '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">' +
-            '<div style="font-size:12px;font-weight:700;color:#1B4F72;">' + (t.title || '—') + '</div>' +
+            '<div style="font-size:12px;font-weight:700;color:#1B4F72;">' + esc(t.title || '—') + '</div>' +
             '<span style="font-size:10px;font-weight:700;color:' + pc + ';white-space:nowrap;">' + pl + '</span></div>' +
             '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;">' +
-            '<span style="font-size:10px;background:#e9ecef;color:#374151;padding:1px 7px;border-radius:10px;font-weight:600;">' + t.status + '</span>' +
+            '<span style="font-size:10px;background:#e9ecef;color:#374151;padding:1px 7px;border-radius:10px;font-weight:600;">' + esc(t.status) + '</span>' +
             (overdue ? '<span style="font-size:10px;color:#dc2626;font-weight:700;"><i class="fas fa-exclamation-triangle"></i> SLA vencido</span>' : '') +
             '<span style="font-size:10px;color:#9ca3af;margin-left:auto;">' + new Date(t.created_at).toLocaleDateString('pt-BR') + '</span></div></div>';
         }).join('') + '</div>';
