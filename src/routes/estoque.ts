@@ -2649,14 +2649,19 @@ app.post('/api/warehouse-location/create', async (c) => {
     description: body.description || '', status: 'active',
     createdAt: new Date().toISOString(),
   }
-  ;(tenant as any).almoxarifadoLocations.push(location)
   if (db && userId !== 'demo-tenant') {
     try {
       await db.prepare(`INSERT INTO almoxarifado_locations (id, user_id, empresa_id, almoxarifado_id, code, description, status) VALUES (?,?,?,?,?,?,?)`)
         .bind(id, userId, empresaId, body.almoxarifadoId, body.code, body.description || '', 'active').run()
+      console.log(`[ESTOQUE][LOCATIONS] Endereço ${id} persistido em D1`)
     } catch (e) {
-      console.warn(`[ESTOQUE][LOCATIONS] D1 insert failed for location ${id}: ${(e as Error).message}. Migration may not be applied yet.`)
+      console.error(`[ESTOQUE][LOCATIONS] [CRÍTICO] D1 insert failed for location ${id}: ${(e as Error).message}`)
+      return err(c, 'Falha ao persistir endereço no banco de dados', 500)
     }
+  }
+  // Insert in memory only if not already present (avoid duplicates after D1 hydration)
+  if (((tenant as any).almoxarifadoLocations as any[]).findIndex((l: any) => l.id === id) === -1) {
+    ;(tenant as any).almoxarifadoLocations.push(location)
   }
   return ok(c, { location })
 })

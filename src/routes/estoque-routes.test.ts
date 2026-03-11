@@ -57,6 +57,7 @@ function setupTenant() {
     bomItems: [], productSuppliers: [], workOrders: [], routes: [],
     serialNumbers: [], serialPendingItems: [],
     warehouses: [], separationOrders: [], stockExits: [],
+    almoxarifadoLocations: [],
     supplierCategories: [], productSupplierLinks: [],
     quotationNegotiations: [],
     workInstructions: [], workInstructionVersions: [],
@@ -381,6 +382,83 @@ describe('POST /estoque/api/warehouse-location/create', () => {
       body: JSON.stringify({ almoxarifadoId: 'alm1' }),
     })
     expect(res.status).toBe(400)
+  })
+})
+
+// ── Source-code guardrail: D1-first para warehouse-location/create ────────────
+
+describe('estoque.ts source-code guardrails D1-first (warehouse-location/create)', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('handler POST /api/warehouse-location/create: bloco D1 aparece antes de almoxarifadoLocations.push', () => {
+    const handlerStart = src.indexOf("app.post('/api/warehouse-location/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memPushPos = handlerBody.indexOf('almoxarifadoLocations.push')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memPushPos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memPushPos)
+  })
+
+  it('handler POST /api/warehouse-location/create: inclui log [CRÍTICO] no caso de falha D1', () => {
+    const handlerStart = src.indexOf("app.post('/api/warehouse-location/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+})
+
+// ── POST /api/warehouse-location/create — D1 falhando em produção ─────────────
+
+describe('POST /estoque/api/warehouse-location/create — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const initialCount = ((tenants[TEST_USER_ID] as any).almoxarifadoLocations as any[]).length
+
+    const res = await authedRequest('/api/warehouse-location/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1', code: 'A-01-01', description: 'Prateleira A' }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido atualizada
+    const locs = (tenants[TEST_USER_ID] as any).almoxarifadoLocations as any[]
+    expect(locs.length).toBe(initialCount)
+  })
+})
+
+// ── POST /api/warehouse-location/create — D1 com sucesso em produção ──────────
+
+describe('POST /estoque/api/warehouse-location/create — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant() })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const initialCount = ((tenants[TEST_USER_ID] as any).almoxarifadoLocations as any[]).length
+
+    const res = await authedRequest('/api/warehouse-location/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1', code: 'B-02-03', description: 'Prateleira B' }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.location).toBeDefined()
+    expect(data.location.code).toBe('B-02-03')
+
+    const locs = (tenants[TEST_USER_ID] as any).almoxarifadoLocations as any[]
+    expect(locs.length).toBe(initialCount + 1)
+    expect(locs.find((l: any) => l.code === 'B-02-03')).toBeDefined()
   })
 })
 
