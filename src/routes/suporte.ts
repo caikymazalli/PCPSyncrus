@@ -318,9 +318,34 @@ app.get('/api/tickets', async (c) => {
   const session = getCtxSession(c)
   if (!session || session.isDemo) return err(c, 'Não autenticado', 401)
 
+  const db        = getCtxDB(c)
   const tenant    = getCtxTenant(c)
   const empresaId = getCtxEmpresaId(c)
+  const userId    = getCtxUserId(c)
 
+  // D1-first: lê do banco de dados quando disponível para garantir que chamados
+  // criados pelo tenant reflitam imediatamente no painel Master (que também lê D1).
+  if (db && userId !== 'demo-tenant') {
+    try {
+      // Usa empresaId real quando disponível; '1' é o valor-padrão de getCtxEmpresaId
+      // quando nenhum empresa_id está associado à sessão — nesse caso,
+      // recorre ao ownerId (para convidados) ou userId (para titulares de conta).
+      const PLACEHOLDER_EMPRESA_ID = '1'
+      const filter = empresaId && empresaId !== PLACEHOLDER_EMPRESA_ID
+        ? empresaId
+        : (session.ownerId || session.userId || empresaId)
+      const res = await db.prepare(
+        `SELECT * FROM support_tickets WHERE empresa_id = ? ORDER BY updated_at DESC LIMIT 200`
+      ).bind(filter).all()
+      const tickets: any[] = res.results || []
+      return ok(c, { tickets })
+    } catch (e: any) {
+      console.error(`[SUPORTE][GET /api/tickets] Falha ao ler D1, usando memória: ${e?.message}`)
+      // fallback para memória abaixo
+    }
+  }
+
+  // Fallback: memória (desenvolvimento local / D1 indisponível)
   const tickets = ((tenant as any).supportTickets || []).filter(
     (t: any) => t.empresa_id === empresaId || t.empresa_id === (session.ownerId || session.userId)
   )
