@@ -228,3 +228,56 @@ describe('POST /suporte/api/tickets — D1 com sucesso em produção', () => {
     expect(data.ok).toBe(false)
   })
 })
+
+// ── Source-code guardrail: master.ts suporte filtros opcionais ────────────────
+
+describe('master.ts source-code: filtros opcionais de suporte', () => {
+  const masterSrc = readFileSync(resolve(__dirname, 'master.ts'), 'utf8')
+
+  it('GET /api/support/tickets aceita filtro status opcional', () => {
+    expect(masterSrc).toContain("c.req.query('status')")
+  })
+
+  it('GET /api/support/tickets aceita filtro priority opcional', () => {
+    expect(masterSrc).toContain("c.req.query('priority')")
+  })
+
+  it('GET /api/support/tickets aceita filtro only_overdue opcional', () => {
+    expect(masterSrc).toContain("c.req.query('only_overdue')")
+  })
+
+  it('GET /api/support/tickets aceita filtro limit com teto máximo (500)', () => {
+    expect(masterSrc).toContain('Math.min(limitRaw, 500)')
+  })
+
+  it('padrão global: query sem filtros retorna todos os tickets', () => {
+    // The WHERE clause must be empty when no conditions apply
+    expect(masterSrc).toContain("conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''")
+  })
+
+  it('UI exibe select de empresa para filtro opcional', () => {
+    expect(masterSrc).toContain('supportFilterEmpresa')
+  })
+
+  it('UI exibe select de status para filtro opcional', () => {
+    expect(masterSrc).toContain('supportFilterStatus')
+  })
+
+  it('UI exibe select de prioridade para filtro opcional', () => {
+    expect(masterSrc).toContain('supportFilterPriority')
+  })
+
+  it('UI exibe checkbox only_overdue para filtro opcional', () => {
+    expect(masterSrc).toContain('supportFilterOverdue')
+  })
+
+  it('clearSupportFilters limpa todos os filtros e recarrega globalmente', () => {
+    expect(masterSrc).toContain('function clearSupportFilters(')
+    expect(masterSrc).toContain('loadSupportTickets(null)')
+  })
+
+  it('safeJsonForScriptTag está definida e usada para masterClientsData', () => {
+    expect(masterSrc).toContain('function safeJsonForScriptTag(')
+    expect(masterSrc).toContain('safeJsonForScriptTag(clients)')
+  })
+})

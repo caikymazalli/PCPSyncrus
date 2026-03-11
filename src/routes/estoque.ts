@@ -763,7 +763,7 @@ app.get('/', (c) => {
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Descrição</th>
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">S/N</th>
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Almoxarifado</th>
-              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Endereço no Estoque</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Endereço no Estoque <span style="font-size:9px;color:#9ca3af;font-weight:500;text-transform:none;">(duplo clique para editar)</span></th>
             </tr>
           </thead>
           <tbody>
@@ -2281,6 +2281,131 @@ app.get('/', (c) => {
     }
   }
   openSerialListFromUrl();
+
+  // ── Inline edit: Endereço no Estoque (duplo clique) ─────────────────────────
+  function snStartEditLocation(td) {
+    // Prevent opening multiple editors at once
+    if (td.querySelector('input')) return;
+    const snId  = td.dataset.snId;
+    const almId = td.dataset.snAlm || 'alm1';
+    const curLoc = td.dataset.snLoc || '';
+
+    // Determine hint: if multiple warehouses, show expected format
+    const alm = allAlmData.find(function(a) { return a.id === almId; });
+    const almCode = alm ? (alm.code || almId) : almId;
+    const multiAlm = allAlmData.length > 1;
+    const placeholder = multiAlm ? almCode + ' - A-01-01' : 'Ex: A-01-01';
+
+    // Store context in data attributes — no JSON.stringify in onclick handlers
+    td.innerHTML =
+      '<div class="sn-loc-edit" data-sn-id="' + _escAttr(snId) + '" data-sn-alm="' + _escAttr(almId) + '" data-sn-alm-code="' + _escAttr(almCode) + '" style="display:flex;gap:6px;align-items:center;">' +
+        '<input id="snLocInput_' + _escAttr(snId) + '" type="text" value="' + _escAttr(curLoc) + '"' +
+          ' placeholder="' + _escAttr(placeholder) + '"' +
+          ' style="font-size:12px;border:1px solid #7c3aed;border-radius:4px;padding:3px 7px;min-width:120px;outline:none;"' +
+          ' onkeydown="snLocKeydown(event, this)"' +
+        '>' +
+        '<button onclick="snConfirmLocationBtn(this)" title="Salvar"' +
+          ' style="background:#7c3aed;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✓</button>' +
+        '<button onclick="snCancelEditBtn(this)" title="Cancelar"' +
+          ' style="background:#e9ecef;color:#374151;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✕</button>' +
+      '</div>';
+
+    const input = document.getElementById('snLocInput_' + snId);
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function _escAttr(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function _snGetEditCtx(el) {
+    const container = el.closest('.sn-loc-edit');
+    if (!container) return null;
+    return {
+      snId:    container.dataset.snId,
+      almId:   container.dataset.snAlm,
+      almCode: container.dataset.snAlmCode,
+      td:      container.parentElement,
+      input:   container.querySelector('input'),
+    };
+  }
+
+  function snLocKeydown(e, input) {
+    if (e.key === 'Enter')  { e.preventDefault(); snConfirmLocationBtn(input); }
+    if (e.key === 'Escape') { e.preventDefault(); snCancelEditBtn(input); }
+  }
+
+  function snCancelEditBtn(el) {
+    const ctx = _snGetEditCtx(el);
+    if (!ctx) return;
+    const td = ctx.td;
+    if (!td) return;
+    const curLoc = td.dataset.snLoc || '';
+    const almId  = td.dataset.snAlm  || 'alm1';
+    const alm    = allAlmData.find(function(a) { return a.id === almId; });
+    const almCode = alm ? (alm.code || almId) : almId;
+    const multiAlm = allAlmData.length > 1;
+    td.innerHTML = curLoc ? (multiAlm ? almCode + ' - ' + curLoc : curLoc) : '—';
+  }
+
+  async function snConfirmLocationBtn(el) {
+    const ctx = _snGetEditCtx(el);
+    if (!ctx) return;
+    const { snId, almId, almCode, td, input } = ctx;
+    if (!td || !input) return;
+
+    let raw = input.value.trim();
+    // Support both "ALM_001 - A-01-01" and plain "A-01-01"
+    const sep = raw.indexOf(' - ');
+    const locationCode = sep >= 0 ? raw.substring(sep + 3).trim() : raw;
+
+    if (!locationCode) {
+      showEstoqueToast('Informe o código do endereço.', 'error');
+      input.focus(); return;
+    }
+
+    // Validate against server (almoxarifado locations)
+    try {
+      const vRes = await fetch(
+        '/estoque/api/validate-location?almoxarifadoId=' + encodeURIComponent(almId) +
+        '&code=' + encodeURIComponent(locationCode)
+      );
+      const vData = await vRes.json().catch(() => ({}));
+      if (!vRes.ok || !vData.valid) {
+        const msg = vData.error ||
+          'Endereço "' + locationCode + '" não encontrado no almoxarifado "' + almCode + '". ' +
+          'Cadastre-o primeiro em Almoxarifados → Endereços.';
+        showEstoqueToast(msg, 'error');
+        input.focus(); return;
+      }
+    } catch {
+      showEstoqueToast('Erro ao validar endereço. Tente novamente.', 'error');
+      input.focus(); return;
+    }
+
+    // Persist the new location
+    try {
+      const pRes = await fetch('/estoque/api/serial-number/' + encodeURIComponent(snId) + '/location', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ almoxarifadoId: almId, location: locationCode })
+      });
+      const pData = await pRes.json().catch(() => ({}));
+      if (!pRes.ok || !pData.ok) {
+        showEstoqueToast(pData.error || 'Erro ao salvar endereço.', 'error');
+        input.focus(); return;
+      }
+    } catch {
+      showEstoqueToast('Erro de conexão ao salvar endereço.', 'error');
+      input.focus(); return;
+    }
+
+    // Update DOM state
+    const multiAlm = allAlmData.length > 1;
+    td.dataset.snLoc = locationCode;
+    td.innerHTML = multiAlm ? almCode + ' - ' + locationCode : locationCode;
+    showEstoqueToast('✅ Endereço atualizado!', 'success');
+  }
   </script>
   `
   return c.html(layout('Estoque', content, 'estoque', userInfo))

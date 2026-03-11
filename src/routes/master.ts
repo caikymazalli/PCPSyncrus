@@ -1007,6 +1007,47 @@ app.get('/', async (c) => {
         <i class="fas fa-plus"></i> Novo Chamado
       </button>
     </div>
+    <!-- Filtros opcionais de gestão (por padrão exibe tudo globalmente) -->
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;padding:12px 14px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:160px;">
+        <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Empresa</label>
+        <select id="supportFilterEmpresa" class="form-control" style="font-size:12px;padding:5px 8px;">
+          <option value="">— Todas —</option>
+          ${clients.map((cl: any) => `<option value="${escapeHtml(cl.id)}">${escapeHtml(cl.fantasia || cl.empresa || cl.id)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:130px;">
+        <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</label>
+        <select id="supportFilterStatus" class="form-control" style="font-size:12px;padding:5px 8px;">
+          <option value="">— Todos —</option>
+          <option>Aberta</option><option>Em Andamento</option><option>Aguardando Cliente</option><option>Resolvida</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">
+        <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Prioridade</label>
+        <select id="supportFilterPriority" class="form-control" style="font-size:12px;padding:5px 8px;">
+          <option value="">— Todas —</option>
+          <option value="critical">Crítica</option><option value="high">Alta</option>
+          <option value="medium">Média</option><option value="low">Baixa</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">SLA</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;padding:6px 0;">
+          <input type="checkbox" id="supportFilterOverdue" style="accent-color:#dc2626;"> Apenas vencidos
+        </label>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:90px;">
+        <label style="font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Limite</label>
+        <input type="number" id="supportFilterLimit" class="form-control" style="font-size:12px;padding:5px 8px;" value="200" min="1" max="500">
+      </div>
+      <button onclick="applySupportFilters()" class="btn btn-primary" style="font-size:12px;padding:6px 14px;align-self:flex-end;">
+        <i class="fas fa-search"></i> Filtrar
+      </button>
+      <button onclick="clearSupportFilters()" class="btn btn-secondary" style="font-size:12px;padding:6px 14px;align-self:flex-end;">
+        <i class="fas fa-times"></i> Limpar
+      </button>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px;" id="supportKPIs">
       <div class="master-kpi" style="border-left:4px solid #2980B9;">
         <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:6px;">Abertos</div>
@@ -1822,9 +1863,10 @@ app.get('/', async (c) => {
   let _masterTickets = [];
   let _newTicketCliId = null;
 
-  async function loadSupportTickets() {
+  async function loadSupportTickets(params) {
     try {
-      const res = await fetch('/master/api/support/tickets');
+      const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+      const res = await fetch('/master/api/support/tickets' + qs);
       if (!res.ok) { renderKanban([]); return; }
       const data = await res.json().catch(() => ({ tickets: [] }));
       _masterTickets = data.tickets || [];
@@ -1845,6 +1887,31 @@ app.get('/', async (c) => {
     } catch(e) {
       renderKanban([]);
     }
+  }
+
+  function applySupportFilters() {
+    const params = {};
+    const empresa  = document.getElementById('supportFilterEmpresa')?.value;
+    const status   = document.getElementById('supportFilterStatus')?.value;
+    const priority = document.getElementById('supportFilterPriority')?.value;
+    const overdue  = document.getElementById('supportFilterOverdue')?.checked;
+    const limit    = document.getElementById('supportFilterLimit')?.value;
+    if (empresa)  params.empresa_id   = empresa;
+    if (status)   params.status       = status;
+    if (priority) params.priority     = priority;
+    if (overdue)  params.only_overdue = '1';
+    if (limit && parseInt(limit) !== 200) params.limit = limit;
+    loadSupportTickets(Object.keys(params).length ? params : null);
+  }
+
+  function clearSupportFilters() {
+    const el = (id) => document.getElementById(id);
+    if (el('supportFilterEmpresa'))  el('supportFilterEmpresa').value   = '';
+    if (el('supportFilterStatus'))   el('supportFilterStatus').value    = '';
+    if (el('supportFilterPriority')) el('supportFilterPriority').value  = '';
+    if (el('supportFilterOverdue'))  el('supportFilterOverdue').checked = false;
+    if (el('supportFilterLimit'))    el('supportFilterLimit').value     = '200';
+    loadSupportTickets(null);
   }
 
   function renderKanban(tickets) {
@@ -2126,17 +2193,37 @@ app.get('/', async (c) => {
 })
 
 // ── API: GET /api/support/tickets ─────────────────────────────────────────────
+// Default: returns ALL tickets (global, no filter).
+// Optional management filters via query params:
+//   empresa_id, status, priority, only_overdue=1, limit (max 500, default 200)
 app.get('/api/support/tickets', async (c) => {
   if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
   const db = c.env?.DB || null
-  const empresaId = c.req.query('empresa_id') || ''
+
+  const empresaId  = c.req.query('empresa_id')  || ''
+  const status     = c.req.query('status')       || ''
+  const priority   = c.req.query('priority')     || ''
+  const onlyOverdue = c.req.query('only_overdue') === '1'
+  const limitRaw   = parseInt(c.req.query('limit') || '200', 10)
+  const limit      = isNaN(limitRaw) || limitRaw < 1 ? 200 : Math.min(limitRaw, 500)
 
   // Try D1 first, fall back to empty list (no per-master-session tenant store)
   if (db) {
     try {
-      const where = empresaId ? 'WHERE empresa_id = ?' : ''
-      const stmt = db.prepare(`SELECT * FROM support_tickets ${where} ORDER BY updated_at DESC LIMIT 200`)
-      const res = empresaId ? await stmt.bind(empresaId).all() : await stmt.all()
+      const conditions: string[] = []
+      const bindings:   any[]    = []
+
+      if (empresaId) { conditions.push('empresa_id = ?');  bindings.push(empresaId) }
+      if (status)    { conditions.push('status = ?');      bindings.push(status) }
+      if (priority)  { conditions.push('priority = ?');    bindings.push(priority) }
+      if (onlyOverdue) {
+        conditions.push("status != 'Resolvida' AND due_at IS NOT NULL AND due_at < datetime('now')")
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+      bindings.push(limit)
+      const stmt = db.prepare(`SELECT * FROM support_tickets ${where} ORDER BY updated_at DESC LIMIT ?`)
+      const res = bindings.length > 0 ? await stmt.bind(...bindings).all() : await stmt.all()
       const tickets: any[] = res.results || []
       // Back-fill empresa_name for legacy rows (created before migration 0032)
       await fillMissingEmpresaNames(db, tickets)
