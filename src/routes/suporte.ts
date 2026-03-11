@@ -273,7 +273,31 @@ app.post('/api/tickets', async (c) => {
       ).bind(...vals).run()
       d1Ok = true
     } catch (e: any) {
-      console.error(`[SUPORTE][CRÍTICO][${id}] Falha ao persistir ticket em D1: ${e?.message} — tentando Queue fallback`)
+      const msg: string = e?.message || ''
+      // Schema-drift fallback: migration 0032 (empresa_name, atendente_id, atendente_name)
+      // may not yet be applied.  Retry with base columns from migration 0031 only.
+      if (/no such column|has no column named/i.test(msg)) {
+        console.warn(`[SUPORTE][${id}] Schema drift detectado (${msg}); retentando INSERT sem colunas 0032`)
+        try {
+          // Columns that exist in migration 0031 (baseline).  Must stay in sync with
+          // migrations/0031_support_tickets.sql.  Columns from migration 0032
+          // (empresa_name, atendente_id, atendente_name) are intentionally omitted here.
+          const baseKeys = ['id','empresa_id','user_id','created_by_name','created_by_email',
+            'assigned_to_user_id','title','description','priority','status',
+            'created_at','updated_at','resolved_at','due_at','last_activity_at'] as const
+          const baseData: Record<string, unknown> = { ...ticket, empresa_id: empresaId || '1' }
+          const bVals = baseKeys.map(k => baseData[k] ?? null)
+          await db.prepare(
+            `INSERT INTO support_tickets (${baseKeys.join(', ')}) VALUES (${baseKeys.map(() => '?').join(', ')})`
+          ).bind(...bVals).run()
+          d1Ok = true
+          console.log(`[SUPORTE][${id}] Ticket salvo com colunas base (0031); colunas 0032 ausentes — aplique migration 0033`)
+        } catch (e2: any) {
+          console.error(`[SUPORTE][CRÍTICO][${id}] Falha no INSERT de fallback base: ${e2?.message}`)
+        }
+      } else {
+        console.error(`[SUPORTE][CRÍTICO][${id}] Falha ao persistir ticket em D1: ${msg} — tentando Queue fallback`)
+      }
     }
 
     if (!d1Ok) {
