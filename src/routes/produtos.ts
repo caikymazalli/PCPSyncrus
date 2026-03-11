@@ -1132,8 +1132,15 @@ app.get('/', (c) => {
         '</tr>';
     });
     tbody.innerHTML = html;
-    var valid = _importRows.filter(function(r,i){ var sc={}; _importRows.slice(0,i).forEach(function(x){ if(x.code)sc[x.code.toLowerCase()]=true; }); return importValidateRow(r).ok && !sc[r.code&&r.code.toLowerCase()]; }).length;
-    stats.innerHTML = '<span style="font-weight:700;color:#374151;">'+_importRows.length+' linhas</span> — <span style="color:#16a34a;">'+valid+' válidas</span> / <span style="color:#dc2626;">'+(_importRows.length-valid)+' com problema</span>';
+    // Count valid rows reusing seenCodes already built above (O(n))
+    var validCount = 0;
+    var seenCodesForCount = {};
+    _importRows.forEach(function(r) {
+      var dupInFile2 = r['code'] && seenCodesForCount[r['code'].toLowerCase()];
+      if (importValidateRow(r).ok && !dupInFile2) validCount++;
+      if (r['code']) seenCodesForCount[r['code'].toLowerCase()] = true;
+    });
+    stats.innerHTML = '<span style="font-weight:700;color:#374151;">'+_importRows.length+' linhas</span> — <span style="color:#16a34a;">'+validCount+' válidas</span> / <span style="color:#dc2626;">'+(_importRows.length-validCount)+' com problema</span>';
   }
 
   function importRemoveRow(idx) {
@@ -1267,9 +1274,10 @@ app.get('/', (c) => {
 
   function importDownloadReport() {
     if (!_importLastReport || _importLastReport.length === 0) return;
+    function csvEsc(v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; }
     var hdr = 'rowNumber,code,name,action,errorCode,message';
     var rows = _importLastReport.map(function(r) {
-      return [r.rowNumber, '"'+r.code+'"', '"'+r.name+'"', r.action, r.errorCode, '"'+r.message+'"'].join(',');
+      return [r.rowNumber, csvEsc(r.code), csvEsc(r.name), r.action, r.errorCode, csvEsc(r.message)].join(',');
     });
     var blob = new Blob([hdr+'\n'+rows.join('\n')+'\n'], {type:'text/csv;charset=utf-8;'});
     var url = URL.createObjectURL(blob);
