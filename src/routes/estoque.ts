@@ -770,14 +770,21 @@ app.get('/', (c) => {
             ${(serialNumbers as any[]).map((sn: any, idx: number) => {
               const relatedProduct = [...products, ...stockItems].find((p: any) => p.code === sn.itemCode)
               const itemName = relatedProduct?.name || sn.itemCode
-              const almName = allAlm.find((a: any) => a.id === sn.almoxarifadoId)?.name || '—'
+              const snAlmId = sn.almoxarifadoId || 'alm1'
+              const almObj = allAlm.find((a: any) => a.id === snAlmId)
+              const almName = almObj?.name || '—'
+              const almCode = almObj?.code || ''
+              // Show almoxarifado code prefix when there is more than one warehouse
+              const locationDisplay = sn.location
+                ? (allAlm.length > 1 ? `${almCode} - ${sn.location}` : sn.location)
+                : '—'
               return `
-            <tr style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fafafa;' : ''}">
+            <tr data-sn-id="${sn.id}" data-alm-id="${snAlmId}" style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fafafa;' : ''}">
               <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">${sn.itemCode}</td>
               <td style="padding:12px 16px;font-size:13px;color:#374151;">${itemName}</td>
               <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">${sn.number}</td>
               <td style="padding:12px 16px;font-size:12px;color:#374151;">${almName}</td>
-              <td style="padding:12px 16px;font-size:12px;color:#6c757d;">${sn.location || '—'}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#6c757d;cursor:pointer;" ondblclick="startSnLocationEdit(this)" title="Duplo clique para editar o endereço">${locationDisplay}</td>
             </tr>`
             }).join('')}
           </tbody>
@@ -1856,6 +1863,114 @@ app.get('/', (c) => {
   }
   // ══════════════════════════════════════════════════════════════════════
 
+  // ── Inline location edit for Liberação S/N table ─────────────────────────
+  function startSnLocationEdit(cell) {
+    if (cell.querySelector('input')) return; // already editing
+    const tr = cell.closest('tr');
+    const snId = tr.dataset.snId;
+    const almId = tr.dataset.almId;
+    const origText = cell.textContent.trim();
+    // Extract the raw location code (strip almoxarifado prefix if present)
+    const dashIdx = origText.indexOf(' - ');
+    const currentCode = (dashIdx >= 0 ? origText.slice(dashIdx + 3) : (origText === '—' ? '' : origText));
+    const alm = allAlmData.find(a => a.id === almId);
+    const almCode = alm ? alm.code : '';
+    const validLocs = _almLocationsCache.filter(l => l.almoxarifadoId === almId && l.status !== 'inactive');
+    const listId = '_snLocList_' + snId;
+    const datalist = document.createElement('datalist');
+    datalist.id = listId;
+    datalist.innerHTML = validLocs.map(l =>
+      '<option value="' + l.code + '">' + (l.description ? l.code + ' — ' + l.description : l.code) + '</option>'
+    ).join('');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentCode;
+    input.setAttribute('list', listId);
+    input.className = 'form-control';
+    input.style.cssText = 'width:160px;font-size:12px;padding:3px 8px;';
+    input.placeholder = 'Ex: A-01-01';
+    cell.textContent = '';
+    cell.style.padding = '6px 16px';
+    cell.appendChild(datalist);
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    // Reset the cell to its original read-only display text
+    function cancelEdit() {
+      _done = true;
+      cell.innerHTML = '';
+      cell.style.padding = '12px 16px';
+      cell.textContent = origText;
+    }
+    // Restore the input so the user can retry after an error (does NOT re-arm blur)
+    function restoreInput() {
+      cell.textContent = '';
+      cell.style.padding = '6px 16px';
+      cell.appendChild(datalist);
+      cell.appendChild(input);
+      input.focus();
+    }
+
+    let _done = false;
+    async function saveSnEdit() {
+      if (_done) return;
+      _done = true;
+      const newCode = input.value.trim();
+      if (newCode.toUpperCase() === currentCode.toUpperCase()) {
+        cancelEdit();
+        return;
+      }
+      // Client-side validation: address must exist in the almoxarifado
+      if (newCode !== '') {
+        const exists = validLocs.some(l => l.code.trim().toUpperCase() === newCode.toUpperCase());
+        if (!exists) {
+          showEstoqueToast('Endereço "' + newCode + '" não encontrado no almoxarifado. Cadastre-o antes de salvar.', 'error');
+          _done = false;
+          restoreInput();
+          return;
+        }
+      }
+      try {
+        const res = await fetch('/estoque/api/serial-location/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ snId, almoxarifadoId: almId, locationCode: newCode }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showEstoqueToast(data.error || 'Erro ao salvar endereço', 'error');
+          _done = false;
+          restoreInput();
+          return;
+        }
+        // Update in-memory cache
+        const sn = serialNumbersData.find(s => s.id === snId);
+        if (sn) sn.location = newCode;
+        const displayVal = newCode === '' ? '—' : (allAlmData.length > 1 ? almCode + ' - ' + newCode : newCode);
+        cell.innerHTML = '';
+        cell.style.padding = '12px 16px';
+        cell.textContent = displayVal;
+        showEstoqueToast('✅ Endereço atualizado!');
+      } catch(e) {
+        showEstoqueToast('Erro de conexão', 'error');
+        _done = false;
+        restoreInput();
+      }
+    }
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveSnEdit();
+      }
+      if (e.key === 'Escape') {
+        cancelEdit();
+      }
+    });
+    input.addEventListener('blur', function() { if (!_done) saveSnEdit(); });
+  }
+  // ══════════════════════════════════════════════════════════════════════
+
   // ---- SERIAL LIST ----
   let _serialListCurrentCode = null;
 
@@ -2419,6 +2534,41 @@ app.post('/api/warehouse-location/create', async (c) => {
     }
   }
   return ok(c, { location })
+})
+
+// ── API: POST /estoque/api/serial-location/update ────────────────────────────
+// Atualiza o endereço (location) de um número de série liberado.
+// Valida se o código informado existe nos registros do almoxarifado correspondente.
+app.post('/api/serial-location/update', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.snId || body.almoxarifadoId === undefined) return err(c, 'snId e almoxarifadoId são obrigatórios')
+  const locationCode = body.locationCode !== undefined ? String(body.locationCode).trim() : ''
+  // If a non-empty location code was provided, validate it against the almoxarifado's registered addresses
+  if (locationCode !== '') {
+    const locs = ((tenant as any).almoxarifadoLocations || []) as any[]
+    const exists = locs.some(
+      (l: any) => l.almoxarifadoId === body.almoxarifadoId &&
+                  String(l.code).trim().toUpperCase() === locationCode.toUpperCase() &&
+                  l.status !== 'inactive'
+    )
+    if (!exists) {
+      return err(c, `Endereço "${locationCode}" não encontrado no almoxarifado. Realize o cadastro do endereço antes de salvar.`)
+    }
+  }
+  const serialNumbers = ((tenant as any).serialNumbers || []) as any[]
+  const sn = serialNumbers.find((s: any) => s.id === body.snId)
+  if (!sn) return err(c, 'Número de série não encontrado')
+  sn.location = locationCode
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`UPDATE serial_numbers SET location = ? WHERE id = ? AND user_id = ?`)
+        .bind(locationCode, body.snId, userId).run()
+    } catch (e) {
+      console.warn('[ESTOQUE][SERIAL-LOCATION] D1 update failed:', (e as any).message)
+    }
+  }
+  return ok(c, { location: locationCode })
 })
 
 // ── API: POST /estoque/api/transferencia/create ──────────────────────────────

@@ -352,3 +352,181 @@ describe('estoque.ts source-code guardrails serial-release D1 persistence', () =
     expect(handlerBody).toMatch(/catch\s*\(/)
   })
 })
+
+// ── API: POST /estoque/api/serial-location/update ────────────────────────────
+
+describe('POST /estoque/api/serial-location/update — edição inline de endereço', () => {
+  beforeEach(() => {
+    setupSession()
+    setupTenant()
+    // seed an existing serial number and an almoxarifado location
+    ;(tenants[USER_ID] as any).serialNumbers = [
+      {
+        id: 'sn-test-001',
+        itemCode: 'PROD-LOC',
+        number: 'SN-LOC-001',
+        qty: 1,
+        controlType: 'serie',
+        status: 'em_estoque',
+        origin: 'manual',
+        createdAt: new Date().toISOString(),
+        userId: USER_ID,
+        empresaId: '1',
+        almoxarifadoId: 'alm1',
+        location: '',
+      },
+    ]
+    ;(tenants[USER_ID] as any).almoxarifadoLocations = [
+      { id: 'loc-001', almoxarifadoId: 'alm1', code: 'A-01-01', description: 'Prateleira A', status: 'active' },
+      { id: 'loc-002', almoxarifadoId: 'alm1', code: 'B-02-03', description: 'Prateleira B', status: 'active' },
+    ]
+  })
+  afterEach(cleanup)
+
+  it('atualiza location quando endereço existe no almoxarifado', async () => {
+    const res = await authed('/api/serial-location/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snId: 'sn-test-001', almoxarifadoId: 'alm1', locationCode: 'A-01-01' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.location).toBe('A-01-01')
+    // in-memory state updated
+    const sn = ((tenants[USER_ID] as any).serialNumbers as any[]).find((s: any) => s.id === 'sn-test-001')
+    expect(sn?.location).toBe('A-01-01')
+  })
+
+  it('retorna erro quando endereço não existe no almoxarifado', async () => {
+    const res = await authed('/api/serial-location/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snId: 'sn-test-001', almoxarifadoId: 'alm1', locationCode: 'Z-99-99' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+    expect(data.error).toMatch(/Z-99-99/)
+    expect(data.error).toMatch(/cadastro/i)
+  })
+
+  it('aceita endereço vazio (limpar location)', async () => {
+    // first set a location
+    ;(tenants[USER_ID] as any).serialNumbers[0].location = 'A-01-01'
+    const res = await authed('/api/serial-location/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snId: 'sn-test-001', almoxarifadoId: 'alm1', locationCode: '' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.location).toBe('')
+    const sn = ((tenants[USER_ID] as any).serialNumbers as any[]).find((s: any) => s.id === 'sn-test-001')
+    expect(sn?.location).toBe('')
+  })
+
+  it('valida endereço case-insensitive', async () => {
+    const res = await authed('/api/serial-location/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snId: 'sn-test-001', almoxarifadoId: 'alm1', locationCode: 'a-01-01' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+  })
+
+  it('retorna erro quando snId não existe', async () => {
+    const res = await authed('/api/serial-location/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snId: 'sn-does-not-exist', almoxarifadoId: 'alm1', locationCode: 'A-01-01' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+  })
+
+  it('retorna erro quando endereço pertence a almoxarifado inativo', async () => {
+    ;(tenants[USER_ID] as any).almoxarifadoLocations.push(
+      { id: 'loc-003', almoxarifadoId: 'alm1', code: 'C-01-01', description: 'Inativa', status: 'inactive' }
+    )
+    const res = await authed('/api/serial-location/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snId: 'sn-test-001', almoxarifadoId: 'alm1', locationCode: 'C-01-01' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+    expect(data.error).toMatch(/C-01-01/)
+  })
+})
+
+// ── Source-code guardrails: serial-location/update ───────────────────────────
+
+describe('estoque.ts source-code guardrails serial-location/update', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+  const handlerStart = src.indexOf("app.post('/api/serial-location/update'")
+  const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+  const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+  it('endpoint exists in estoque.ts', () => {
+    expect(handlerStart).toBeGreaterThan(0)
+  })
+
+  it('valida existência do endereço no almoxarifado antes de salvar', () => {
+    expect(handlerBody).toContain('almoxarifadoLocations')
+    expect(handlerBody).toContain('status !== \'inactive\'')
+  })
+
+  it('persiste no D1 com UPDATE serial_numbers', () => {
+    expect(handlerBody).toContain('UPDATE serial_numbers SET location')
+  })
+
+  it('usa guard userId !== demo-tenant', () => {
+    expect(handlerBody).toContain("userId !== 'demo-tenant'")
+  })
+
+  it('envolve D1 em try/catch com console.warn', () => {
+    expect(handlerBody).toContain('[ESTOQUE][SERIAL-LOCATION]')
+    expect(handlerBody).toMatch(/try\s*\{/)
+    expect(handlerBody).toMatch(/catch\s*\(/)
+  })
+})
+
+// ── Source-code guardrails: Liberação S/N inline edit UI ─────────────────────
+
+describe('estoque.ts source-code: aba Liberação S/N suporte a edição inline de endereço', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('tabela de S/N liberados tem atributo data-sn-id nas linhas', () => {
+    const tabStart = src.indexOf('id="tabLiberacaoSerial"')
+    const tabContent = src.slice(tabStart, tabStart + 5000)
+    expect(tabContent).toContain('data-sn-id=')
+  })
+
+  it('célula de endereço tem handler ondblclick', () => {
+    const tabStart = src.indexOf('id="tabLiberacaoSerial"')
+    const tabContent = src.slice(tabStart, tabStart + 5000)
+    expect(tabContent).toContain('ondblclick="startSnLocationEdit(this)"')
+  })
+
+  it('exibe código do almoxarifado no endereço quando há mais de um almoxarifado', () => {
+    // The SSR logic must include allAlm.length > 1 check for prefix display
+    expect(src).toContain('allAlm.length > 1')
+  })
+
+  it('função startSnLocationEdit está definida no JS embutido', () => {
+    expect(src).toContain('function startSnLocationEdit(cell)')
+  })
+
+  it('startSnLocationEdit faz fetch para /estoque/api/serial-location/update', () => {
+    const fnStart = src.indexOf('function startSnLocationEdit(cell)')
+    const fnEnd = src.indexOf('\n  function ', fnStart + 1)
+    const fnBody = src.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 4000)
+    expect(fnBody).toContain('/estoque/api/serial-location/update')
+  })
+})
