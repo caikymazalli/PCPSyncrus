@@ -763,21 +763,35 @@ app.get('/', (c) => {
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Descrição</th>
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">S/N</th>
               <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Almoxarifado</th>
-              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Endereço no Estoque</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Endereço no Estoque <span style="font-size:9px;color:#9ca3af;font-weight:500;text-transform:none;">(duplo clique para editar)</span></th>
             </tr>
           </thead>
           <tbody>
             ${(serialNumbers as any[]).map((sn: any, idx: number) => {
               const relatedProduct = [...products, ...stockItems].find((p: any) => p.code === sn.itemCode)
               const itemName = relatedProduct?.name || sn.itemCode
-              const almName = allAlm.find((a: any) => a.id === sn.almoxarifadoId)?.name || '—'
+              const snAlm = allAlm.find((a: any) => a.id === sn.almoxarifadoId)
+              const almName = snAlm?.name || '—'
+              // When multiple warehouses exist, prefix with warehouse code (ALM_001 - A-01-01)
+              const locationDisplay = sn.location
+                ? (allAlm.length > 1 ? `${snAlm?.code || 'ALM'} - ${sn.location}` : sn.location)
+                : '—'
+              // HTML-escape values for use in data-* attributes (double-quoted)
+              function escAttrSrv(v: any) {
+                return String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              }
+              const snIdAttr  = escAttrSrv(sn.id)
+              const snAlmAttr = escAttrSrv(sn.almoxarifadoId || 'alm1')
+              const snLocAttr = escAttrSrv(sn.location || '')
               return `
             <tr style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fafafa;' : ''}">
               <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">${sn.itemCode}</td>
               <td style="padding:12px 16px;font-size:13px;color:#374151;">${itemName}</td>
               <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">${sn.number}</td>
               <td style="padding:12px 16px;font-size:12px;color:#374151;">${almName}</td>
-              <td style="padding:12px 16px;font-size:12px;color:#6c757d;">${sn.location || '—'}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#6c757d;cursor:pointer;" title="Duplo clique para editar o endereço"
+                  data-sn-id="${snIdAttr}" data-sn-alm="${snAlmAttr}" data-sn-loc="${snLocAttr}"
+                  ondblclick="snStartEditLocation(this)">${locationDisplay}</td>
             </tr>`
             }).join('')}
           </tbody>
@@ -2166,6 +2180,131 @@ app.get('/', (c) => {
     }
   }
   openSerialListFromUrl();
+
+  // ── Inline edit: Endereço no Estoque (duplo clique) ─────────────────────────
+  function snStartEditLocation(td) {
+    // Prevent opening multiple editors at once
+    if (td.querySelector('input')) return;
+    const snId  = td.dataset.snId;
+    const almId = td.dataset.snAlm || 'alm1';
+    const curLoc = td.dataset.snLoc || '';
+
+    // Determine hint: if multiple warehouses, show expected format
+    const alm = allAlmData.find(function(a) { return a.id === almId; });
+    const almCode = alm ? (alm.code || almId) : almId;
+    const multiAlm = allAlmData.length > 1;
+    const placeholder = multiAlm ? almCode + ' - A-01-01' : 'Ex: A-01-01';
+
+    // Store context in data attributes — no JSON.stringify in onclick handlers
+    td.innerHTML =
+      '<div class="sn-loc-edit" data-sn-id="' + _escAttr(snId) + '" data-sn-alm="' + _escAttr(almId) + '" data-sn-alm-code="' + _escAttr(almCode) + '" style="display:flex;gap:6px;align-items:center;">' +
+        '<input id="snLocInput_' + _escAttr(snId) + '" type="text" value="' + _escAttr(curLoc) + '"' +
+          ' placeholder="' + _escAttr(placeholder) + '"' +
+          ' style="font-size:12px;border:1px solid #7c3aed;border-radius:4px;padding:3px 7px;min-width:120px;outline:none;"' +
+          ' onkeydown="snLocKeydown(event, this)"' +
+        '>' +
+        '<button onclick="snConfirmLocationBtn(this)" title="Salvar"' +
+          ' style="background:#7c3aed;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✓</button>' +
+        '<button onclick="snCancelEditBtn(this)" title="Cancelar"' +
+          ' style="background:#e9ecef;color:#374151;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✕</button>' +
+      '</div>';
+
+    const input = document.getElementById('snLocInput_' + snId);
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function _escAttr(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function _snGetEditCtx(el) {
+    const container = el.closest('.sn-loc-edit');
+    if (!container) return null;
+    return {
+      snId:    container.dataset.snId,
+      almId:   container.dataset.snAlm,
+      almCode: container.dataset.snAlmCode,
+      td:      container.parentElement,
+      input:   container.querySelector('input'),
+    };
+  }
+
+  function snLocKeydown(e, input) {
+    if (e.key === 'Enter')  { e.preventDefault(); snConfirmLocationBtn(input); }
+    if (e.key === 'Escape') { e.preventDefault(); snCancelEditBtn(input); }
+  }
+
+  function snCancelEditBtn(el) {
+    const ctx = _snGetEditCtx(el);
+    if (!ctx) return;
+    const td = ctx.td;
+    if (!td) return;
+    const curLoc = td.dataset.snLoc || '';
+    const almId  = td.dataset.snAlm  || 'alm1';
+    const alm    = allAlmData.find(function(a) { return a.id === almId; });
+    const almCode = alm ? (alm.code || almId) : almId;
+    const multiAlm = allAlmData.length > 1;
+    td.innerHTML = curLoc ? (multiAlm ? almCode + ' - ' + curLoc : curLoc) : '—';
+  }
+
+  async function snConfirmLocationBtn(el) {
+    const ctx = _snGetEditCtx(el);
+    if (!ctx) return;
+    const { snId, almId, almCode, td, input } = ctx;
+    if (!td || !input) return;
+
+    let raw = input.value.trim();
+    // Support both "ALM_001 - A-01-01" and plain "A-01-01"
+    const sep = raw.indexOf(' - ');
+    const locationCode = sep >= 0 ? raw.substring(sep + 3).trim() : raw;
+
+    if (!locationCode) {
+      showEstoqueToast('Informe o código do endereço.', 'error');
+      input.focus(); return;
+    }
+
+    // Validate against server (almoxarifado locations)
+    try {
+      const vRes = await fetch(
+        '/estoque/api/validate-location?almoxarifadoId=' + encodeURIComponent(almId) +
+        '&code=' + encodeURIComponent(locationCode)
+      );
+      const vData = await vRes.json().catch(() => ({}));
+      if (!vRes.ok || !vData.valid) {
+        const msg = vData.error ||
+          'Endereço "' + locationCode + '" não encontrado no almoxarifado "' + almCode + '". ' +
+          'Cadastre-o primeiro em Almoxarifados → Endereços.';
+        showEstoqueToast(msg, 'error');
+        input.focus(); return;
+      }
+    } catch {
+      showEstoqueToast('Erro ao validar endereço. Tente novamente.', 'error');
+      input.focus(); return;
+    }
+
+    // Persist the new location
+    try {
+      const pRes = await fetch('/estoque/api/serial-number/' + encodeURIComponent(snId) + '/location', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ almoxarifadoId: almId, location: locationCode })
+      });
+      const pData = await pRes.json().catch(() => ({}));
+      if (!pRes.ok || !pData.ok) {
+        showEstoqueToast(pData.error || 'Erro ao salvar endereço.', 'error');
+        input.focus(); return;
+      }
+    } catch {
+      showEstoqueToast('Erro de conexão ao salvar endereço.', 'error');
+      input.focus(); return;
+    }
+
+    // Update DOM state
+    const multiAlm = allAlmData.length > 1;
+    td.dataset.snLoc = locationCode;
+    td.innerHTML = multiAlm ? almCode + ' - ' + locationCode : locationCode;
+    showEstoqueToast('✅ Endereço atualizado!', 'success');
+  }
   </script>
   `
   return c.html(layout('Estoque', content, 'estoque', userInfo))
@@ -2419,6 +2558,99 @@ app.post('/api/warehouse-location/create', async (c) => {
     }
   }
   return ok(c, { location })
+})
+
+// ── API: GET /estoque/api/validate-location ──────────────────────────────────
+// Checks whether a given location code exists in the specified almoxarifado.
+// Query params: almoxarifadoId, code
+app.get('/api/validate-location', async (c) => {
+  const tenant    = getCtxTenant(c)
+  const db        = getCtxDB(c)
+  const userId    = getCtxUserId(c)
+  const almId     = c.req.query('almoxarifadoId') || ''
+  const codeRaw   = c.req.query('code')           || ''
+
+  if (!almId || !codeRaw) return err(c, 'almoxarifadoId e code são obrigatórios')
+
+  const codeNorm = codeRaw.trim().toUpperCase()
+
+  // Check in-memory tenant data first
+  const locations: any[] = (tenant as any).almoxarifadoLocations || []
+  const found = locations.find(
+    (l: any) => l.almoxarifadoId === almId && String(l.code).trim().toUpperCase() === codeNorm && l.status !== 'inactive'
+  )
+  if (found) return c.json({ ok: true, valid: true, location: found })
+
+  // Fallback: query D1 (covers cases where in-memory cache may be stale)
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const row: any = await db.prepare(
+        `SELECT * FROM almoxarifado_locations WHERE almoxarifado_id = ? AND UPPER(code) = ? AND status != 'inactive' LIMIT 1`
+      ).bind(almId, codeNorm).first()
+      if (row) return c.json({ ok: true, valid: true, location: row })
+    } catch {
+      // Fall through — in-memory miss is already handled below
+    }
+  }
+
+  return c.json({ ok: true, valid: false, error: `Endereço "${codeRaw}" não encontrado no almoxarifado. Cadastre-o primeiro em Almoxarifados → Endereços.` })
+})
+
+// ── API: PATCH /estoque/api/serial-number/:id/location ───────────────────────
+// Updates the almoxarifadoId and location of a serial number.
+// Body: { almoxarifadoId: string, location: string }
+app.patch('/api/serial-number/:id/location', async (c) => {
+  const tenant    = getCtxTenant(c)
+  const db        = getCtxDB(c)
+  const userId    = getCtxUserId(c)
+  const snId      = c.req.param('id')
+  const body      = await c.req.json().catch(() => null)
+
+  if (!body || !body.almoxarifadoId || !body.location) return err(c, 'almoxarifadoId e location são obrigatórios')
+
+  const almId      = String(body.almoxarifadoId).trim()
+  const locationCode = String(body.location).trim()
+
+  // Server-side validation: location must exist in almoxarifado
+  const locations: any[] = (tenant as any).almoxarifadoLocations || []
+  const codeNorm  = locationCode.toUpperCase()
+  let valid = locations.some(
+    (l: any) => l.almoxarifadoId === almId && String(l.code).trim().toUpperCase() === codeNorm && l.status !== 'inactive'
+  )
+
+  if (!valid && db && userId !== 'demo-tenant') {
+    try {
+      const row: any = await db.prepare(
+        `SELECT id FROM almoxarifado_locations WHERE almoxarifado_id = ? AND UPPER(code) = ? AND status != 'inactive' LIMIT 1`
+      ).bind(almId, codeNorm).first()
+      if (row) valid = true
+    } catch { /* ignore */ }
+  }
+
+  if (!valid) {
+    return err(c, `Endereço "${locationCode}" não encontrado no almoxarifado. Cadastre-o primeiro em Almoxarifados → Endereços.`)
+  }
+
+  // Update in-memory tenant store
+  const serialNumbers: any[] = (tenant as any).serialNumbers || []
+  const sn = serialNumbers.find((s: any) => s.id === snId)
+  if (!sn) return err(c, 'Número de série não encontrado', 404)
+
+  sn.almoxarifadoId = almId
+  sn.location       = locationCode
+
+  // Persist to D1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `UPDATE serial_numbers SET almoxarifado_id = ?, location = ? WHERE id = ? AND user_id = ?`
+      ).bind(almId, locationCode, snId, userId).run()
+    } catch (e) {
+      console.warn('[ESTOQUE][SERIAL-LOCATION] D1 update failed:', (e as any).message)
+    }
+  }
+
+  return ok(c, { id: snId, almoxarifadoId: almId, location: locationCode })
 })
 
 // ── API: POST /estoque/api/transferencia/create ──────────────────────────────

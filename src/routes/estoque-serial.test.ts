@@ -352,3 +352,158 @@ describe('estoque.ts source-code guardrails serial-release D1 persistence', () =
     expect(handlerBody).toMatch(/catch\s*\(/)
   })
 })
+
+// ── Inline edit: GET /estoque/api/validate-location ──────────────────────────
+
+describe('GET /estoque/api/validate-location', () => {
+  beforeEach(() => {
+    setupSession()
+    setupTenant()
+    ;(tenants[USER_ID] as any).almoxarifadoLocations = [
+      { id: 'loc-1', almoxarifadoId: 'alm1', code: 'A-01-01', status: 'active' },
+      { id: 'loc-2', almoxarifadoId: 'alm1', code: 'B-02-03', status: 'inactive' },
+    ]
+  })
+  afterEach(cleanup)
+
+  it('retorna valid:true quando o endereço existe e está ativo', async () => {
+    const res = await authed('/api/validate-location?almoxarifadoId=alm1&code=A-01-01')
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.valid).toBe(true)
+  })
+
+  it('a validação de código é case-insensitive', async () => {
+    const res = await authed('/api/validate-location?almoxarifadoId=alm1&code=a-01-01')
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.valid).toBe(true)
+  })
+
+  it('retorna valid:false quando o endereço não existe', async () => {
+    const res = await authed('/api/validate-location?almoxarifadoId=alm1&code=Z-99-99')
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.valid).toBe(false)
+    expect(typeof data.error).toBe('string')
+  })
+
+  it('retorna valid:false para endereço inativo', async () => {
+    const res = await authed('/api/validate-location?almoxarifadoId=alm1&code=B-02-03')
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.valid).toBe(false)
+  })
+
+  it('retorna erro quando almoxarifadoId ou code estão ausentes', async () => {
+    const res = await authed('/api/validate-location?almoxarifadoId=alm1')
+    expect(res.status).toBe(400)
+  })
+})
+
+// ── Inline edit: PATCH /estoque/api/serial-number/:id/location ───────────────
+
+describe('PATCH /estoque/api/serial-number/:id/location', () => {
+  beforeEach(() => {
+    setupSession()
+    setupTenant()
+    ;(tenants[USER_ID] as any).almoxarifadoLocations = [
+      { id: 'loc-1', almoxarifadoId: 'alm1', code: 'A-01-01', status: 'active' },
+    ]
+    ;(tenants[USER_ID] as any).serialNumbers = [
+      { id: 'sn-001', itemCode: 'PRD-001', number: 'SN-ABCDEF', almoxarifadoId: 'alm1', location: '', status: 'em_estoque' },
+    ]
+  })
+  afterEach(cleanup)
+
+  it('atualiza location em memória quando endereço é válido', async () => {
+    const res = await authed('/api/serial-number/sn-001/location', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1', location: 'A-01-01' }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.location).toBe('A-01-01')
+    // Verify in-memory update
+    const sn = (tenants[USER_ID] as any).serialNumbers.find((s: any) => s.id === 'sn-001')
+    expect(sn.location).toBe('A-01-01')
+  })
+
+  it('rejeita quando o endereço não existe no almoxarifado', async () => {
+    const res = await authed('/api/serial-number/sn-001/location', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1', location: 'Z-99-99' }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+  })
+
+  it('retorna 404 quando o S/N não existe', async () => {
+    const res = await authed('/api/serial-number/nao-existe/location', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1', location: 'A-01-01' }),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('retorna erro quando body está ausente ou incompleto', async () => {
+    const res = await authed('/api/serial-number/sn-001/location', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ almoxarifadoId: 'alm1' }),
+    })
+    expect(res.status).toBe(400)
+  })
+})
+
+// ── Source-code guardrail: inline edit functions present ─────────────────────
+
+describe('estoque.ts source-code: inline edit Endereço no Estoque', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+
+  it('define função snStartEditLocation no script client-side', () => {
+    expect(src).toContain('function snStartEditLocation(')
+  })
+
+  it('define função snConfirmLocationBtn no script client-side', () => {
+    expect(src).toContain('async function snConfirmLocationBtn(')
+  })
+
+  it('célula Endereço usa ondblclick para edição inline', () => {
+    expect(src).toContain('ondblclick="snStartEditLocation(this)"')
+  })
+
+  it('botões de confirmar e cancelar usam data attributes (sem JSON.stringify em onclick)', () => {
+    expect(src).toContain('onclick="snConfirmLocationBtn(this)"')
+    expect(src).toContain('onclick="snCancelEditBtn(this)"')
+    // Verify we do NOT use JSON.stringify inside onclick attributes
+    expect(src).not.toContain('onclick="snConfirmLocation(JSON')
+  })
+
+  it('valida endereço via /estoque/api/validate-location antes de salvar', () => {
+    expect(src).toContain("'/estoque/api/validate-location?almoxarifadoId='")
+  })
+
+  it('persiste via PATCH /estoque/api/serial-number', () => {
+    expect(src).toContain("'/estoque/api/serial-number/'")
+    expect(src).toContain("method: 'PATCH'")
+  })
+
+  it('exibe formato ALM_code - location quando há múltiplos almoxarifados', () => {
+    expect(src).toContain('allAlm.length > 1')
+  })
+
+  it('endpoint validate-location está definido no backend', () => {
+    expect(src).toContain("app.get('/api/validate-location'")
+  })
+
+  it('endpoint serial-number location PATCH está definido no backend', () => {
+    expect(src).toContain("app.patch('/api/serial-number/:id/location'")
+  })
+})
