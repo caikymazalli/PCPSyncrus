@@ -151,18 +151,19 @@ describe('produtos.ts source-code safeguards (D1-first import)', () => {
     expect(handlerBody).not.toMatch(/\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/)
   })
 
-  it('o import handler acumula d1Errors', () => {
+  it('o import handler registra D1_ERROR no report', () => {
     const handlerStart = src.indexOf("app.post('/api/import'")
     const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
     const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
-    expect(handlerBody).toContain('d1Errors')
+    expect(handlerBody).toContain('D1_ERROR')
   })
 
-  it('a resposta do import inclui d1Errors', () => {
+  it('a resposta do import inclui report e skipped', () => {
     const handlerStart = src.indexOf("app.post('/api/import'")
     const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
     const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
-    expect(handlerBody).toContain('d1Errors')
+    expect(handlerBody).toContain('report')
+    expect(handlerBody).toContain('skipped')
     expect(handlerBody).toContain('return ok(c, {')
   })
 

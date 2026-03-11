@@ -146,9 +146,12 @@ app.get('/', (c) => {
         ${manufactureCount > 0 ? `<span class="badge" style="background:#f5f3ff;color:#7c3aed;"><i class="fas fa-industry" style="font-size:9px;"></i> ${manufactureCount} Nec. Manufatura</span>` : ''}
       </div>
     </div>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-secondary" onclick="openModal('configLimitesModal')" title="Configurar limites de estoque por status">
         <i class="fas fa-sliders-h"></i> Config. Limites
+      </button>
+      <button class="btn btn-secondary" onclick="openImportModal()" title="Importar produtos via planilha">
+        <i class="fas fa-file-import"></i> Importar Planilha
       </button>
       <button class="btn btn-primary" onclick="openModal('novoProdModal')" title="Cadastrar novo produto">
         <i class="fas fa-plus"></i> Novo Produto
@@ -424,6 +427,121 @@ app.get('/', (c) => {
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('editProdModal')" class="btn btn-secondary">Cancelar</button>
         <button onclick="salvarEdicaoProduto()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Importar Produtos via Planilha -->
+  <div class="modal-overlay" id="importProdModal" style="display:none;align-items:flex-start;padding-top:40px;overflow-y:auto;">
+    <div class="modal" style="max-width:900px;width:98%;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-file-import" style="margin-right:8px;"></i>Importar Produtos via Planilha</h3>
+        <button onclick="closeImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+
+      <!-- Abas de etapas -->
+      <div style="display:flex;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
+        <button id="importTab1" onclick="showImportTab(1)" style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;color:#1B4F72;border-bottom:2px solid #1B4F72;cursor:pointer;">1. Colar / Carregar</button>
+        <button id="importTab2" onclick="showImportTab(2)" style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;color:#9ca3af;border-bottom:2px solid transparent;cursor:pointer;">2. Rascunho</button>
+        <button id="importTab3" onclick="showImportTab(3)" style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;color:#9ca3af;border-bottom:2px solid transparent;cursor:pointer;">3. Relatório</button>
+      </div>
+
+      <div style="overflow-y:auto;flex:1;">
+        <!-- Aba 1: Input -->
+        <div id="importStep1" style="padding:20px 24px;">
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:12px;color:#0369a1;">
+            <div style="font-weight:700;margin-bottom:6px;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Formato esperado (cabeçalhos):</div>
+            <code style="font-size:11px;background:white;padding:4px 8px;border-radius:4px;display:inline-block;word-break:break-all;">code | name | unit | stockMin | stockMax | stockCurrent | criticalPercentage | serial | type | price | notes</code>
+            <div style="margin-top:8px;color:#0369a1;">• <strong>code</strong> e <strong>name</strong> são obrigatórios. • <strong>serial</strong>: none | serie | lote. • Suporta CSV (vírgula/ponto-e-vírgula) e TSV (tab/Excel).</div>
+          </div>
+          <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px;"><i class="fas fa-keyboard" style="margin-right:4px;"></i>Colar do Excel / Google Sheets</label>
+              <textarea id="importPasteArea" rows="8" placeholder="Cole aqui os dados copiados do Excel ou Google Sheets..." style="width:100%;font-family:monospace;font-size:12px;border:1.5px solid #d1d5db;border-radius:8px;padding:10px;resize:vertical;box-sizing:border-box;" oninput="importPreviewFromPaste()"></textarea>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;font-size:13px;font-weight:600;padding:0 8px;">OU</div>
+            <div style="flex:1;min-width:200px;">
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px;"><i class="fas fa-upload" style="margin-right:4px;"></i>Upload de arquivo CSV</label>
+              <div id="importDropZone" style="border:2px dashed #d1d5db;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:border-color 0.2s;background:#fafafa;" onclick="document.getElementById('importFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#1B4F72'" ondragleave="this.style.borderColor='#d1d5db'" ondrop="importHandleDrop(event)">
+                <i class="fas fa-cloud-upload-alt" style="font-size:28px;color:#9ca3af;display:block;margin-bottom:8px;"></i>
+                <div style="font-size:12px;color:#6c757d;">Clique ou arraste um arquivo CSV aqui</div>
+                <div id="importFileName" style="font-size:11px;color:#1B4F72;margin-top:6px;font-weight:600;"></div>
+              </div>
+              <input type="file" id="importFileInput" accept=".csv,.tsv,.txt" style="display:none;" onchange="importHandleFile(this)">
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="importDownloadTemplate()" class="btn btn-secondary" style="font-size:12px;">
+              <i class="fas fa-download"></i> Baixar Modelo CSV
+            </button>
+            <button onclick="importPreviewParsed()" class="btn btn-primary" id="importParseBtn" disabled>
+              <i class="fas fa-eye"></i> Visualizar Rascunho
+            </button>
+          </div>
+        </div>
+
+        <!-- Aba 2: Rascunho -->
+        <div id="importStep2" style="display:none;padding:20px 24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+            <div id="importDraftStats" style="font-size:13px;color:#374151;"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="importSaveDraft()" class="btn btn-secondary" style="font-size:12px;"><i class="fas fa-save"></i> Salvar Rascunho</button>
+              <button onclick="importLoadDraft()" class="btn btn-secondary" style="font-size:12px;"><i class="fas fa-folder-open"></i> Carregar Rascunho</button>
+              <button onclick="importClearDraft()" class="btn btn-secondary" style="font-size:12px;color:#dc2626;"><i class="fas fa-trash"></i> Limpar</button>
+              <button onclick="importCommit()" class="btn btn-primary" id="importCommitBtn"><i class="fas fa-check"></i> Importar Agora</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table id="importDraftTable" style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#1B4F72;color:white;">
+                  <th style="padding:8px 10px;text-align:left;">#</th>
+                  <th style="padding:8px 10px;text-align:left;">Código *</th>
+                  <th style="padding:8px 10px;text-align:left;">Nome *</th>
+                  <th style="padding:8px 10px;text-align:center;">Unidade</th>
+                  <th style="padding:8px 10px;text-align:center;">Est. Mín</th>
+                  <th style="padding:8px 10px;text-align:center;">Est. Máx</th>
+                  <th style="padding:8px 10px;text-align:center;">Est. Atual</th>
+                  <th style="padding:8px 10px;text-align:center;">% Crítico</th>
+                  <th style="padding:8px 10px;text-align:center;">Serial</th>
+                  <th style="padding:8px 10px;text-align:center;">Tipo</th>
+                  <th style="padding:8px 10px;text-align:right;">Preço</th>
+                  <th style="padding:8px 10px;text-align:left;">Notas</th>
+                  <th style="padding:8px 10px;text-align:center;">Status</th>
+                  <th style="padding:8px 10px;text-align:center;">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="importDraftBody"></tbody>
+            </table>
+          </div>
+          <div id="importDraftEmpty" style="display:none;padding:30px;text-align:center;color:#9ca3af;">
+            <i class="fas fa-table" style="font-size:28px;display:block;margin-bottom:8px;"></i>Nenhuma linha no rascunho. Volte à aba 1 e cole/carregue dados.
+          </div>
+        </div>
+
+        <!-- Aba 3: Relatório -->
+        <div id="importStep3" style="display:none;padding:20px 24px;">
+          <div id="importReportSummary" style="margin-bottom:16px;"></div>
+          <div style="overflow-x:auto;">
+            <table id="importReportTable" style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#1B4F72;color:white;">
+                  <th style="padding:8px 10px;">#</th>
+                  <th style="padding:8px 10px;text-align:left;">Código</th>
+                  <th style="padding:8px 10px;text-align:left;">Nome</th>
+                  <th style="padding:8px 10px;text-align:center;">Ação</th>
+                  <th style="padding:8px 10px;text-align:left;">Erro</th>
+                  <th style="padding:8px 10px;text-align:left;">Mensagem</th>
+                </tr>
+              </thead>
+              <tbody id="importReportBody"></tbody>
+            </table>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+            <button onclick="importDownloadReport()" class="btn btn-secondary" id="importDownloadReportBtn" style="display:none;font-size:12px;"><i class="fas fa-download"></i> Baixar Relatório CSV</button>
+            <button onclick="closeImportModal()" class="btn btn-primary"><i class="fas fa-check"></i> Concluir</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -864,6 +982,337 @@ app.get('/', (c) => {
     window.location.href = '/estoque?tab=liberacao_sn&code=' + encodeURIComponent(code);
   }
 
+  // ── Import via Planilha ───────────────────────────────────────────────────
+  var _importRows = [];
+  var _importLastReport = null;
+
+  function openImportModal() {
+    var modal = document.getElementById('importProdModal');
+    modal.style.display = 'flex';
+    showImportTab(1);
+    importTryLoadDraftOnOpen();
+  }
+
+  function closeImportModal() {
+    document.getElementById('importProdModal').style.display = 'none';
+  }
+
+  function showImportTab(n) {
+    [1,2,3].forEach(function(i) {
+      document.getElementById('importStep'+i).style.display = i===n ? 'block' : 'none';
+      var tb = document.getElementById('importTab'+i);
+      tb.style.color = i===n ? '#1B4F72' : '#9ca3af';
+      tb.style.borderBottom = i===n ? '2px solid #1B4F72' : '2px solid transparent';
+    });
+  }
+
+  function importDownloadTemplate() {
+    var hdr = 'code,name,unit,stockMin,stockMax,stockCurrent,criticalPercentage,serial,type,price,notes';
+    var ex  = 'PROD-001,Parafuso M6,un,100,500,200,50,none,external,0.50,Parafuso aço inox';
+    var blob = new Blob([hdr+'\n'+ex+'\n'], {type:'text/csv;charset=utf-8;'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href=url; a.download='modelo_produtos.csv'; a.click();
+  }
+
+  function importDetectDelimiter(line) {
+    var tabs = (line.match(/\t/g)||[]).length;
+    var semis = (line.match(/;/g)||[]).length;
+    var commas = (line.match(/,/g)||[]).length;
+    if (tabs >= semis && tabs >= commas) return '\t';
+    if (semis >= commas) return ';';
+    return ',';
+  }
+
+  function importParseCSV(text) {
+    var lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(function(l){ return l.trim(); });
+    if (lines.length < 2) return [];
+    var delim = importDetectDelimiter(lines[0]);
+    function splitLine(line) {
+      var res = []; var cur = ''; var inQ = false;
+      for (var ci=0; ci<line.length; ci++) {
+        var ch = line[ci];
+        if (ch==='"') { inQ=!inQ; continue; }
+        if (!inQ && ch===delim) { res.push(cur.trim()); cur=''; continue; }
+        cur += ch;
+      }
+      res.push(cur.trim());
+      return res;
+    }
+    var headers = splitLine(lines[0]).map(function(h){ return h.toLowerCase().replace(/\s+/g,''); });
+    var rows = [];
+    for (var i=1; i<lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      var vals = splitLine(lines[i]);
+      var obj = {};
+      headers.forEach(function(h,idx){ obj[h] = vals[idx] !== undefined ? vals[idx] : ''; });
+      // Normalizar aliases de coluna
+      obj['code']   = obj['code']   || obj['codigo'] || '';
+      obj['name']   = obj['name']   || obj['nome']   || '';
+      obj['unit']   = obj['unit']   || obj['unidade']|| 'un';
+      obj['serial'] = obj['serial'] || obj['controltype'] || 'none';
+      obj['type']   = obj['type']   || obj['tipo']   || 'external';
+      obj['price']  = obj['price']  || obj['preco']  || '0';
+      obj['notes']  = obj['notes']  || obj['descricao'] || obj['description'] || '';
+      obj['stockmin']          = obj['stockmin']          || obj['estoqueminimo']  || '0';
+      obj['stockmax']          = obj['stockmax']          || obj['estoquemaximo']  || '0';
+      obj['stockcurrent']      = obj['stockcurrent']      || obj['estoqueatal']    || '0';
+      obj['criticalpercentage']= obj['criticalpercentage']|| obj['percentualcritico'] || '50';
+      // Mapear para campos esperados pelo backend
+      obj['nome']         = obj['name'];
+      obj['codigo']       = obj['code'];
+      obj['unidade']      = obj['unit'];
+      obj['stockMin']     = obj['stockmin'];
+      obj['stockMax']     = obj['stockmax'];
+      obj['stockCurrent'] = obj['stockcurrent'];
+      obj['criticalPercentage'] = obj['criticalpercentage'];
+      obj['controlType']  = (obj['serial']||'none').toLowerCase();
+      obj['tipo']         = obj['type'];
+      obj['preco']        = obj['price'];
+      obj['descricao']    = obj['notes'];
+      obj['_rowNum']      = i+1;
+      rows.push(obj);
+    }
+    return rows;
+  }
+
+  function importValidateRow(row) {
+    if (!row['code'] || !row['name']) return { ok:false, code:'INVALID_ROW', msg:'Campos obrigatórios ausentes (código e nome).' };
+    var s = (row['serial']||'none').toLowerCase();
+    if (s !== 'none' && s !== 'serie' && s !== 'lote' && s !== '') return { ok:false, code:'INVALID_SERIAL', msg:'serial inválido: use none, serie ou lote.' };
+    return { ok:true, code:'', msg:'' };
+  }
+
+  function importPreviewFromPaste() {
+    var txt = document.getElementById('importPasteArea').value;
+    document.getElementById('importParseBtn').disabled = !txt.trim();
+  }
+
+  function importPreviewParsed() {
+    var txt = document.getElementById('importPasteArea').value.trim();
+    if (txt) {
+      _importRows = importParseCSV(txt);
+    }
+    if (_importRows.length === 0) { showToast('Nenhuma linha válida encontrada.','error'); return; }
+    importRenderDraft();
+    showImportTab(2);
+  }
+
+  function importRenderDraft() {
+    var tbody = document.getElementById('importDraftBody');
+    var empty = document.getElementById('importDraftEmpty');
+    var stats = document.getElementById('importDraftStats');
+    if (_importRows.length === 0) { tbody.innerHTML=''; empty.style.display='block'; stats.textContent=''; return; }
+    empty.style.display='none';
+    var seenCodes = {};
+    var html = '';
+    _importRows.forEach(function(row, idx) {
+      var v = importValidateRow(row);
+      var dupInFile = row['code'] && seenCodes[row['code'].toLowerCase()];
+      var rowOk = v.ok && !dupInFile;
+      var statusHtml = rowOk
+        ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">OK</span>'
+        : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;" title="' + (dupInFile?'Código duplicado na planilha':v.msg) + '">' + (dupInFile?'DUP':v.code||'ERR') + '</span>';
+      if (row['code']) seenCodes[row['code'].toLowerCase()] = true;
+      var bg = rowOk ? 'white' : '#fff5f5';
+      html += '<tr style="border-bottom:1px solid #f1f3f5;background:'+bg+';">' +
+        '<td style="padding:6px 10px;color:#9ca3af;">'+(row['_rowNum']||idx+2)+'</td>' +
+        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+(row['code']||'—')+'</td>' +
+        '<td style="padding:6px 10px;font-weight:600;">'+(row['name']||'—')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['unit']||'un')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['stockMin']||'0')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['stockMax']||'0')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['stockCurrent']||'0')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['criticalPercentage']||'50')+'%</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['serial']||'none')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+(row['type']||'external')+'</td>' +
+        '<td style="padding:6px 10px;text-align:right;">'+(row['price']||'0')+'</td>' +
+        '<td style="padding:6px 10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(row['notes']||'')+'">'+(row['notes']||'')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+statusHtml+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;"><button onclick="importRemoveRow('+idx+')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;" title="Remover linha"><i class="fas fa-times"></i></button></td>' +
+        '</tr>';
+    });
+    tbody.innerHTML = html;
+    // Count valid rows reusing seenCodes already built above (O(n))
+    var validCount = 0;
+    var seenCodesForCount = {};
+    _importRows.forEach(function(r) {
+      var dupInFile2 = r['code'] && seenCodesForCount[r['code'].toLowerCase()];
+      if (importValidateRow(r).ok && !dupInFile2) validCount++;
+      if (r['code']) seenCodesForCount[r['code'].toLowerCase()] = true;
+    });
+    stats.innerHTML = '<span style="font-weight:700;color:#374151;">'+_importRows.length+' linhas</span> — <span style="color:#16a34a;">'+validCount+' válidas</span> / <span style="color:#dc2626;">'+(_importRows.length-validCount)+' com problema</span>';
+  }
+
+  function importRemoveRow(idx) {
+    _importRows.splice(idx, 1);
+    importRenderDraft();
+  }
+
+  async function importSaveDraft() {
+    if (_importRows.length === 0) { showToast('Nenhuma linha para salvar.','error'); return; }
+    try {
+      var res = await fetch('/produtos/api/import-draft', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({rows: _importRows}) });
+      var d = await res.json();
+      if (d.ok) showToast('Rascunho salvo!','success');
+      else showToast('Erro ao salvar rascunho.','error');
+    } catch(e) { showToast('Erro ao salvar rascunho.','error'); }
+  }
+
+  async function importLoadDraft() {
+    try {
+      var res = await fetch('/produtos/api/import-draft');
+      var d = await res.json();
+      if (d.ok && d.draft && d.draft.rows && d.draft.rows.length > 0) {
+        _importRows = d.draft.rows;
+        importRenderDraft();
+        showToast('Rascunho carregado ('+_importRows.length+' linhas).','info');
+      } else {
+        showToast('Nenhum rascunho salvo encontrado.','info');
+      }
+    } catch(e) { showToast('Erro ao carregar rascunho.','error'); }
+  }
+
+  async function importTryLoadDraftOnOpen() {
+    try {
+      var res = await fetch('/produtos/api/import-draft');
+      var d = await res.json();
+      if (d.ok && d.draft && d.draft.rows && d.draft.rows.length > 0) {
+        _importRows = d.draft.rows;
+        importRenderDraft();
+        showImportTab(2);
+        showToast('Rascunho anterior carregado automaticamente.','info');
+      }
+    } catch(e) {}
+  }
+
+  async function importClearDraft() {
+    _importRows = [];
+    importRenderDraft();
+    try { await fetch('/produtos/api/import-draft', {method:'DELETE'}); } catch(e) {}
+    showToast('Rascunho limpo.','success');
+    showImportTab(1);
+  }
+
+  async function importCommit() {
+    if (_importRows.length === 0) { showToast('Nenhuma linha para importar.','error'); return; }
+    var btn = document.getElementById('importCommitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando...';
+    try {
+      var res = await fetch('/produtos/api/import', {
+        method:'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({rows: _importRows})
+      });
+      var d = await res.json();
+      if (!d.ok) { showToast(d.error || 'Erro na importação.','error'); btn.disabled=false; btn.innerHTML='<i class="fas fa-check"></i> Importar Agora'; return; }
+      _importLastReport = d.report || [];
+      importRenderReport(d);
+      showImportTab(3);
+      // Limpar rascunho após commit bem-sucedido
+      try { await fetch('/produtos/api/import-draft', {method:'DELETE'}); } catch(e) {}
+      _importRows = [];
+      // Verificar se há duplicatas para mostrar aviso
+      var hasDup = _importLastReport.some(function(r){ return r.errorCode === 'DUPLICATE_CODE_DB' || r.errorCode === 'DUPLICATE_CODE_FILE'; });
+      if (hasDup) {
+        showToast('Alguns produtos já possuem cadastro no sistema, verifique relatório de erros no final!','error');
+      } else if (d.created > 0) {
+        showToast(d.created+' produto(s) importado(s) com sucesso!','success');
+      }
+    } catch(e) {
+      showToast('Erro ao importar.','error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-check"></i> Importar Agora';
+  }
+
+  function importRenderReport(d) {
+    var summEl = document.getElementById('importReportSummary');
+    var report = d.report || [];
+    var created = d.created || 0;
+    var skipped = d.skipped || 0;
+    var hasDup = report.some(function(r){ return r.errorCode==='DUPLICATE_CODE_DB'||r.errorCode==='DUPLICATE_CODE_FILE'; });
+    var summHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">' +
+      '<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:12px 18px;flex:1;min-width:120px;">' +
+        '<div style="font-size:22px;font-weight:800;color:#16a34a;">'+created+'</div>' +
+        '<div style="font-size:11px;color:#15803d;font-weight:600;">IMPORTADOS</div>' +
+      '</div>' +
+      '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px 18px;flex:1;min-width:120px;">' +
+        '<div style="font-size:22px;font-weight:800;color:#dc2626;">'+skipped+'</div>' +
+        '<div style="font-size:11px;color:#b91c1c;font-weight:600;">IGNORADOS</div>' +
+      '</div>' +
+      '</div>';
+    if (hasDup) {
+      summHtml += '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:12px;color:#92400e;font-size:13px;font-weight:600;">' +
+        '<i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>' +
+        'Alguns produtos já possuem cadastro no sistema, verifique relatório de erros no final!' +
+        '</div>';
+    }
+    summEl.innerHTML = summHtml;
+
+    var tbody = document.getElementById('importReportBody');
+    var html = '';
+    report.forEach(function(r) {
+      var isImported = r.action === 'IMPORTED';
+      var actionBadge = isImported
+        ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">IMPORTADO</span>'
+        : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">IGNORADO</span>';
+      html += '<tr style="border-bottom:1px solid #f1f3f5;background:'+(isImported?'white':'#fff5f5')+';">' +
+        '<td style="padding:6px 10px;color:#9ca3af;">'+r.rowNumber+'</td>' +
+        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+r.code+'</td>' +
+        '<td style="padding:6px 10px;">'+r.name+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+actionBadge+'</td>' +
+        '<td style="padding:6px 10px;font-size:11px;color:#dc2626;">'+r.errorCode+'</td>' +
+        '<td style="padding:6px 10px;font-size:11px;color:#6c757d;">'+r.message+'</td>' +
+        '</tr>';
+    });
+    tbody.innerHTML = html || '<tr><td colspan="6" style="padding:20px;text-align:center;color:#9ca3af;">Nenhum resultado.</td></tr>';
+
+    var dlBtn = document.getElementById('importDownloadReportBtn');
+    dlBtn.style.display = report.length > 0 ? 'inline-flex' : 'none';
+  }
+
+  function importDownloadReport() {
+    if (!_importLastReport || _importLastReport.length === 0) return;
+    function csvEsc(v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; }
+    var hdr = 'rowNumber,code,name,action,errorCode,message';
+    var rows = _importLastReport.map(function(r) {
+      return [r.rowNumber, csvEsc(r.code), csvEsc(r.name), r.action, r.errorCode, csvEsc(r.message)].join(',');
+    });
+    var blob = new Blob([hdr+'\n'+rows.join('\n')+'\n'], {type:'text/csv;charset=utf-8;'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href=url; a.download='relatorio_importacao.csv'; a.click();
+  }
+
+  function importHandleFile(input) {
+    var file = input.files[0];
+    if (!file) return;
+    document.getElementById('importFileName').textContent = file.name;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var txt = e.target.result;
+      _importRows = importParseCSV(txt);
+      document.getElementById('importParseBtn').disabled = false;
+      showToast(_importRows.length+' linhas carregadas do arquivo.','info');
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function importHandleDrop(event) {
+    event.preventDefault();
+    document.getElementById('importDropZone').style.borderColor = '#d1d5db';
+    var file = event.dataTransfer.files[0];
+    if (!file) return;
+    document.getElementById('importFileName').textContent = file.name;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      _importRows = importParseCSV(e.target.result);
+      document.getElementById('importParseBtn').disabled = false;
+      showToast(_importRows.length+' linhas carregadas.','info');
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
   // ── Toast ────────────────────────────────────────────────────────────────
   function showToast(msg, type) {
     if (!type) type = 'success';
@@ -1151,6 +1600,7 @@ app.get('/api/list', async (c) => {
 // ── API: POST /produtos/api/import ────────────────────────────────────────────
 // Recebe array de linhas parseadas do CSV, persiste em memória + D1
 // Produtos com controlType='serie'|'lote' geram serialPendingItems no tenant
+// Código é chave única: produtos existentes são IGNORADOS (não atualizados)
 app.post('/api/import', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
@@ -1164,10 +1614,17 @@ app.post('/api/import', async (c) => {
   if (rows.length > 500) return err(c, 'Limite de 500 linhas por importação')
 
   let created = 0
-  let updated = 0
+  let skipped = 0
   let pendingSerial = 0
-  const d1Errors: string[] = []
   const importedAt = new Date().toISOString()
+  const report: Array<{
+    rowNumber: number
+    code: string
+    name: string
+    action: 'IMPORTED' | 'SKIPPED'
+    errorCode: string
+    message: string
+  }> = []
 
   function calcStockStatus(current: number, min: number, max: number = 0, criticalPct: number = 50): string {
     if (min <= 0) return 'normal'
@@ -1182,96 +1639,128 @@ app.post('/api/import', async (c) => {
   if (!Array.isArray((tenant as any).serialPendingItems)) (tenant as any).serialPendingItems = []
   if (!Array.isArray((tenant as any).serialNumbers))     (tenant as any).serialNumbers = []
 
-  for (const row of rows) {
-    const nome = (row.nome || '').trim()
-    const codigo = (row.codigo || '').trim()
-    if (!nome || !codigo) continue
+  // Conjunto para rastrear códigos já vistos nesta importação (detecção de duplicados internos)
+  const seenCodesInFile = new Set<string>()
+
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex]
+    const rowNumber = rowIndex + 2 // +2 porque linha 1 é o cabeçalho
+    const nome = (row.nome || row.name || '').trim()
+    const codigo = (row.codigo || row.code || '').trim()
+
+    // Validação de campos obrigatórios
+    if (!nome || !codigo) {
+      report.push({
+        rowNumber,
+        code: codigo || '',
+        name: nome || '',
+        action: 'SKIPPED',
+        errorCode: 'INVALID_ROW',
+        message: 'Campos obrigatórios ausentes: código e nome são necessários.',
+      })
+      skipped++
+      continue
+    }
+
+    // Verificar duplicado dentro da própria planilha
+    if (seenCodesInFile.has(codigo.toLowerCase())) {
+      report.push({
+        rowNumber,
+        code: codigo,
+        name: nome,
+        action: 'SKIPPED',
+        errorCode: 'DUPLICATE_CODE_FILE',
+        message: 'Código duplicado na planilha. Somente a primeira ocorrência é importada.',
+      })
+      skipped++
+      continue
+    }
+    seenCodesInFile.add(codigo.toLowerCase())
+
+    // Verificar se código já existe no sistema (DB/tenant)
+    const existingIdx = (tenant.products as any[]).findIndex((p: any) => p.code === codigo)
+    if (existingIdx >= 0) {
+      report.push({
+        rowNumber,
+        code: codigo,
+        name: nome,
+        action: 'SKIPPED',
+        errorCode: 'DUPLICATE_CODE_DB',
+        message: 'Código já cadastrado no sistema. Item ignorado na importação.',
+      })
+      skipped++
+      continue
+    }
 
     const stockMin      = parseInt(row.stockMin)     || 0
+    const stockMax      = parseInt(row.stockMax)     || 0
     const stockCurrent  = parseInt(row.stockCurrent) || 0
-    const stockStatus   = calcStockStatus(stockCurrent, stockMin)
-    const unit          = (row.unidade || 'un').trim()
-    const type          = (row.tipo === 'internal' ? 'internal' : 'external')
-    const price         = parseFloat(row.preco) || 0
-    const notes         = (row.descricao || '').trim()
-    const controlType   = (row.controlType === 'serie' || row.controlType === 'lote') ? row.controlType : ''
+    const criticalPct   = Math.min(100, Math.max(0, parseInt(row.criticalPercentage) || 50))
+    const stockStatus   = calcStockStatus(stockCurrent, stockMin, stockMax, criticalPct)
+    const unit          = (row.unidade || row.unit || 'un').trim()
+    const type          = (row.tipo === 'internal' || row.type === 'internal') ? 'internal' : 'external'
+    const priceRaw      = String(row.preco || row.price || '0').replace(',', '.')
+    const price         = parseFloat(priceRaw) || 0
+    const notes         = (row.descricao || row.notes || '').trim()
+    const description   = (row.description || row.descricao || '').trim()
+    const serialVal     = (row.serial || row.controlType || '').trim().toLowerCase()
+    const controlType   = (serialVal === 'serie' || serialVal === 'lote') ? serialVal : ''
     const serialControlled = !!controlType
 
-    // Check if product with same code already exists
-    const existingIdx = (tenant.products as any[]).findIndex((p: any) => p.code === codigo)
-    let productId: string
+    // Create new — padrão D1-first em produção
+    const productId = genId('prod')
+    const product: any = {
+      id: productId, name: nome, code: codigo, unit, type,
+      stockMin, stockMax, stockCurrent, stockStatus,
+      serialControlled, controlType,
+      criticalPercentage: criticalPct, supplierId: '', supplierName: '',
+      price, notes: notes || description, createdAt: importedAt,
+    }
 
-    if (existingIdx >= 0) {
-      // Update existing — padrão D1-first em produção
-      const p = tenant.products[existingIdx] as any
-      productId = p.id
-
-      if (db && userId !== 'demo-tenant') {
-        // Persistir em D1 primeiro; só atualiza memória se D1 tiver sucesso
-        try {
-          await dbUpdate(db, 'products', p.id, userId, {
-            name: nome, unit, type,
-            stock_min: stockMin, stock_current: stockCurrent, price, notes
-          })
-          p.name            = nome
-          p.unit            = unit
-          p.type            = type
-          p.stockMin        = stockMin
-          p.stockCurrent    = stockCurrent
-          p.stockStatus     = stockStatus
-          p.price           = price
-          p.notes           = notes
-          if (serialControlled) { p.serialControlled = true; p.controlType = controlType }
-          updated++
-        } catch (e: any) {
-          console.error(`[IMPORT] [CRÍTICO] Erro ao atualizar produto ${codigo} em D1:`, e)
-          d1Errors.push(codigo)
-          continue
-        }
-      } else {
-        // Demo: apenas memória
-        p.name            = nome
-        p.unit            = unit
-        p.type            = type
-        p.stockMin        = stockMin
-        p.stockCurrent    = stockCurrent
-        p.stockStatus     = stockStatus
-        p.price           = price
-        p.notes           = notes
-        if (serialControlled) { p.serialControlled = true; p.controlType = controlType }
-        updated++
-      }
-    } else {
-      // Create new — padrão D1-first em produção
-      productId = genId('prod')
-      const product: any = {
-        id: productId, name: nome, code: codigo, unit, type,
-        stockMin, stockMax: 0, stockCurrent, stockStatus,
-        serialControlled, controlType,
-        criticalPercentage: 50, supplierId: '', supplierName: '',
-        price, notes, createdAt: importedAt,
-      }
-
-      if (db && userId !== 'demo-tenant') {
-        // Persistir em D1 primeiro; só adiciona à memória se D1 tiver sucesso
-        try {
-          await dbInsert(db, 'products', {
-            id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
-            stock_min: stockMin, stock_max: 0, stock_current: stockCurrent,
-            price, notes,
-          })
-          ;(tenant.products as any[]).push(product)
-          created++
-        } catch (e: any) {
-          console.error(`[IMPORT] [CRÍTICO] Erro ao criar produto ${codigo} em D1:`, e)
-          d1Errors.push(codigo)
-          continue
-        }
-      } else {
-        // Demo: apenas memória
+    if (db && userId !== 'demo-tenant') {
+      // Persistir em D1 primeiro; só adiciona à memória se D1 tiver sucesso
+      try {
+        await dbInsert(db, 'products', {
+          id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
+          stock_min: stockMin, stock_max: stockMax, stock_current: stockCurrent,
+          critical_percentage: criticalPct,
+          price, notes: notes || description,
+        })
         ;(tenant.products as any[]).push(product)
         created++
+        report.push({
+          rowNumber,
+          code: codigo,
+          name: nome,
+          action: 'IMPORTED',
+          errorCode: '',
+          message: '',
+        })
+      } catch (e: any) {
+        console.error(`[IMPORT] [CRÍTICO] Erro ao criar produto ${codigo} em D1:`, e)
+        report.push({
+          rowNumber,
+          code: codigo,
+          name: nome,
+          action: 'SKIPPED',
+          errorCode: 'D1_ERROR',
+          message: 'Erro ao persistir produto no banco de dados.',
+        })
+        skipped++
+        continue
       }
+    } else {
+      // Demo: apenas memória
+      ;(tenant.products as any[]).push(product)
+      created++
+      report.push({
+        rowNumber,
+        code: codigo,
+        name: nome,
+        action: 'IMPORTED',
+        errorCode: '',
+        message: '',
+      })
     }
 
     // ── Gerar item de liberação de série/lote se necessário ──────────────────
@@ -1287,13 +1776,13 @@ app.post('/api/import', async (c) => {
           productId,
           productCode: codigo,
           productName: nome,
-          controlType,          // 'serie' | 'lote'
+          controlType,
           unit,
-          totalQty: stockCurrent,   // quantidade total importada
-          identifiedQty: 0,         // já identificados
-          status: 'pending',         // pending | partial | complete
+          totalQty: stockCurrent,
+          identifiedQty: 0,
+          status: 'pending',
           importedAt,
-          entries: [] as any[],      // [{ number, qty, obs }]
+          entries: [] as any[],
         }
         ;(tenant as any).serialPendingItems.push(pendingItem)
         pendingSerial++
@@ -1301,7 +1790,89 @@ app.post('/api/import', async (c) => {
     }
   }
 
-  return ok(c, { created, updated, total: created + updated, pendingSerial, d1Errors })
+  return ok(c, { created, skipped, total: rows.length, pendingSerial, report })
+})
+
+// ── API: POST /produtos/api/import-draft ─────────────────────────────────────
+// Salva rascunho de importação para o usuário atual (D1-first)
+app.post('/api/import-draft', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !Array.isArray(body.rows)) return err(c, 'Dados inválidos')
+
+  const now = new Date().toISOString()
+  const payloadJson = JSON.stringify(body.rows)
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      // Upsert: deletar rascunho anterior do mesmo usuário/empresa/kind e inserir novo
+      await db.prepare(
+        `DELETE FROM import_drafts WHERE user_id = ? AND (empresa_id = ? OR empresa_id IS NULL) AND kind = 'produtos'`
+      ).bind(userId, empresaId || '').run()
+
+      const draftId = genId('imd')
+      await db.prepare(
+        `INSERT INTO import_drafts (id, user_id, empresa_id, kind, payload_json, created_at, updated_at)
+         VALUES (?, ?, ?, 'produtos', ?, ?, ?)`
+      ).bind(draftId, userId, empresaId || '', payloadJson, now, now).run()
+
+      return ok(c, { saved: true, draftId })
+    } catch (e: any) {
+      console.warn('[IMPORT-DRAFT] Erro ao salvar rascunho em D1:', e.message)
+      return ok(c, { saved: false, error: 'Erro ao salvar no banco de dados' })
+    }
+  }
+
+  // Demo: apenas confirma (sem persistência)
+  return ok(c, { saved: true, draftId: null })
+})
+
+// ── API: GET /produtos/api/import-draft ──────────────────────────────────────
+// Carrega rascunho de importação mais recente para o usuário atual
+app.get('/api/import-draft', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const res = await db.prepare(
+        `SELECT * FROM import_drafts WHERE user_id = ? AND (empresa_id = ? OR empresa_id IS NULL) AND kind = 'produtos'
+         ORDER BY updated_at DESC LIMIT 1`
+      ).bind(userId, empresaId || '').first()
+
+      if (res) {
+        const rows = JSON.parse((res as any).payload_json || '[]')
+        return ok(c, { draft: { rows, updatedAt: (res as any).updated_at } })
+      }
+    } catch (e: any) {
+      console.warn('[IMPORT-DRAFT] Erro ao carregar rascunho de D1:', e.message)
+    }
+  }
+
+  return ok(c, { draft: null })
+})
+
+// ── API: DELETE /produtos/api/import-draft ───────────────────────────────────
+// Remove rascunho de importação para o usuário atual
+app.delete('/api/import-draft', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `DELETE FROM import_drafts WHERE user_id = ? AND (empresa_id = ? OR empresa_id IS NULL) AND kind = 'produtos'`
+      ).bind(userId, empresaId || '').run()
+    } catch (e: any) {
+      console.warn('[IMPORT-DRAFT] Erro ao excluir rascunho de D1:', e.message)
+    }
+  }
+
+  return ok(c, { deleted: true })
 })
 
 export default app
