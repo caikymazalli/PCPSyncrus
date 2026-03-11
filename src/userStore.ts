@@ -755,6 +755,33 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar serial_pending_items:', (e as any).message)
       if (!tenant.serialPendingItems) tenant.serialPendingItems = []
     }
+    // Load released serial/lot numbers
+    try {
+      const snRes = await db.prepare(`SELECT * FROM serial_numbers WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (snRes.results && snRes.results.length > 0) {
+        tenant.serialNumbers = (snRes.results as any[]).map(r => ({
+          id: r.id,
+          itemCode: r.item_code,
+          number: r.number,
+          qty: r.quantity || 1,
+          controlType: r.type || 'serie',
+          status: r.status || 'em_estoque',
+          origin: r.origin || 'manual',
+          createdAt: r.created_at || new Date().toISOString(),
+          userId: r.user_id,
+          empresaId: r.empresa_id,
+          almoxarifadoId: r.almoxarifado_id || 'alm1',
+          location: r.location || '',
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.serialNumbers.length} números de série/lote carregados`)
+      } else {
+        if (!tenant.serialNumbers) tenant.serialNumbers = []
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar serial_numbers:', (e as any).message)
+      if (!tenant.serialNumbers) tenant.serialNumbers = []
+    }
     // Load plants
     const plantsRes = await db.prepare(`SELECT * FROM plants WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
       .bind(...bindEmpresa([userId])).all()

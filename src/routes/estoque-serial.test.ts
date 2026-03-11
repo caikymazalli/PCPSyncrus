@@ -7,9 +7,13 @@
  * 2. Salvar rejeita números de série em branco.
  * 3. Salvar rejeita duplicatas (case-insensitive) dentro do mesmo item.
  * 4. Salvar com dados válidos atualiza status e entries.
+ * 5. Guardrails de código-fonte: D1 INSERT em serial_numbers, UPDATE em serial_pending_items,
+ *    origin='manual', status='done', guard userId !== 'demo-tenant'.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import app from './estoque'
 import { sessions, tenants } from '../userStore'
 
@@ -261,13 +265,13 @@ describe('POST /estoque/api/serial-release — rejeita duplicatas', () => {
     expect(res.status).toBe(200)
     const data = await res.json() as any
     expect(data.ok).toBe(true)
-    expect(data.status).toBe('complete')
+    expect(data.status).toBe('done')
     expect(data.identifiedQty).toBe(3)
     expect(data.totalQty).toBe(3)
 
     // Verify tenant state updated
     const pi = (tenants[USER_ID].serialPendingItems as any[]).find((p: any) => p.id === item.id)
-    expect(pi.status).toBe('complete')
+    expect(pi.status).toBe('done')
     expect(pi.entries).toHaveLength(3)
     expect(pi.identifiedQty).toBe(3)
 
@@ -303,5 +307,48 @@ describe('POST /estoque/api/serial-release — rejeita duplicatas', () => {
     expect(data.status).toBe('partial')
     expect(data.identifiedQty).toBe(2)
     expect(data.totalQty).toBe(5)
+  })
+})
+
+// ── Source-code guardrails: D1 persistence in /api/serial-release ────────────
+
+describe('estoque.ts source-code guardrails serial-release D1 persistence', () => {
+  const src = readFileSync(resolve(__dirname, 'estoque.ts'), 'utf8')
+  const handlerStart = src.indexOf("app.post('/api/serial-release'")
+  const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+  const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+  it('usa origin manual (não planilha)', () => {
+    expect(handlerBody).toContain("origin: 'manual'")
+    expect(handlerBody).not.toContain("origin: 'planilha'")
+  })
+
+  it('status final usa done (alinhado com D1 schema)', () => {
+    expect(handlerBody).toContain("pi.status = 'done'")
+    expect(handlerBody).not.toContain("pi.status = 'complete'")
+  })
+
+  it('persiste cada serial em serial_numbers no D1 com guard userId !== demo-tenant', () => {
+    expect(handlerBody).toContain("INSERT OR IGNORE INTO serial_numbers")
+    expect(handlerBody).toContain("userId !== 'demo-tenant'")
+  })
+
+  it('inclui colunas user_id e empresa_id no INSERT de serial_numbers', () => {
+    expect(handlerBody).toContain('user_id')
+    expect(handlerBody).toContain('empresa_id')
+    expect(handlerBody).toContain('almoxarifado_id')
+    expect(handlerBody).toContain('location')
+  })
+
+  it('atualiza serial_pending_items no D1 após o loop de entries', () => {
+    expect(handlerBody).toContain('UPDATE serial_pending_items')
+    expect(handlerBody).toContain('entries_json')
+    expect(handlerBody).toContain('identified_qty')
+  })
+
+  it('envolve operações D1 em try/catch com console.warn', () => {
+    expect(handlerBody).toContain('[ESTOQUE][SERIAL-RELEASE]')
+    expect(handlerBody).toMatch(/try\s*\{/)
+    expect(handlerBody).toMatch(/catch\s*\(/)
   })
 })

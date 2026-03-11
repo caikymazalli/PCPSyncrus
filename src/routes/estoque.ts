@@ -2264,6 +2264,7 @@ app.post('/api/serial-release', async (c) => {
   const tenant = getCtxTenant(c)
   const userId = getCtxUserId(c)
   const empresaId = getCtxEmpresaId(c)
+  const db = getCtxDB(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.pendingId || !Array.isArray(body.entries)) return err(c, 'Dados inválidos')
 
@@ -2314,20 +2315,40 @@ app.post('/api/serial-release', async (c) => {
 
     // Registrar no serialNumbers do tenant (tenant-aware + location-aware)
     // almoxarifadoId falls back to 'alm1' (default warehouse) if not set on pending item
+    const snId = genId('sn')
+    const snQty = parseInt(entry.qty) || 1
+    const snAlmox = pi.almoxarifadoId || 'alm1'
+    const snLocation = pi.location || ''
+    const snCreatedAt = new Date().toISOString()
     ;(tenant as any).serialNumbers.push({
-      id: genId('sn'),
+      id: snId,
       itemCode: pi.productCode,
       number: normalizedNum,
-      qty: parseInt(entry.qty) || 1,
+      qty: snQty,
       controlType: pi.controlType,
       status: 'em_estoque',
-      origin: 'planilha',
-      createdAt: new Date().toISOString(),
+      origin: 'manual',
+      createdAt: snCreatedAt,
       userId,
       empresaId,
-      almoxarifadoId: pi.almoxarifadoId || 'alm1',
-      location: pi.location || '',
+      almoxarifadoId: snAlmox,
+      location: snLocation,
     })
+    // Persist each serial number to D1 so it survives worker restarts
+    if (db && userId !== 'demo-tenant') {
+      try {
+        await db.prepare(
+          `INSERT OR IGNORE INTO serial_numbers (id, item_code, item_name, number, type, quantity, status, origin, created_at, created_by, user_id, empresa_id, almoxarifado_id, location)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        ).bind(
+          snId, pi.productCode, pi.productName || null, normalizedNum,
+          pi.controlType, snQty, 'em_estoque', 'manual',
+          snCreatedAt, userId, userId, empresaId, snAlmox, snLocation
+        ).run()
+      } catch (e) {
+        console.warn('[ESTOQUE][SERIAL-RELEASE] D1 insert serial_numbers failed:', (e as any).message)
+      }
+    }
   }
 
   pi.entries = [...(pi.entries || []), ...newEntries]
@@ -2335,11 +2356,24 @@ app.post('/api/serial-release', async (c) => {
 
   // Atualizar status
   if (pi.identifiedQty >= pi.totalQty) {
-    pi.status = 'complete'
+    pi.status = 'done'
   } else if (pi.identifiedQty > 0) {
     pi.status = 'partial'
   } else {
     pi.status = 'pending'
+  }
+
+  // Persist serial_pending_items progress to D1 so it survives worker restarts
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `UPDATE serial_pending_items SET entries_json = ?, identified_qty = ?, status = ? WHERE id = ? AND user_id = ?`
+      ).bind(
+        JSON.stringify(pi.entries), pi.identifiedQty, pi.status, pi.id, userId
+      ).run()
+    } catch (e) {
+      console.warn('[ESTOQUE][SERIAL-RELEASE] D1 update serial_pending_items failed:', (e as any).message)
+    }
   }
 
   return ok(c, {
