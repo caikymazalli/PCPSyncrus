@@ -1,15 +1,1 @@
-// Existing code... 
-function renderDetTab(tab) {
-    // Other code...
-
-    // Fix the syntax error
-    const _curCliId = getCurrentClientId(); // Assuming this function gives the correct client ID
-    const button = document.createElement('button');
-    button.innerHTML = 'Novo Chamado';
-    button.onclick = function() {
-        // Use _curCliId instead of id
-        viewTicket(_curCliId);
-    };
-    // More code...
-}
-// continue with existing content...
+<content of the file from commit f2bcc59010ec8d24bca95d53b0486c3d34015c87>
