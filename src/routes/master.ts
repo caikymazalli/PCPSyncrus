@@ -1930,9 +1930,8 @@ app.get('/', async (c) => {
         // Prefer stored empresa_name; fall back to masterClientsData lookup then raw id
         const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
           ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
-        // Encode ticket id for safe HTML attribute injection inside double-quoted onclick="..."
-        // JSON.stringify("id") → "\"id\"" which would close the attribute early without escaping.
-        const tid = JSON.stringify(t.id).replace(/"/g, '&quot;');
+        // Encode ticket id safely for HTML attribute injection using esc() (HTML-escapes &, <, >, ", ')
+        const tid = esc(t.id);
         return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
           '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:2px;line-height:1.3;">' + esc(t.title || '—') + '</div>' +
           '<div style="font-size:10px;color:#6c757d;margin-bottom:2px;">' + esc(cliName) + '</div>' +
@@ -1943,12 +1942,12 @@ app.get('/', async (c) => {
           (overdue ? '<span style="font-size:9px;font-weight:700;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i> SLA</span>' : '') +
           '</div>' +
           (t.due_at ? '<div style="font-size:9px;color:' + (overdue?'#dc2626':'#9ca3af') + ';margin-top:4px;">Prazo: ' + new Date(t.due_at).toLocaleDateString('pt-BR') + '</div>' : '') +
-          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(\'' + tidAttr + '\', this.value)">' +
+          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(\'' + tid + '\', this.value)">' +
           SUPPORT_STATUS_ORDER.map(function(s) { return '<option value="' + s + '" ' + (s===t.status?'selected':'') + '>' + s + '</option>'; }).join('') +
           '</select>' +
           '<div style="display:flex;gap:4px;margin-top:6px;">' +
-          '<button onclick="viewTicket(\'' + tidAttr + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
-          '<button onclick="editTicket(\'' + tidAttr + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
+          '<button onclick="viewTicket(\'' + tid + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
+          '<button onclick="editTicket(\'' + tid + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
           '</div>' +
           '</div>';
       }).join('');
