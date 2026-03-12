@@ -239,6 +239,63 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Detalhe Apontamento Modal -->
+  <div id="detalheApontamentoModal" class="modal-overlay">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#1B4F72;"><i class="fas fa-eye" style="margin-right:8px;color:#2980B9;"></i>Detalhes do Apontamento</h3>
+        <button onclick="closeModal('detalheApontamentoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;" id="detalheApontamentoBody">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Ordem / OP</div>
+            <div style="font-size:14px;font-weight:700;color:#1B4F72;" id="det_orderCode">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Etapa</div>
+            <div style="font-size:14px;color:#374151;" id="det_stepName">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Operador</div>
+            <div style="font-size:14px;color:#374151;" id="det_operator">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Tempo (min)</div>
+            <div style="font-size:14px;color:#374151;" id="det_timeSpent">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Qtd Produzida</div>
+            <div style="font-size:14px;font-weight:700;color:#27AE60;" id="det_produced">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Qtd Rejeitada</div>
+            <div style="font-size:14px;font-weight:700;" id="det_rejected">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Índice de Qualidade</div>
+            <div style="font-size:14px;font-weight:700;" id="det_quality">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">NC</div>
+            <div style="font-size:14px;color:#374151;" id="det_nc">—</div>
+          </div>
+          <div style="grid-column:1/-1;">
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Data / Hora</div>
+            <div style="font-size:14px;color:#374151;" id="det_recordedAt">—</div>
+          </div>
+          <div style="grid-column:1/-1;" id="det_notesRow">
+            <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:4px;">Observação</div>
+            <div style="font-size:13px;color:#374151;background:#f8f9fa;border-radius:6px;padding:10px;" id="det_notes">—</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeModal('detalheApontamentoModal')">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <div class="section-header">
     <div>
@@ -329,7 +386,7 @@ app.get('/', (c) => {
           <th>Ordem</th><th>Etapa</th><th>Qtd Produzida</th><th>Qtd Rejeitada</th><th>Índice Q.</th><th>Tempo (min)</th><th>Operador</th><th>NC</th><th>Data</th><th>Ações</th>
         </tr></thead>
         <tbody>
-          ${productionEntries.map(e => {
+          ${productionEntries.map((e, _aptIdx) => {
             const quality = e.quantityRejected
               ? Math.round(((e.quantityProduced - e.quantityRejected) / e.quantityProduced) * 100)
               : 100
@@ -362,7 +419,7 @@ app.get('/', (c) => {
               <td style="color:#6c757d;font-size:12px;">${e.recordedAt}</td>
               <td>
                 <div style="display:flex;gap:4px;">
-                  <button class="btn btn-secondary btn-sm" onclick="alert('Detalhes do apontamento')" title="Ver detalhes">
+                  <button class="btn btn-secondary btn-sm" onclick="viewApontamento(${_aptIdx})" title="Ver detalhes">
                     <i class="fas fa-eye"></i>
                   </button>
                   ${(e.quantityRejected || 0) > 0 && !(e as any).ncGenerated
@@ -417,6 +474,20 @@ app.get('/', (c) => {
   let selectedImages = [];
   let selectedNCImages = [];
   const NC_LIMIT = parseInt(document.getElementById('ncLimitInput').value) || 3;
+
+  // Snapshot of production entries for the view-details modal
+  const productionEntriesData = ${JSON.stringify(productionEntries.map(e => ({
+    id: (e as any).id || '',
+    orderCode: (e as any).orderCode || '',
+    stepName: (e as any).stepName || '',
+    operator: (e as any).operator || '',
+    quantityProduced: (e as any).quantityProduced ?? null,
+    quantityRejected: (e as any).quantityRejected ?? null,
+    timeSpent: (e as any).timeSpent ?? null,
+    ncGenerated: !!(e as any).ncGenerated,
+    recordedAt: (e as any).recordedAt || '',
+    notes: (e as any).notes || '',
+  })))};
 
   // Products data with serial control info
   const productsSerialData = ${JSON.stringify(mockData.products.map(p => ({
@@ -694,6 +765,51 @@ app.get('/', (c) => {
       if (data.ok) { showToast('Apontamento excluído!'); setTimeout(() => location.reload(), 500); }
       else showToast(data.error || 'Erro ao excluir', 'error');
     } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  // ── View appointment details modal ───────────────────────────────────────
+  function viewApontamento(idx) {
+    const e = productionEntriesData[idx];
+    if (!e) { console.warn('[viewApontamento] entry not found at index', idx); return; }
+
+    const produced = e.quantityProduced != null ? e.quantityProduced : null;
+    const rejected = e.quantityRejected != null ? e.quantityRejected : 0;
+    const quality = (produced != null && produced > 0)
+      ? Math.round(((produced - rejected) / produced) * 100)
+      : null;
+    const qColor = quality == null ? '#6c757d' : quality >= 99 ? '#27AE60' : quality >= 95 ? '#F39C12' : '#E74C3C';
+    const rejColor = rejected > 0 ? '#E74C3C' : '#6c757d';
+
+    document.getElementById('det_orderCode').textContent  = e.orderCode  || '—';
+    document.getElementById('det_stepName').textContent   = e.stepName   || '—';
+    document.getElementById('det_operator').textContent   = e.operator   || '—';
+    document.getElementById('det_timeSpent').textContent  = e.timeSpent != null ? e.timeSpent + ' min' : '—';
+    document.getElementById('det_produced').textContent   = produced != null ? produced + ' un' : '—';
+
+    const rejEl = document.getElementById('det_rejected');
+    rejEl.textContent = rejected + ' un';
+    rejEl.style.color = rejColor;
+
+    const qEl = document.getElementById('det_quality');
+    qEl.textContent = quality != null ? quality + '%' : '—';
+    qEl.style.color = qColor;
+
+    const ncEl = document.getElementById('det_nc');
+    ncEl.textContent = e.ncGenerated ? 'NC Gerada' : 'Sem NC';
+    ncEl.style.color = e.ncGenerated ? '#E74C3C' : '#6c757d';
+    ncEl.style.fontWeight = e.ncGenerated ? '700' : '400';
+
+    document.getElementById('det_recordedAt').textContent = e.recordedAt || '—';
+
+    const notesRow = document.getElementById('det_notesRow');
+    if (e.notes) {
+      document.getElementById('det_notes').textContent = e.notes;
+      notesRow.style.display = 'block';
+    } else {
+      notesRow.style.display = 'none';
+    }
+
+    openModal('detalheApontamentoModal');
   }
 
   // ── Toast notification ────────────────────────────────────────────────────
