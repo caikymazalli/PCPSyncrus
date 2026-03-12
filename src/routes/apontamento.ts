@@ -387,8 +387,13 @@ app.get('/', (c) => {
         </tr></thead>
         <tbody>
           ${productionEntries.map((e, _aptIdx) => {
-            const quality = e.quantityRejected
-              ? Math.round(((e.quantityProduced - e.quantityRejected) / e.quantityProduced) * 100)
+            const qtyProduced = (e as any).quantityProduced ?? (e as any).produced ?? null
+            const qtyRejected = (e as any).quantityRejected ?? (e as any).rejected ?? 0
+            const dateStr = (e as any).recordedAt || (e as any).createdAt || '—'
+            const operatorName: string = (e as any).operator || ''
+            const avatarLetters = operatorName.split(' ').map(n => n[0] || '').join('').slice(0, 2) || '?'
+            const quality = qtyRejected && qtyProduced
+              ? Math.round(((qtyProduced - qtyRejected) / qtyProduced) * 100)
               : 100
             const qColor = quality >= 99 ? '#27AE60' : quality >= 95 ? '#F39C12' : '#E74C3C'
             return `
@@ -400,14 +405,14 @@ app.get('/', (c) => {
                   <span style="font-weight:500;">${e.stepName || 'Produção Geral'}</span>
                 </div>
               </td>
-              <td style="font-weight:600;">${e.quantityProduced}</td>
-              <td style="color:${(e.quantityRejected || 0) > 0 ? '#E74C3C' : '#6c757d'};font-weight:${(e.quantityRejected || 0) > 0 ? '700' : '400'};">${e.quantityRejected || 0}</td>
+              <td style="font-weight:600;">${qtyProduced != null ? qtyProduced : '—'}</td>
+              <td style="color:${qtyRejected > 0 ? '#E74C3C' : '#6c757d'};font-weight:${qtyRejected > 0 ? '700' : '400'};">${qtyRejected}</td>
               <td><span style="color:${qColor};font-weight:700;">${quality}%</span></td>
-              <td>${e.timeSpent} min</td>
+              <td>${e.timeSpent != null ? e.timeSpent : '—'} min</td>
               <td>
                 <div style="display:flex;align-items:center;gap:6px;">
-                  <div class="avatar" style="width:26px;height:26px;font-size:10px;background:#2980B9;">${e.operator.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</div>
-                  <span style="font-size:12px;">${e.operator}</span>
+                  <div class="avatar" style="width:26px;height:26px;font-size:10px;background:#2980B9;">${avatarLetters}</div>
+                  <span style="font-size:12px;">${operatorName || '—'}</span>
                 </div>
               </td>
               <td>
@@ -416,14 +421,14 @@ app.get('/', (c) => {
                   : `<span class="badge badge-secondary">—</span>`
                 }
               </td>
-              <td style="color:#6c757d;font-size:12px;">${e.recordedAt}</td>
+              <td style="color:#6c757d;font-size:12px;">${dateStr}</td>
               <td>
                 <div style="display:flex;gap:4px;">
                   <button class="btn btn-secondary btn-sm" onclick="viewApontamento(${_aptIdx})" title="Ver detalhes">
                     <i class="fas fa-eye"></i>
                   </button>
-                  ${(e.quantityRejected || 0) > 0 && !(e as any).ncGenerated
-                    ? `<button class="btn btn-warning btn-sm" onclick="openNCFromEntry('${e.orderCode}','${e.stepName || 'Produção Geral'}','${e.quantityRejected}')" title="Gerar NC para este apontamento"><i class="fas fa-clipboard-check"></i></button>`
+                  ${qtyRejected > 0 && !(e as any).ncGenerated
+                    ? `<button class="btn btn-warning btn-sm" onclick="openNCFromEntry('${e.orderCode}','${e.stepName || 'Produção Geral'}','${qtyRejected}')" title="Gerar NC para este apontamento"><i class="fas fa-clipboard-check"></i></button>`
                     : ''
                   }
                 </div>
@@ -475,17 +480,19 @@ app.get('/', (c) => {
   let selectedNCImages = [];
   const NC_LIMIT = parseInt(document.getElementById('ncLimitInput').value) || 3;
 
-  // Snapshot of production entries for the view-details modal
+  // Snapshot of production entries for the view-details modal.
+  // Supports both legacy demo-data keys (quantityProduced/quantityRejected/recordedAt)
+  // and API-created entry keys (produced/rejected/createdAt).
   const productionEntriesData = ${JSON.stringify(productionEntries.map(e => ({
     id: (e as any).id || '',
     orderCode: (e as any).orderCode || '',
     stepName: (e as any).stepName || '',
     operator: (e as any).operator || '',
-    quantityProduced: (e as any).quantityProduced ?? null,
-    quantityRejected: (e as any).quantityRejected ?? null,
+    quantityProduced: (e as any).quantityProduced ?? (e as any).produced ?? null,
+    quantityRejected: (e as any).quantityRejected ?? (e as any).rejected ?? null,
     timeSpent: (e as any).timeSpent ?? null,
     ncGenerated: !!(e as any).ncGenerated,
-    recordedAt: (e as any).recordedAt || '',
+    recordedAt: (e as any).recordedAt || (e as any).createdAt || '',
     notes: (e as any).notes || '',
   })))};
 
