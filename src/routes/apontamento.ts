@@ -1,8 +1,33 @@
 import { Hono } from 'hono'
 import { layout } from '../layout'
-import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { requireModuleWriteAccess } from '../moduleAccess'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+}
+
+function guessImageContentType(fileName: string, contentType?: string): string | null {
+  if (contentType) {
+    const ct = contentType.toLowerCase().split(';')[0].trim()
+    if (Object.values(ALLOWED_IMAGE_TYPES).includes(ct)) return ct
+  }
+  const ext = (fileName.split('.').pop() || '').toLowerCase()
+  return ALLOWED_IMAGE_TYPES[ext] || null
+}
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_').slice(0, 200)
+}
+
+async function ensureAuthenticatedOr401(c: any): Promise<Response | null> {
+  const session = getCtxSession(c)
+  if (!session || session.isDemo) return c.json({ error: 'Não autenticado' }, 401)
+  return null
+}
 
 const app = new Hono()
 
@@ -517,14 +542,40 @@ app.get('/', (c) => {
     btn.parentElement.remove();
   }
 
-  function saveApontamento() {
-    const ordem = document.getElementById('apt_ordem');
-    const produzida = document.getElementById('apt_produzida').value;
+  // ── Image upload helper ───────────────────────────────────────────────────
+  async function uploadImages(files, refType) {
+    const ids = [];
+    for (const file of files) {
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('ref_type', refType);
+        const res = await fetch('/apontamento/api/upload-image', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok && data.image?.id) ids.push(data.image.id);
+      } catch(e) { console.error('[uploadImages] falha ao enviar imagem:', e); /* continua – imagens são evidências, não bloqueiam o salvamento */ }
+    }
+    return ids;
+  }
+
+  async function saveApontamento() {
+    const ordemSel = document.getElementById('apt_ordem');
+    const orderId = ordemSel.value;
+    if (!orderId) { showToast('Selecione a ordem de produção!', 'error'); return; }
+
+    const opt = ordemSel.options[ordemSel.selectedIndex];
+    const orderCode = opt.dataset.code || '';
+    const productName = opt.dataset.product || '';
+
+    const produzida = parseInt(document.getElementById('apt_produzida').value) || 0;
     const rejeitada = parseInt(document.getElementById('apt_rejeitada').value) || 0;
     const limit = parseInt(document.getElementById('ncLimitInput').value) || 3;
+    const etapa = document.getElementById('apt_etapa').value || 'Produção Geral';
+    const operador = document.getElementById('apt_operador').value;
+    const tempo = parseInt(document.getElementById('apt_tempo').value) || 0;
+    const notes = document.getElementById('apt_obs').value || '';
 
-    if (!ordem.value) { alert('Selecione a ordem de produção!'); return; }
-    if (!produzida || produzida == 0) { alert('Informe a quantidade produzida!'); return; }
+    if (produzida === 0) { showToast('Informe a quantidade produzida!', 'error'); return; }
 
     // Validate serial/lote if required
     const serialGroup = document.getElementById('serialLoteGroup');
@@ -532,37 +583,45 @@ app.get('/', (c) => {
       const serialVal = document.getElementById('apt_serial').value.trim();
       if (!serialVal) {
         document.getElementById('apt_serial').style.borderColor = '#E74C3C';
-        const label = document.getElementById('serialLoteLabel').textContent.replace(' *','');
-        alert('⚠ ' + label + ' é obrigatório para este produto!');
+        const label = document.getElementById('serialLoteLabel').textContent.replace(' *', '');
+        showToast('⚠ ' + label + ' é obrigatório para este produto!', 'error');
         document.getElementById('apt_serial').focus();
         return;
       }
     }
 
-    const opt = ordem.options[ordem.selectedIndex];
-    const orderCode = opt.dataset.code;
-    const etapa = document.getElementById('apt_etapa').value || 'Produção Geral';
-    const operador = document.getElementById('apt_operador').value;
-    const imagesCount = selectedImages.length;
+    try {
+      const imageIds = await uploadImages(selectedImages, 'apt');
+      const res = await fetch('/apontamento/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId, orderCode, productName, operator: operador,
+          stepName: etapa, produced: produzida, rejected: rejeitada,
+          timeSpent: tempo, notes, shift: 'manha',
+          startTime: new Date().toISOString(), endTime: new Date().toISOString(),
+          imageIds,
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Erro ao salvar', 'error'); return; }
 
-    // Check NC threshold
-    if (rejeitada >= limit) {
-      pendingNCData = { orderCode, etapa, rejeitada, operador, produzida, imagesCount };
-      closeModal('novoApontamentoModal');
-      document.getElementById('ncFormInfo').innerHTML =
-        '<strong style="color:#E74C3C;">⚠ NC Automática:</strong> ' + rejeitada + ' unidades rejeitadas na etapa "' + etapa + '" da ordem ' + orderCode +
-        '<br><span style="color:#6c757d;font-size:12px;">Operador: ' + operador + ' • Produzidas: ' + produzida + ' un</span>';
-      document.getElementById('nc_descricao').value = 'Rejeição acima do limite na etapa ' + etapa + ' — ' + rejeitada + ' peças rejeitadas de ' + produzida + ' produzidas.';
-      openModal('ncFormModal');
-    } else {
-      const msg = '✅ Apontamento registrado!\n\nOrdem: ' + orderCode + '\nEtapa: ' + etapa + '\nProduzidas: ' + produzida + '\nRejeitadas: ' + rejeitada + (imagesCount > 0 ? '\nImagens: ' + imagesCount : '');
-      alert(msg);
-      closeModal('novoApontamentoModal');
-      resetApontamentoForm();
-    }
-  }
-
-  function openNCForm() {
+      // Trigger NC flow if rejection threshold is reached
+      if (rejeitada >= limit) {
+        pendingNCData = { orderCode, etapa, rejeitada, operador, produzida, apontamentoId: data.entry?.id };
+        closeModal('novoApontamentoModal');
+        document.getElementById('ncFormInfo').innerHTML =
+          '<strong style="color:#E74C3C;">⚠ NC Automática:</strong> ' + rejeitada + ' unidades rejeitadas na etapa "' + etapa + '" da ordem ' + orderCode +
+          '<br><span style="color:#6c757d;font-size:12px;">Operador: ' + operador + ' • Produzidas: ' + produzida + ' un</span>';
+        document.getElementById('nc_descricao').value = 'Rejeição acima do limite na etapa ' + etapa + ' — ' + rejeitada + ' peças rejeitadas de ' + produzida + ' produzidas.';
+        openModal('ncFormModal');
+      } else {
+        showToast('✅ Apontamento registrado com sucesso!');
+        closeModal('novoApontamentoModal');
+        resetApontamentoForm();
+        setTimeout(() => location.reload(), 800);
+      }
+    } catch(e) { console.error('[saveApontamento]', e); showToast('Erro de conexão', 'error'); }
     closeModal('ncAlertModal');
     openModal('ncFormModal');
   }
@@ -575,22 +634,46 @@ app.get('/', (c) => {
     openModal('ncFormModal');
   }
 
-  function saveNC() {
+  async function saveNC() {
     const severidade = document.getElementById('nc_severidade').value;
     const descricao = document.getElementById('nc_descricao').value;
     const responsavel = document.getElementById('nc_responsavel').value;
-    const ncCode = 'NC-2024-00' + Math.floor(Math.random() * 900 + 100);
-    if (!descricao) { alert('Descreva a não conformidade!'); return; }
-    const imagesCount = selectedNCImages.length;
-    alert('✅ NC ' + ncCode + ' registrada com sucesso!\n\nSeveridade: ' + severidade + '\nResponsável: ' + responsavel + (imagesCount > 0 ? '\nFotos: ' + imagesCount : '') + '\n\nAcesse o módulo de Qualidade para acompanhamento.');
-    closeModal('ncFormModal');
-    resetApontamentoForm();
-    pendingNCData = null;
-    selectedNCImages = [];
-    document.getElementById('ncImagePreviewGrid').innerHTML = '';
-  }
+    const causa = document.getElementById('nc_causa').value;
+    const acao = document.getElementById('nc_acao').value;
+    if (!descricao) { showToast('Descreva a não conformidade!', 'error'); return; }
 
-  function resetApontamentoForm() {
+    try {
+      const imageIds = await uploadImages(selectedNCImages, 'nc');
+      const orderCode = pendingNCData?.orderCode || '';
+      const res = await fetch('/qualidade/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'NC – ' + orderCode + (pendingNCData?.etapa ? ' / ' + pendingNCData.etapa : ''),
+          orderCode,
+          stepName: pendingNCData?.etapa || '',
+          quantityRejected: parseInt(pendingNCData?.rejeitada) || 0,
+          operator: pendingNCData?.operador || '',
+          severity: severidade,
+          description: descricao,
+          responsible: responsavel,
+          rootCause: causa,
+          correctiveAction: acao,
+          imageIds,
+          openedAt: new Date().toISOString().split('T')[0],
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) { showToast(data.error || 'Erro ao registrar NC', 'error'); return; }
+
+      showToast('✅ NC ' + (data.nc?.code || '') + ' registrada com sucesso!');
+      closeModal('ncFormModal');
+      resetApontamentoForm();
+      pendingNCData = null;
+      selectedNCImages = [];
+      document.getElementById('ncImagePreviewGrid').innerHTML = '';
+      setTimeout(() => location.reload(), 800);
+    } catch(e) { console.error('[saveNC]', e); showToast('Erro de conexão', 'error'); }
     document.getElementById('apt_ordem').selectedIndex = 0;
     document.getElementById('apt_etapa').value = '';
     document.getElementById('apt_produzida').value = '';
@@ -601,37 +684,6 @@ app.get('/', (c) => {
     document.getElementById('ncWarningInline').style.display = 'none';
     document.getElementById('imagePreviewGrid').innerHTML = '';
     selectedImages = [];
-  }
-  
-
-  async function saveApontamento() {
-    const orderId = document.getElementById('apt_ordem')?.value || '';
-    const orderCode = document.getElementById('apt_codigo')?.value || '';
-    const productName = document.getElementById('apt_produto')?.value || '';
-    const operator = document.getElementById('apt_operador')?.value || '';
-    const machine = document.getElementById('apt_maquina')?.value || '';
-    const produced = document.getElementById('apt_produzido')?.value || 0;
-    const rejected = document.getElementById('apt_refugo')?.value || 0;
-    const shift = document.getElementById('apt_turno')?.value || 'manha';
-    const notes = document.getElementById('apt_obs')?.value || '';
-    
-    if (!productName && !orderCode) { showToast('Informe a ordem ou produto!', 'error'); return; }
-    
-    try {
-      const res = await fetch('/apontamento/api/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, orderCode, productName, operator, machine, produced, rejected, shift, notes, startTime: new Date().toISOString(), endTime: new Date().toISOString() })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('✅ Apontamento registrado!');
-        closeModal('novoApontamentoModal');
-        setTimeout(() => location.reload(), 800);
-      } else {
-        showToast(data.error || 'Erro ao salvar', 'error');
-      }
-    } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
   async function deleteApontamento(id) {
@@ -668,10 +720,12 @@ app.post('/api/create', async (c) => {
   const entry = {
     id, orderId: body.orderId || '', orderCode: body.orderCode || '',
     productName: body.productName || '', operator: body.operator || '',
-    machine: body.machine || '', startTime: body.startTime || '',
-    endTime: body.endTime || '', produced: parseInt(body.produced) || 0,
-    rejected: parseInt(body.rejected) || 0, reason: body.reason || '',
-    notes: body.notes || '', shift: body.shift || 'manha',
+    stepName: body.stepName || '', machine: body.machine || '',
+    startTime: body.startTime || '', endTime: body.endTime || '',
+    produced: parseInt(body.produced) || 0, rejected: parseInt(body.rejected) || 0,
+    timeSpent: parseInt(body.timeSpent) || 0,
+    reason: body.reason || '', notes: body.notes || '', shift: body.shift || 'manha',
+    imageIds: Array.isArray(body.imageIds) ? body.imageIds : [],
     createdAt: new Date().toISOString(),
   }
   if (db && userId !== 'demo-tenant') {
@@ -682,9 +736,99 @@ app.post('/api/create', async (c) => {
       machine: entry.machine, start_time: entry.startTime, end_time: entry.endTime,
       produced: entry.produced, rejected: entry.rejected, shift: entry.shift, notes: entry.notes,
     })
+    // Link uploaded images to this apontamento record
+    if (entry.imageIds.length > 0) {
+      for (const imgId of entry.imageIds) {
+        await db.prepare(
+          'UPDATE apontamento_images SET ref_id = ? WHERE id = ? AND user_id = ? AND empresa_id = ?'
+        ).bind(id, imgId, userId, empresaId).run()
+          .catch((e: any) => console.error('[APONTAMENTO] Falha ao vincular imagem', imgId, e))
+      }
+    }
   }
   tenant.productionEntries.push(entry)
   return ok(c, { entry })
+})
+
+// ── API: POST /apontamento/api/upload-image ───────────────────────────────────
+app.post('/api/upload-image', async (c) => {
+  const unauthorized = await ensureAuthenticatedOr401(c)
+  if (unauthorized) return unauthorized
+
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+
+  const formData = await c.req.formData().catch((e: any) => { console.error('[upload-image] FormData parse error:', e); return null; })
+  if (!formData) return err(c, 'Dados inválidos')
+
+  const file = formData.get('file')
+  const refType = (formData.get('ref_type') as string) || 'apt'
+
+  if (!file || !(file instanceof File)) return err(c, 'Arquivo obrigatório')
+
+  const resolvedContentType = guessImageContentType(file.name, file.type)
+  if (!resolvedContentType) return err(c, 'Tipo de arquivo não permitido. Use jpg, jpeg, png ou webp.')
+
+  if (file.size > 5 * 1024 * 1024) return err(c, 'Arquivo muito grande. Limite: 5MB')
+
+  const imageId = genId('aimg')
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const safeFileName = sanitizeFileName(file.name)
+  const objectKey = `apontamento-images/${refType}/${imageId}.${ext}`
+
+  const bucket = (c.env as any)?.APT_PHOTOS_BUCKET
+  if (!bucket) return err(c, 'Upload de fotos indisponível: configure o binding APT_PHOTOS_BUCKET no Cloudflare R2.', 503)
+
+  const arrayBuffer = await file.arrayBuffer()
+  await bucket.put(objectKey, arrayBuffer, { httpMetadata: { contentType: resolvedContentType } })
+
+  const image: Record<string, any> = {
+    id: imageId,
+    ref_type: refType,
+    ref_id: '',  // will be set when the apontamento is saved
+    file_name: safeFileName,
+    object_key: objectKey,
+    content_type: resolvedContentType,
+    uploaded_at: new Date().toISOString(),
+  }
+
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'apontamento_images', {
+      ...image, user_id: userId, empresa_id: empresaId,
+    })
+  }
+
+  return ok(c, { image, view_url: '/apontamento/api/images/' + imageId })
+})
+
+// ── API: GET /apontamento/api/images/:imageId (serve from R2) ─────────────────
+app.get('/api/images/:imageId', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const imageId = c.req.param('imageId')
+
+  // Look up metadata in D1
+  if (!db || userId === 'demo-tenant') return c.text('Not found', 404)
+  const empresaId = getCtxEmpresaId(c)
+  const row = await db.prepare(
+    'SELECT * FROM apontamento_images WHERE id = ? AND empresa_id = ?'
+  ).bind(imageId, empresaId).first()
+    .catch((e: any) => { console.error('[APONTAMENTO][IMAGES] Erro ao buscar imagem:', e); return null; })
+  if (!row) return c.text('Not found', 404)
+
+  const bucket = (c.env as any)?.APT_PHOTOS_BUCKET
+  if (!bucket || !row.object_key) return c.text('Not available', 503)
+
+  const obj = await bucket.get(row.object_key)
+  if (!obj) return c.text('Not found', 404)
+
+  return new Response(await obj.arrayBuffer(), {
+    headers: {
+      'Content-Type': (row.content_type as string) || 'image/jpeg',
+      'Cache-Control': 'public, max-age=31536000',
+    },
+  })
 })
 
 app.delete('/api/:id', async (c) => {
