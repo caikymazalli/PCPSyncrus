@@ -1328,6 +1328,11 @@ app.get('/', (c) => {
     }, 3500);
   }
 
+  // ── Expose handlers to global scope for inline HTML event attributes ────────
+  window.openImportModal = openImportModal;
+  window.updateStatusPreview = updateStatusPreview;
+  window.salvarNovoProduto = salvarNovoProduto;
+
   </script>
   `
   return c.html(layout('Produtos', content, 'produtos', userInfo))
