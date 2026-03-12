@@ -1171,6 +1171,32 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }
       if (!tenant.workInstructionAuditLog) tenant.workInstructionAuditLog = []
     }
+    // Load almoxarifado locations
+    try {
+      const locsRes = await db.prepare(`SELECT * FROM almoxarifado_locations WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (locsRes.results && locsRes.results.length > 0) {
+        ;(tenant as any).almoxarifadoLocations = (locsRes.results as any[]).map(r => ({
+          id: r.id,
+          almoxarifadoId: r.almoxarifado_id,
+          code: r.code,
+          description: r.description || '',
+          status: r.status || 'active',
+          createdAt: r.created_at || new Date().toISOString(),
+        }))
+        console.log(`[HYDRATION] ✅ ${(tenant as any).almoxarifadoLocations.length} endereços de almoxarifado carregados`)
+      } else if (!(tenant as any).almoxarifadoLocations) {
+        ;(tenant as any).almoxarifadoLocations = []
+      }
+    } catch (e) {
+      const msg = (e as any).message || ''
+      if (msg.includes('no such table')) {
+        console.warn('[HYDRATION] ⚠️ Tabela almoxarifado_locations não existe — execute a migration almoxarifado_locations.')
+      } else {
+        console.warn('[HYDRATION] ⚠️ Não foi possível carregar almoxarifado_locations:', msg)
+      }
+      if (!(tenant as any).almoxarifadoLocations) (tenant as any).almoxarifadoLocations = []
+    }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
     // Reset the hydration timestamp so the next request retries loading from D1.
