@@ -4,14 +4,8 @@
  * Source-code guardrail tests for the Produtos module.
  * Verifies that inline HTML event handler functions are properly
  * defined in the client-side script and exposed on the global `window`
- * object so they can be called from HTML event attributes (onclick, oninput).
- *
- * Background: Without explicit window assignments, function declarations
- * inside a <script> block may not be accessible as inline event handlers
- * in certain browser contexts, producing:
- *   - Uncaught ReferenceError: openImportModal is not defined
- *   - Uncaught ReferenceError: updateStatusPreview is not defined
- *   - Uncaught ReferenceError: salvarNovoProduto is not defined
+ * object, and that header buttons use data-action attributes instead of
+ * inline onclick handlers (prevents SyntaxError / openImportModal is not defined).
  */
 
 import { describe, it, expect } from 'vitest'
@@ -52,13 +46,44 @@ describe('produtos.ts source-code: inline handler functions são expostas via wi
   })
 })
 
-// ── Inline HTML event attribute callers ──────────────────────────────────────
+// ── Header buttons use data-action (no inline onclick) ───────────────────────
 
-describe('produtos.ts source-code: inline HTML event attributes chamam as funções corretas', () => {
-  it('botão Importar chama openImportModal()', () => {
-    expect(src).toContain('onclick="openImportModal()"')
+describe('produtos.ts source-code: botões do header usam data-action em vez de onclick inline', () => {
+  it('botão Importar Planilha usa data-action="open-import"', () => {
+    expect(src).toContain('data-action="open-import"')
   })
 
+  it('botão Config. Limites usa data-action="open-config-limites"', () => {
+    expect(src).toContain('data-action="open-config-limites"')
+  })
+
+  it('botão Novo Produto usa data-action="open-novo-prod"', () => {
+    expect(src).toContain('data-action="open-novo-prod"')
+  })
+})
+
+// ── Event delegation handles header data-actions ─────────────────────────────
+
+describe('produtos.ts source-code: event delegation trata os data-actions do header', () => {
+  it('delegation chama openImportModal() para open-import', () => {
+    expect(src).toContain("action === 'open-import'")
+    expect(src).toContain('openImportModal()')
+  })
+
+  it('delegation chama openModal para open-config-limites', () => {
+    expect(src).toContain("action === 'open-config-limites'")
+    expect(src).toContain("openModal('configLimitesModal')")
+  })
+
+  it('delegation chama openModal para open-novo-prod', () => {
+    expect(src).toContain("action === 'open-novo-prod'")
+    expect(src).toContain("openModal('novoProdModal')")
+  })
+})
+
+// ── campos oninput e botão Salvar ainda usam onclick (não são header buttons) ─
+
+describe('produtos.ts source-code: campos e modais internos mantêm handlers inline', () => {
   it('campos de estoque chamam updateStatusPreview() via oninput', () => {
     expect(src).toContain('oninput="updateStatusPreview()"')
   })
