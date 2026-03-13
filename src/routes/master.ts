@@ -1239,7 +1239,7 @@ app.get('/', async (c) => {
         <h3 style="margin:0;font-size:15px;font-weight:700;color:#7c3aed;"><i class="fas fa-user-shield" style="margin-right:8px;"></i>Adicionar Usuário Master</h3>
         <button onclick="closeMM('addMasterUserModal')" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af;line-height:1;">&#215;</button>
       </div>
-      <div style="padding:22px;display:flex;flex-direction:column;gap:14px;">
+      <form onsubmit="salvarNovoMasterUser();return false;" style="padding:22px;display:flex;flex-direction:column;gap:14px;">
         <div><label class="form-label">Nome completo *</label><input class="form-control" id="mu_name" placeholder="Nome do usuário"></div>
         <div><label class="form-label">E-mail *</label><input class="form-control" id="mu_email" type="email" placeholder="usuario@syncrus.com.br"></div>
         <div><label class="form-label">Senha inicial *</label>
@@ -1258,7 +1258,7 @@ app.get('/', async (c) => {
           <i class="fas fa-info-circle" style="margin-right:6px;"></i>
           Acesso via <strong>/master/login</strong> com as credenciais cadastradas.
         </div>
-      </div>
+      </form>
       <div style="padding:12px 22px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button id="btnFecharAddMasterUser" class="btn btn-secondary">Cancelar</button>
         <button onclick="salvarNovoMasterUser()" class="btn btn-primary" style="background:#7c3aed;"><i class="fas fa-save"></i> Criar Usuário</button>
@@ -1434,7 +1434,7 @@ app.get('/', async (c) => {
     const actionBtn = el.closest('[data-action]');
     if (actionBtn) {
       const action = actionBtn.dataset.action;
-      const id     = actionBtn.dataset.id;
+      const id     = actionBtn.dataset.ticketId || actionBtn.dataset.id;
       if (action === 'detail')                  openClientDetail(id);
       else if (action === 'migrate')            openMigrateModal(id);
       else if (action === 'obs')                openObsModal(id);
@@ -1443,6 +1443,8 @@ app.get('/', async (c) => {
       else if (action === 'toggle-master-user') toggleMasterUser(id);
       else if (action === 'migrate-from-detail') { openMigrateModal(id); closeMM('clientDetailModal'); }
       else if (action === 'new-ticket-for-client') openNovoTicketMasterForClient(id || _curCliId);
+      else if (action === 'ticket-view')        viewTicket(id);
+      else if (action === 'ticket-edit')        editTicket(id);
       return;
     }
 
@@ -1477,6 +1479,15 @@ app.get('/', async (c) => {
       case 'btnFecharAddClient':     closeMM('addClientModal'); break;
       case 'btnFecharAddMasterUser': closeMM('addMasterUserModal'); break;
     }
+  });
+
+  // ── Event delegation: Kanban select de status ─────────────────────────────
+  document.addEventListener('change', function(e) {
+    const sel = e.target && e.target.closest ? e.target.closest('select[data-action="ticket-status"]') : null;
+    if (!sel) return;
+    const ticketId = sel.dataset.ticketId;
+    if (!ticketId) return;
+    updateTicketStatus(ticketId, sel.value);
   });
 
   // ── Abas do painel ────────────────────────────────────────────────────────────
@@ -1930,8 +1941,8 @@ app.get('/', async (c) => {
         // Prefer stored empresa_name; fall back to masterClientsData lookup then raw id
         const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
           ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
-        // Encode ticket id safely for HTML attribute injection using esc() (HTML-escapes &, <, >, ", ')
-        const tid = esc(t.id);
+        // Stringify ticket id for data attribute (HTML-escape only for the attribute context, no JS context)
+        const tid = String(t.id == null ? '' : t.id);
         return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
           '<div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:2px;line-height:1.3;">' + esc(t.title || '—') + '</div>' +
           '<div style="font-size:10px;color:#6c757d;margin-bottom:2px;">' + esc(cliName) + '</div>' +
@@ -1942,12 +1953,12 @@ app.get('/', async (c) => {
           (overdue ? '<span style="font-size:9px;font-weight:700;color:#dc2626;"><i class="fas fa-exclamation-triangle"></i> SLA</span>' : '') +
           '</div>' +
           (t.due_at ? '<div style="font-size:9px;color:' + (overdue?'#dc2626':'#9ca3af') + ';margin-top:4px;">Prazo: ' + new Date(t.due_at).toLocaleDateString('pt-BR') + '</div>' : '') +
-          '<select style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;" onchange="updateTicketStatus(\'' + tid + '\', this.value)">' +
+          '<select data-action="ticket-status" data-ticket-id="' + esc(tid) + '" style="width:100%;margin-top:8px;font-size:10px;border:1px solid #e9ecef;border-radius:4px;padding:2px 4px;background:white;cursor:pointer;">' +
           SUPPORT_STATUS_ORDER.map(function(s) { return '<option value="' + s + '" ' + (s===t.status?'selected':'') + '>' + s + '</option>'; }).join('') +
           '</select>' +
           '<div style="display:flex;gap:4px;margin-top:6px;">' +
-          '<button onclick="viewTicket(\'' + tid + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
-          '<button onclick="editTicket(\'' + tid + '\')" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
+          '<button data-action="ticket-view" data-ticket-id="' + esc(tid) + '" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #e9ecef;background:#f8f9fa;color:#374151;cursor:pointer;"><i class="fas fa-eye" style="margin-right:3px;"></i>Ver</button>' +
+          '<button data-action="ticket-edit" data-ticket-id="' + esc(tid) + '" style="flex:1;font-size:10px;font-weight:600;padding:4px 0;border-radius:4px;border:1px solid #ddd6fe;background:#f5f3ff;color:#7c3aed;cursor:pointer;"><i class="fas fa-edit" style="margin-right:3px;"></i>Editar</button>' +
           '</div>' +
           '</div>';
       }).join('');
