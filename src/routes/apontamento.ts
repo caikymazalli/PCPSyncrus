@@ -752,6 +752,9 @@ app.get('/', (c) => {
       document.getElementById('ncImagePreviewGrid').innerHTML = '';
       setTimeout(() => location.reload(), 800);
     } catch(e) { console.error('[saveNC]', e); showToast('Erro de conexão', 'error'); }
+  }
+
+  function resetApontamentoForm() {
     document.getElementById('apt_ordem').selectedIndex = 0;
     document.getElementById('apt_etapa').value = '';
     document.getElementById('apt_produzida').value = '';
