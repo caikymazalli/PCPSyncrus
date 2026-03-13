@@ -311,18 +311,30 @@ describe('master.ts source-code: JS fixes and security', () => {
     expect(renderBody).not.toContain('JSON.stringify(t.id)')
   })
 
-  it('renderKanban: uses esc() for ticket IDs in onclick/onchange attributes', () => {
+  it('renderKanban: uses data-action/data-ticket-id attributes (no inline handlers)', () => {
     const renderKanbanStart = masterSrc.indexOf('function renderKanban(')
     const renderKanbanEnd   = masterSrc.indexOf('\n  async function updateTicketStatus', renderKanbanStart)
     const renderBody = masterSrc.slice(renderKanbanStart, renderKanbanEnd)
-    // Must use esc() for safe HTML escaping of ticket IDs
-    expect(renderBody).toContain('esc(t.id)')
-    // onclick handlers must reference viewTicket and editTicket with safe quoting
-    expect(renderBody).toContain('viewTicket(')
-    expect(renderBody).toContain('editTicket(')
-    expect(renderBody).toContain('updateTicketStatus(')
-    // Must NOT pass raw JSON.stringify result (double-quoted) into HTML attribute
-    expect(renderBody).not.toMatch(/onclick="viewTicket\(" \+ JSON/)
+    // Must use data-action and data-ticket-id instead of inline onclick/onchange handlers
+    expect(renderBody).toContain('data-action="ticket-status"')
+    expect(renderBody).toContain('data-action="ticket-view"')
+    expect(renderBody).toContain('data-action="ticket-edit"')
+    expect(renderBody).toContain('data-ticket-id=')
+    // Must NOT use inline onchange/onclick handlers (which cause SyntaxError with special chars in IDs)
+    expect(renderBody).not.toContain('onchange=')
+    expect(renderBody).not.toContain('onclick=')
+    // Must NOT use JSON.stringify for ticket IDs in HTML attributes
+    expect(renderBody).not.toContain('JSON.stringify(t.id)')
+  })
+
+  it('renderKanban: event delegation handles ticket-view, ticket-edit, ticket-status', () => {
+    // Click delegation must handle ticket-view and ticket-edit
+    expect(masterSrc).toContain("action === 'ticket-view'")
+    expect(masterSrc).toContain("action === 'ticket-edit'")
+    // Change delegation must handle ticket-status updates via updateTicketStatus
+    expect(masterSrc).toContain('updateTicketStatus(')
+    expect(masterSrc).toContain('viewTicket(')
+    expect(masterSrc).toContain('editTicket(')
   })
 
   it('openClientDetail: uses esc() to prevent XSS in modal title', () => {
