@@ -1197,6 +1197,81 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       }
       if (!(tenant as any).almoxarifadoLocations) (tenant as any).almoxarifadoLocations = []
     }
+
+    // Load production_orders
+    try {
+      const ordersRes = await db.prepare(`SELECT * FROM production_orders WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (ordersRes.results && ordersRes.results.length > 0) {
+        const existingIds = new Set((tenant.productionOrders || []).map((o: any) => o.id))
+        const fromDb = (ordersRes.results as any[])
+          .filter(r => !existingIds.has(r.id))
+          .map(r => ({
+            id: r.id,
+            code: r.code || '',
+            productName: r.product_name || '',
+            productId: r.product_code || '',
+            quantity: r.quantity || 1,
+            completedQuantity: r.completed_quantity ?? r.quantity_produced ?? 0,
+            status: r.status || 'planned',
+            priority: r.priority || 'medium',
+            startDate: r.start_date || '',
+            endDate: r.end_date || '',
+            plantId: r.plant_id || '',
+            plantName: r.plant_name || '',
+            pedido: r.pedido || '',
+            cliente: r.cliente || '',
+            notes: r.notes || '',
+            createdAt: r.created_at || new Date().toISOString(),
+          }))
+        tenant.productionOrders = [...(tenant.productionOrders || []), ...fromDb]
+        console.log(`[HYDRATION] ✅ ${tenant.productionOrders.length} ordens de produção carregadas de D1 para ${userId}`)
+      } else {
+        if (!tenant.productionOrders) tenant.productionOrders = []
+        console.log(`[HYDRATION] ⚠️ Nenhuma ordem de produção encontrada em D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar production_orders:', (e as any).message)
+      if (!tenant.productionOrders) tenant.productionOrders = []
+    }
+
+    // Load apontamentos
+    try {
+      const aptRes = await db.prepare(`SELECT * FROM apontamentos WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (aptRes.results && aptRes.results.length > 0) {
+        const existingIds = new Set((tenant.productionEntries || []).map((e: any) => e.id))
+        const fromDb = (aptRes.results as any[])
+          .filter(r => !existingIds.has(r.id))
+          .map(r => ({
+            id: r.id,
+            orderId: r.order_id || '',
+            orderCode: r.order_code || '',
+            productName: r.product_name || '',
+            operator: r.operator || '',
+            stepName: r.step_name || '',
+            machine: r.machine || '',
+            startTime: r.start_time || '',
+            endTime: r.end_time || '',
+            produced: r.produced || 0,
+            rejected: r.rejected || 0,
+            timeSpent: r.time_spent || 0,
+            reason: r.reason || '',
+            notes: r.notes || '',
+            shift: r.shift || 'manha',
+            imageIds: [], // image links are stored in apontamento_images, not in the apontamentos row
+            createdAt: r.created_at || new Date().toISOString(),
+          }))
+        tenant.productionEntries = [...(tenant.productionEntries || []), ...fromDb]
+        console.log(`[HYDRATION] ✅ ${tenant.productionEntries.length} apontamentos carregados de D1 para ${userId}`)
+      } else {
+        if (!tenant.productionEntries) tenant.productionEntries = []
+        console.log(`[HYDRATION] ⚠️ Nenhum apontamento encontrado em D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar apontamentos:', (e as any).message)
+      if (!tenant.productionEntries) tenant.productionEntries = []
+    }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
     // Reset the hydration timestamp so the next request retries loading from D1.
