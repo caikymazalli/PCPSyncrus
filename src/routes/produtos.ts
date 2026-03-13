@@ -147,13 +147,13 @@ app.get('/', (c) => {
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-secondary" onclick="openModal('configLimitesModal')" title="Configurar limites de estoque por status">
+      <button class="btn btn-secondary" data-action="open-config-limites" title="Configurar limites de estoque por status">
         <i class="fas fa-sliders-h"></i> Config. Limites
       </button>
-      <button class="btn btn-secondary" onclick="openImportModal()" title="Importar produtos via planilha">
+      <button class="btn btn-secondary" data-action="open-import" title="Importar produtos via planilha">
         <i class="fas fa-file-import"></i> Importar Planilha
       </button>
-      <button class="btn btn-primary" onclick="openModal('novoProdModal')" title="Cadastrar novo produto">
+      <button class="btn btn-primary" data-action="open-novo-prod" title="Cadastrar novo produto">
         <i class="fas fa-plus"></i> Novo Produto
       </button>
     </div>
@@ -1332,6 +1332,16 @@ app.get('/', (c) => {
   window.openImportModal = openImportModal;
   window.updateStatusPreview = updateStatusPreview;
   window.salvarNovoProduto = salvarNovoProduto;
+
+  // ── Header button delegation (avoids inline onclick / SyntaxError) ────────
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'open-config-limites') openModal('configLimitesModal');
+    else if (action === 'open-import')    openImportModal();
+    else if (action === 'open-novo-prod') openModal('novoProdModal');
+  });
 
   </script>
   `
