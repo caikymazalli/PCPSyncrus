@@ -983,6 +983,15 @@ app.get('/', (c) => {
   }
 
   // ── Import via Planilha ───────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   var _importRows = [];
   var _importLastReport = null;
 
@@ -1111,24 +1120,24 @@ app.get('/', (c) => {
       var rowOk = v.ok && !dupInFile;
       var statusHtml = rowOk
         ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">OK</span>'
-        : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;" title="' + (dupInFile?'Código duplicado na planilha':v.msg) + '">' + (dupInFile?'DUP':v.code||'ERR') + '</span>';
+        : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;" title="' + escHtml(dupInFile?'Código duplicado na planilha':v.msg) + '">' + escHtml(dupInFile?'DUP':v.code||'ERR') + '</span>';
       if (row['code']) seenCodes[row['code'].toLowerCase()] = true;
       var bg = rowOk ? 'white' : '#fff5f5';
       html += '<tr style="border-bottom:1px solid #f1f3f5;background:'+bg+';">' +
         '<td style="padding:6px 10px;color:#9ca3af;">'+(row['_rowNum']||idx+2)+'</td>' +
-        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+(row['code']||'—')+'</td>' +
-        '<td style="padding:6px 10px;font-weight:600;">'+(row['name']||'—')+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['unit']||'un')+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['stockMin']||'0')+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['stockMax']||'0')+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['stockCurrent']||'0')+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['criticalPercentage']||'50')+'%</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['serial']||'none')+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;">'+(row['type']||'external')+'</td>' +
-        '<td style="padding:6px 10px;text-align:right;">'+(row['price']||'0')+'</td>' +
-        '<td style="padding:6px 10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(row['notes']||'')+'">'+(row['notes']||'')+'</td>' +
+        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+escHtml(row['code']||'—')+'</td>' +
+        '<td style="padding:6px 10px;font-weight:600;">'+escHtml(row['name']||'—')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['unit']||'un')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['stockMin']||'0')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['stockMax']||'0')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['stockCurrent']||'0')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['criticalPercentage']||'50')+'%</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['serial']||'none')+'</td>' +
+        '<td style="padding:6px 10px;text-align:center;">'+escHtml(row['type']||'external')+'</td>' +
+        '<td style="padding:6px 10px;text-align:right;">'+escHtml(row['price']||'0')+'</td>' +
+        '<td style="padding:6px 10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escHtml(row['notes']||'')+'">'+escHtml(row['notes']||'')+'</td>' +
         '<td style="padding:6px 10px;text-align:center;">'+statusHtml+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;"><button onclick="importRemoveRow('+idx+')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;" title="Remover linha"><i class="fas fa-times"></i></button></td>' +
+        '<td style="padding:6px 10px;text-align:center;"><button data-action="import-remove-row" data-idx="'+idx+'" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;" title="Remover linha"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
     });
     tbody.innerHTML = html;
@@ -1258,12 +1267,12 @@ app.get('/', (c) => {
         ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">IMPORTADO</span>'
         : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">IGNORADO</span>';
       html += '<tr style="border-bottom:1px solid #f1f3f5;background:'+(isImported?'white':'#fff5f5')+';">' +
-        '<td style="padding:6px 10px;color:#9ca3af;">'+r.rowNumber+'</td>' +
-        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+r.code+'</td>' +
-        '<td style="padding:6px 10px;">'+r.name+'</td>' +
+        '<td style="padding:6px 10px;color:#9ca3af;">'+escHtml(r.rowNumber)+'</td>' +
+        '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+escHtml(r.code)+'</td>' +
+        '<td style="padding:6px 10px;">'+escHtml(r.name)+'</td>' +
         '<td style="padding:6px 10px;text-align:center;">'+actionBadge+'</td>' +
-        '<td style="padding:6px 10px;font-size:11px;color:#dc2626;">'+r.errorCode+'</td>' +
-        '<td style="padding:6px 10px;font-size:11px;color:#6c757d;">'+r.message+'</td>' +
+        '<td style="padding:6px 10px;font-size:11px;color:#dc2626;">'+escHtml(r.errorCode)+'</td>' +
+        '<td style="padding:6px 10px;font-size:11px;color:#6c757d;">'+escHtml(r.message)+'</td>' +
         '</tr>';
     });
     tbody.innerHTML = html || '<tr><td colspan="6" style="padding:20px;text-align:center;color:#9ca3af;">Nenhum resultado.</td></tr>';
@@ -1341,6 +1350,10 @@ app.get('/', (c) => {
     if (action === 'open-config-limites') openModal('configLimitesModal');
     else if (action === 'open-import')    openImportModal();
     else if (action === 'open-novo-prod') openModal('novoProdModal');
+    else if (action === 'import-remove-row') {
+      var idx = parseInt(btn.dataset.idx, 10);
+      if (!isNaN(idx)) importRemoveRow(idx);
+    }
   });
 
   </script>
