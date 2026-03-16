@@ -92,3 +92,54 @@ describe('produtos.ts source-code: campos e modais internos mantêm handlers inl
     expect(src).toContain('onclick="salvarNovoProduto()"')
   })
 })
+
+// ── escHtml helper para evitar XSS / SyntaxError em HTML gerado ──────────────
+
+describe('produtos.ts source-code: helper escHtml está definido e usado', () => {
+  it('escHtml está definida no script client-side', () => {
+    expect(src).toContain('function escHtml(')
+  })
+
+  it('escHtml escapa & para &amp;', () => {
+    expect(src).toContain(".replace(/&/g, '&amp;')")
+  })
+
+  it('escHtml escapa < para &lt;', () => {
+    expect(src).toContain(".replace(/</g, '&lt;')")
+  })
+
+  it('escHtml escapa > para &gt;', () => {
+    expect(src).toContain(".replace(/>/g, '&gt;')")
+  })
+
+  it('escHtml escapa " para &quot;', () => {
+    expect(src).toContain(".replace(/\"/g, '&quot;')")
+  })
+
+  it('escHtml é usada nas células do draft (ex.: row notes no title)', () => {
+    expect(src).toContain("escHtml(row['notes']")
+  })
+
+  it('escHtml é usada no relatório de importação (r.code, r.name, r.message)', () => {
+    expect(src).toContain('escHtml(r.code)')
+    expect(src).toContain('escHtml(r.name)')
+    expect(src).toContain('escHtml(r.message)')
+  })
+})
+
+// ── Botão de remover linha usa data-action (não onclick inline) ───────────────
+
+describe('produtos.ts source-code: botão remover linha usa data-action', () => {
+  it('botão remover usa data-action="import-remove-row"', () => {
+    expect(src).toContain('data-action="import-remove-row"')
+  })
+
+  it('botão remover não usa onclick="importRemoveRow(', () => {
+    expect(src).not.toContain('onclick="importRemoveRow(')
+  })
+
+  it('event delegation trata import-remove-row chamando importRemoveRow()', () => {
+    expect(src).toContain("action === 'import-remove-row'")
+    expect(src).toContain('importRemoveRow(idx)')
+  })
+})
