@@ -548,20 +548,26 @@ app.get('/', (c) => {
       await _execUpdateRoteiro(editId, payload);
     } else {
       const newVersion = incrementVersion(currentRoute?.version || '1.0');
-      if (currentRoute) {
-        try {
-          const archiveRes = await fetch('/engenharia/api/route/' + editId, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...currentRoute, status: 'obsolete' })
-          });
-          if (!archiveRes.ok) showToast('⚠️ Não foi possível arquivar a versão anterior, mas a nova versão será criada.', 'info');
-        } catch(e) {
-          showToast('⚠️ Não foi possível arquivar a versão anterior, mas a nova versão será criada.', 'info');
-        }
-      }
-      await _execSalvarRoteiro({ ...payload, version: newVersion });
+      await _execNovaVersaoRoteiro(editId, { ...payload, version: newVersion });
     }
+  }
+
+  async function _execNovaVersaoRoteiro(parentId, payload) {
+    try {
+      const res = await fetch('/engenharia/api/roteiros/' + parentId + '/version', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Nova versão criada! Versão anterior arquivada automaticamente.');
+        closeModal('novoRoteiroModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao criar nova versão', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
   async function _execSalvarRoteiro(payload) {
@@ -758,16 +764,34 @@ app.get('/api/boms', (c) => ok(c, { boms: getCtxTenant(c).bomItems }))
 
 // ── API: Roteiros ─────────────────────────────────────────────────────────────
 
+// Helper: insert all steps for a roteiro into roteiro_operacoes
+async function _insertRoteiroOperacoes(db: any, roteiroId: string, userId: string, empresaId: string | null, steps: any[], now: string) {
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]
+    const stepId = genId('rop')
+    await db.prepare(`
+      INSERT INTO roteiro_operacoes (id, roteiro_id, user_id, empresa_id, order_index, operation, standard_time, resource_type, machine, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      stepId, roteiroId, userId, empresaId || null,
+      step.order || i + 1, step.operation || '', step.standardTime || 0,
+      step.resourceType || 'manual', step.machine || '', now
+    ).run()
+  }
+}
+
 app.post('/api/route/create', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
   const tenant = getCtxTenant(c)
+  const empresaId = getCtxEmpresaId(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name || !body.productId)
     return err(c, 'Nome e produto são obrigatórios')
 
   const id = genId('rot')
   const now = new Date().toISOString()
+  const steps = Array.isArray(body.steps) ? body.steps : []
   const route = {
     id,
     name:        body.name,
@@ -777,7 +801,9 @@ app.post('/api/route/create', async (c) => {
     version:     body.version     || '1.0',
     status:      body.status      || 'active',
     notes:       body.notes       || '',
-    steps:       Array.isArray(body.steps) ? body.steps : [],
+    steps,
+    isActive:    1,
+    parentId:    null as string | null,
     createdAt:   now,
     updatedAt:   now,
   }
@@ -787,13 +813,13 @@ app.post('/api/route/create', async (c) => {
     try {
       console.log(`[ENGENHARIA][ROTEIROS] Criando roteiro ${id} para ${userId}`)
       await db.prepare(`
-        INSERT INTO work_instructions (id, user_id, title, code, version, status, product_id, operation, estimated_time, steps, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO roteiros (id, user_id, empresa_id, product_id, product_code, product_name, name, version, status, observacoes, is_active, parent_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
       `).bind(
-        id, userId, route.name, route.productCode, route.version, route.status,
-        route.productId, 'roteiro', route.steps.reduce((acc: number, s: any) => acc + (s.standardTime || 0), 0),
-        JSON.stringify(route.steps), now, now
+        id, userId, empresaId || null, route.productId, route.productCode, route.productName,
+        route.name, route.version, route.status, route.notes, now, now
       ).run()
+      await _insertRoteiroOperacoes(db, id, userId, empresaId, steps, now)
       console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} persistido em D1 com sucesso`)
     } catch (e) {
       console.error(`[ENGENHARIA][ROTEIROS][CRÍTICO] Falha ao persistir roteiro ${id} em D1:`, e)
@@ -822,7 +848,9 @@ app.delete('/api/route/:id', async (c) => {
   if (db && userId !== 'demo-tenant') {
     try {
       console.log(`[ENGENHARIA][ROTEIROS] Deletando roteiro ${id} para ${userId}`)
-      await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?')
+      await db.prepare('DELETE FROM roteiro_operacoes WHERE roteiro_id = ? AND user_id = ?')
+        .bind(id, userId).run()
+      await db.prepare('DELETE FROM roteiros WHERE id = ? AND user_id = ?')
         .bind(id, userId).run()
       console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} removido de D1 com sucesso`)
     } catch (e) {
@@ -842,6 +870,7 @@ app.put('/api/route/:id', async (c) => {
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
   const tenant = getCtxTenant(c)
+  const empresaId = getCtxEmpresaId(c)
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name || !body.productId)
@@ -868,14 +897,17 @@ app.put('/api/route/:id', async (c) => {
   // D1-first: update D1 before updating memory (production only)
   if (db && userId !== 'demo-tenant') {
     try {
-      const totalTime = updated.steps.reduce((acc: number, s: any) => acc + (s.standardTime || 0), 0)
       console.log(`[ENGENHARIA][ROTEIROS] Atualizando roteiro ${id} para ${userId}`)
       await db.prepare(`
-        UPDATE work_instructions SET title=?, code=?, version=?, status=?, product_id=?, estimated_time=?, steps=?, updated_at=? WHERE id=? AND user_id=?
+        UPDATE roteiros SET name=?, product_code=?, product_name=?, version=?, status=?, product_id=?, observacoes=?, updated_at=? WHERE id=? AND user_id=?
       `).bind(
-        updated.name, updated.productCode, updated.version, updated.status,
-        updated.productId, totalTime, JSON.stringify(updated.steps), now, id, userId
+        updated.name, updated.productCode, updated.productName, updated.version, updated.status,
+        updated.productId, updated.notes, now, id, userId
       ).run()
+      // Replace steps: delete all then re-insert in new order
+      await db.prepare('DELETE FROM roteiro_operacoes WHERE roteiro_id = ? AND user_id = ?')
+        .bind(id, userId).run()
+      await _insertRoteiroOperacoes(db, id, userId, empresaId, updated.steps, now)
       console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} atualizado em D1 com sucesso`)
     } catch (e) {
       console.error(`[ENGENHARIA][ROTEIROS][CRÍTICO] Falha ao atualizar roteiro ${id} em D1:`, e)
@@ -888,6 +920,78 @@ app.put('/api/route/:id', async (c) => {
   markTenantModified(userId)
 
   return ok(c, { route: updated })
+})
+
+// POST /engenharia/api/roteiros/:id/version
+// Creates a new version of a roteiro, archiving the previous one (is_active=0).
+app.post('/api/roteiros/:id/version', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const empresaId = getCtxEmpresaId(c)
+  const parentId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.productId)
+    return err(c, 'Nome e produto são obrigatórios')
+
+  const parentIdx = (tenant.routes || []).findIndex((r: any) => r.id === parentId)
+  if (parentIdx === -1) return err(c, 'Roteiro não encontrado', 404)
+
+  const parentRoute = tenant.routes[parentIdx]
+  const newId = genId('rot')
+  const now = new Date().toISOString()
+  const steps = Array.isArray(body.steps) ? body.steps : (parentRoute.steps || [])
+
+  const newRoute = {
+    id: newId,
+    name:        body.name,
+    productId:   body.productId,
+    productCode: body.productCode || parentRoute.productCode || '',
+    productName: body.productName || parentRoute.productName || '',
+    version:     body.version || '1.1',
+    status:      body.status || 'active',
+    notes:       body.notes !== undefined ? body.notes : (parentRoute.notes || ''),
+    steps,
+    isActive:    1,
+    parentId:    parentId,
+    createdAt:   now,
+    updatedAt:   now,
+  }
+
+  // D1-first: archive old version and insert new one
+  if (db && userId !== 'demo-tenant') {
+    try {
+      console.log(`[ENGENHARIA][ROTEIROS] Criando nova versão ${newId} a partir de ${parentId} para ${userId}`)
+      // Archive parent: mark inactive
+      await db.prepare(
+        `UPDATE roteiros SET is_active=0, status='obsolete', updated_at=? WHERE id=? AND user_id=?`
+      ).bind(now, parentId, userId).run()
+      // Insert new version
+      await db.prepare(`
+        INSERT INTO roteiros (id, user_id, empresa_id, product_id, product_code, product_name, name, version, status, observacoes, is_active, parent_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `).bind(
+        newId, userId, empresaId || null, newRoute.productId, newRoute.productCode, newRoute.productName,
+        newRoute.name, newRoute.version, newRoute.status, newRoute.notes,
+        parentId, now, now
+      ).run()
+      // Insert steps for new version
+      await _insertRoteiroOperacoes(db, newId, userId, empresaId, steps, now)
+      console.log(`[ENGENHARIA][ROTEIROS] Nova versão ${newId} criada em D1 com sucesso`)
+    } catch (e) {
+      console.error(`[ENGENHARIA][ROTEIROS][CRÍTICO] Falha ao criar nova versão em D1:`, e)
+      return err(c, 'Erro ao criar nova versão no banco de dados', 500)
+    }
+  }
+
+  // Update memory only after D1 success (or in demo/no-db mode)
+  // Remove archived parent from active list in memory
+  tenant.routes.splice(parentIdx, 1)
+  if (!tenant.routes) (tenant as any).routes = []
+  tenant.routes.push(newRoute)
+  markTenantModified(userId)
+
+  return ok(c, { route: newRoute })
 })
 
 app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
