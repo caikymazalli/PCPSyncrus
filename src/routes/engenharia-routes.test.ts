@@ -869,6 +869,102 @@ describe('POST /engenharia/api/roteiros/:id/version — D1 com sucesso em produ�
   })
 })
 
+// ── GET /api/roteiros/:id/history — modo demo (sem db) ────────────────────────
+
+describe('GET /engenharia/api/roteiros/:id/history — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200 com lista de histórico no modo demo', async () => {
+    const res = await authedRequest(`/api/roteiros/${TEST_ROUTE_ID}/history`)
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(Array.isArray(data.history)).toBe(true)
+    // In demo mode the route is in memory but archived versions aren't, so at least 1 entry (the route itself or empty)
+  })
+
+  it('retorna histórico vazio quando roteiro não existe em memória', async () => {
+    const res = await authedRequest('/api/roteiros/rot-nao-existe/history')
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(Array.isArray(data.history)).toBe(true)
+    expect(data.history.length).toBe(0)
+  })
+})
+
+// ── GET /api/roteiros/:id/history — D1 com sucesso em produção ────────────────
+
+describe('GET /engenharia/api/roteiros/:id/history — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e chama D1 quando db está disponível', async () => {
+    const historyDB = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          run: () => Promise.resolve({ success: true, results: [] }),
+          all: () => Promise.resolve({ results: [] }),
+          first: () => Promise.resolve(null),
+        }),
+        run: () => Promise.resolve({ success: true, results: [] }),
+        all: () => Promise.resolve({ results: [] }),
+        first: () => Promise.resolve(null),
+      }),
+    }
+    const res = await authedRequest(`/api/roteiros/${TEST_ROUTE_ID}/history`, {}, { DB: historyDB })
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(Array.isArray(data.history)).toBe(true)
+  })
+
+  it('retorna 500 quando D1 falha', async () => {
+    const res = await authedRequest(`/api/roteiros/${TEST_ROUTE_ID}/history`, {}, { DB: failingDB })
+    expect(res.status).toBe(500)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+  })
+})
+
+// ── Source-code safeguards: audit fields ─────────────────────────────────────
+
+describe('engenharia.ts source-code safeguards: audit fields', () => {
+  const src = readFileSync(resolve(__dirname, 'engenharia.ts'), 'utf8')
+
+  it('POST /api/route/create persiste created_by_user_id e updated_by_user_id', () => {
+    const handlerStart = src.indexOf("app.post('/api/route/create'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('created_by_user_id')
+    expect(handlerBody).toContain('updated_by_user_id')
+  })
+
+  it('PUT /api/route/:id persiste updated_by_user_id', () => {
+    const handlerStart = src.indexOf("app.put('/api/route/:id'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('updated_by_user_id')
+  })
+
+  it('POST /api/roteiros/:id/version persiste created_by_user_id e updated_by_user_id', () => {
+    const handlerStart = src.indexOf("app.post('/api/roteiros/:id/version'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('created_by_user_id')
+    expect(handlerBody).toContain('updated_by_user_id')
+  })
+
+  it('GET /api/roteiros/:id/history existe no código', () => {
+    expect(src).toContain("app.get('/api/roteiros/:id/history'")
+  })
+
+  it('GET /api/roteiros/:id/history inclui log [ENGENHARIA][ROTEIROS][HISTORY]', () => {
+    expect(src).toContain('[ENGENHARIA][ROTEIROS][HISTORY]')
+  })
+})
+
 // ── userStore.ts source-code safeguard: hydration of roteiros ────────────────
 
 describe('userStore.ts source-code safeguard: hydration of roteiros', () => {

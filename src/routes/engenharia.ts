@@ -173,6 +173,7 @@ app.get('/', (c) => {
               <span style="font-size:12px;color:#27AE60;font-weight:700;"><i class="fas fa-clock" style="margin-right:4px;"></i>${(r.steps||[]).reduce((acc: number, s: any) => acc + (s.standardTime||0), 0)} min total</span>
               <button class="btn btn-secondary btn-sm" onclick="usarComoModelo('${r.id}')" title="Usar como modelo"><i class="fas fa-copy"></i> Usar como Modelo</button>
               <button class="btn btn-secondary btn-sm" onclick="openEditarRoteiro('${r.id}')" title="Editar roteiro"><i class="fas fa-edit"></i> Editar</button>
+              <button class="btn btn-secondary btn-sm" onclick="openRoteiroHistory('${r.id}')" title="Histórico de versões"><i class="fas fa-history"></i> Histórico</button>
               <button class="btn btn-danger btn-sm" onclick="deleteRoteiro('${r.id}')" title="Excluir roteiro"><i class="fas fa-trash"></i></button>
             </div>
           </div>
@@ -327,6 +328,42 @@ app.get('/', (c) => {
       </div>
       <div style="padding:12px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
         <button onclick="closeModal('versaoRoteiroModal')" class="btn btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Histórico de Versões Modal -->
+  <div class="modal-overlay" id="roteiroHistoryModal">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-history" style="margin-right:8px;color:#27AE60;"></i>Histórico de Versões</h3>
+        <button onclick="closeModal('roteiroHistoryModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div id="roteiroHistoryLoading" style="text-align:center;padding:24px;color:#6c757d;display:none;">
+          <i class="fas fa-spinner fa-spin" style="font-size:24px;margin-bottom:8px;display:block;"></i>Carregando histórico...
+        </div>
+        <div id="roteiroHistoryEmpty" style="text-align:center;padding:24px;color:#9ca3af;display:none;">
+          <i class="fas fa-history" style="font-size:32px;margin-bottom:8px;display:block;opacity:0.3;"></i>
+          <div style="font-size:14px;">Nenhum histórico de versões encontrado.</div>
+        </div>
+        <div id="roteiroHistoryContent" style="display:none;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f8f9fa;border-bottom:2px solid #dee2e6;">
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#1B4F72;">Versão</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#1B4F72;">Criado em</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#1B4F72;">Atualizado em</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#1B4F72;">Criado por</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;color:#1B4F72;">Atualizado por</th>
+              </tr>
+            </thead>
+            <tbody id="roteiroHistoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="padding:12px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('roteiroHistoryModal')" class="btn btn-secondary">Fechar</button>
       </div>
     </div>
   </div>
@@ -617,6 +654,49 @@ app.get('/', (c) => {
     } catch(e) { showToast('Erro de conexão', 'error'); }
   }
 
+  async function openRoteiroHistory(routeId) {
+    const loading = document.getElementById('roteiroHistoryLoading');
+    const empty = document.getElementById('roteiroHistoryEmpty');
+    const content = document.getElementById('roteiroHistoryContent');
+    const tbody = document.getElementById('roteiroHistoryBody');
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (content) content.style.display = 'none';
+    if (tbody) tbody.innerHTML = '';
+    openModal('roteiroHistoryModal');
+    try {
+      const res = await fetch('/engenharia/api/roteiros/' + routeId + '/history');
+      const data = await res.json();
+      if (loading) loading.style.display = 'none';
+      if (!data.ok || !data.history || data.history.length === 0) {
+        if (empty) empty.style.display = 'block';
+        return;
+      }
+      if (content) content.style.display = 'block';
+      if (tbody) {
+        tbody.innerHTML = data.history.map((h, idx) => {
+          const isLatest = idx === 0;
+          const createdAt = h.createdAt ? new Date(h.createdAt).toLocaleString('pt-BR') : '—';
+          const updatedAt = h.updatedAt ? new Date(h.updatedAt).toLocaleString('pt-BR') : '—';
+          return \`<tr style="border-bottom:1px solid #f1f3f5;\${isLatest ? 'background:#f0fdf4;' : ''}">
+            <td style="padding:8px 12px;">
+              <span class="chip" style="background:#e8f4fd;color:#1B4F72;font-size:11px;">v\${h.version || '—'}</span>
+              \${isLatest ? '<span class="chip" style="background:#d1fae5;color:#065f46;font-size:10px;margin-left:4px;">Atual</span>' : ''}
+            </td>
+            <td style="padding:8px 12px;font-size:12px;color:#374151;">\${createdAt}</td>
+            <td style="padding:8px 12px;font-size:12px;color:#374151;">\${updatedAt}</td>
+            <td style="padding:8px 12px;font-size:12px;color:#6c757d;">\${h.createdByUserId || '—'}</td>
+            <td style="padding:8px 12px;font-size:12px;color:#6c757d;">\${h.updatedByUserId || '—'}</td>
+          </tr>\`;
+        }).join('');
+      }
+    } catch(e) {
+      if (loading) loading.style.display = 'none';
+      if (empty) empty.style.display = 'block';
+      showToast('Erro ao carregar histórico', 'error');
+    }
+  }
+
   function selectBOMProduct(code) {
     // Update active button
     document.querySelectorAll('[id^="bomBtn_"]').forEach(b => b.classList.remove('active'));
@@ -814,11 +894,11 @@ app.post('/api/route/create', async (c) => {
     try {
       console.log(`[ENGENHARIA][ROTEIROS] Criando roteiro ${id} para ${userId}`)
       await db.prepare(`
-        INSERT INTO roteiros (id, user_id, empresa_id, product_id, product_code, product_name, name, version, status, observacoes, is_active, parent_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+        INSERT INTO roteiros (id, user_id, empresa_id, product_id, product_code, product_name, name, version, status, observacoes, is_active, parent_id, created_at, updated_at, created_by_user_id, updated_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?, ?, ?)
       `).bind(
         id, userId, empresaId || null, route.productId, route.productCode, route.productName,
-        route.name, route.version, route.status, route.notes, now, now
+        route.name, route.version, route.status, route.notes, now, now, userId, userId
       ).run()
       await _insertRoteiroOperacoes(db, id, userId, empresaId, steps, now)
       console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} persistido em D1 com sucesso`)
@@ -900,10 +980,10 @@ app.put('/api/route/:id', async (c) => {
     try {
       console.log(`[ENGENHARIA][ROTEIROS] Atualizando roteiro ${id} para ${userId}`)
       await db.prepare(`
-        UPDATE roteiros SET name=?, product_code=?, product_name=?, version=?, status=?, product_id=?, observacoes=?, updated_at=? WHERE id=? AND user_id=?
+        UPDATE roteiros SET name=?, product_code=?, product_name=?, version=?, status=?, product_id=?, observacoes=?, updated_at=?, updated_by_user_id=? WHERE id=? AND user_id=?
       `).bind(
         updated.name, updated.productCode, updated.productName, updated.version, updated.status,
-        updated.productId, updated.notes, now, id, userId
+        updated.productId, updated.notes, now, userId, id, userId
       ).run()
       // Replace steps: delete all then re-insert in new order
       await db.prepare('DELETE FROM roteiro_operacoes WHERE roteiro_id = ? AND user_id = ?')
@@ -963,18 +1043,18 @@ app.post('/api/roteiros/:id/version', async (c) => {
   if (db && userId !== 'demo-tenant') {
     try {
       console.log(`[ENGENHARIA][ROTEIROS] Criando nova versão ${newId} a partir de ${parentId} para ${userId}`)
-      // Archive parent: mark inactive
+      // Archive parent: mark inactive and update audit
       await db.prepare(
-        `UPDATE roteiros SET is_active=0, status='obsolete', updated_at=? WHERE id=? AND user_id=?`
-      ).bind(now, parentId, userId).run()
+        `UPDATE roteiros SET is_active=0, status='obsolete', updated_at=?, updated_by_user_id=? WHERE id=? AND user_id=?`
+      ).bind(now, userId, parentId, userId).run()
       // Insert new version
       await db.prepare(`
-        INSERT INTO roteiros (id, user_id, empresa_id, product_id, product_code, product_name, name, version, status, observacoes, is_active, parent_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        INSERT INTO roteiros (id, user_id, empresa_id, product_id, product_code, product_name, name, version, status, observacoes, is_active, parent_id, created_at, updated_at, created_by_user_id, updated_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
       `).bind(
         newId, userId, empresaId || null, newRoute.productId, newRoute.productCode, newRoute.productName,
         newRoute.name, newRoute.version, newRoute.status, newRoute.notes,
-        parentId, now, now
+        parentId, now, now, userId, userId
       ).run()
       // Insert steps for new version
       await _insertRoteiroOperacoes(db, newId, userId, empresaId, steps, now)
@@ -996,6 +1076,114 @@ app.post('/api/roteiros/:id/version', async (c) => {
 })
 
 app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
+
+// GET /engenharia/api/roteiros/:id/history
+// Returns the version history chain for a roteiro (newest → oldest).
+app.get('/api/roteiros/:id/history', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const rotId = c.req.param('id')
+
+  // In demo mode (no db), build history from in-memory routes
+  if (!db || userId === 'demo-tenant') {
+    const allRoutes: any[] = tenant.routes || []
+    // Find the root of the chain by walking up parent_id
+    let rootId = rotId
+    const visited = new Set<string>()
+    while (true) {
+      if (visited.has(rootId)) break
+      visited.add(rootId)
+      const cur = allRoutes.find((r: any) => r.id === rootId)
+      if (!cur || !cur.parentId) break
+      rootId = cur.parentId
+    }
+    // Collect all nodes reachable from root (BFS)
+    const collected: any[] = []
+    const queue = [rootId]
+    const seen = new Set<string>()
+    while (queue.length > 0) {
+      const cur = queue.shift()!
+      if (seen.has(cur)) continue
+      seen.add(cur)
+      // include both active and archived (all routes in memory include only active ones; archived are removed)
+      const node = allRoutes.find((r: any) => r.id === cur)
+      if (node) {
+        collected.push(node)
+        allRoutes.filter((r: any) => r.parentId === cur).forEach((r: any) => queue.push(r.id))
+      }
+    }
+    // Sort newest → oldest by createdAt
+    collected.sort((a: any, b: any) => (b.createdAt || '1970-01-01').localeCompare(a.createdAt || '1970-01-01'))
+    const history = collected.map((r: any) => ({
+      id: r.id,
+      version: r.version,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      createdByUserId: r.createdByUserId || null,
+      updatedByUserId: r.updatedByUserId || null,
+    }))
+    return ok(c, { history })
+  }
+
+  // Production: query D1
+  try {
+    console.log(`[ENGENHARIA][ROTEIROS][HISTORY] Buscando histórico para ${rotId} usuario ${userId}`)
+    // Step 1: find the root by walking up parent_id chain
+    let rootId = rotId
+    const visitedUp = new Set<string>()
+    while (true) {
+      if (visitedUp.has(rootId)) break
+      visitedUp.add(rootId)
+      const row = await db.prepare(
+        `SELECT parent_id FROM roteiros WHERE id=? AND user_id=?`
+      ).bind(rootId, userId).first<{ parent_id: string | null }>()
+      if (!row || !row.parent_id) break
+      rootId = row.parent_id
+    }
+
+    // Step 2: BFS from root collecting all descendants (active + archived)
+    const allIds: string[] = []
+    const queue = [rootId]
+    const seenBFS = new Set<string>()
+    while (queue.length > 0) {
+      const cur = queue.shift()!
+      if (seenBFS.has(cur)) continue
+      seenBFS.add(cur)
+      allIds.push(cur)
+      const children = await db.prepare(
+        `SELECT id FROM roteiros WHERE parent_id=? AND user_id=?`
+      ).bind(cur, userId).all<{ id: string }>()
+      for (const child of (children.results || [])) queue.push(child.id)
+    }
+
+    if (allIds.length === 0) return ok(c, { history: [] })
+
+    // Step 3: fetch metadata for all collected ids
+    const placeholders = allIds.map(() => '?').join(',')
+    const rows = await db.prepare(
+      `SELECT id, version, created_at, updated_at, created_by_user_id, updated_by_user_id FROM roteiros WHERE id IN (${placeholders}) AND user_id=? ORDER BY created_at DESC`
+    ).bind(...allIds, userId).all<{
+      id: string; version: string; created_at: string; updated_at: string;
+      created_by_user_id: string | null; updated_by_user_id: string | null;
+    }>()
+
+    const history = (rows.results || []).map((r) => ({
+      id: r.id,
+      version: r.version,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      createdByUserId: r.created_by_user_id,
+      updatedByUserId: r.updated_by_user_id,
+    }))
+
+    console.log(`[ENGENHARIA][ROTEIROS][HISTORY] Retornando ${history.length} versão(ões) para ${rotId}`)
+    return ok(c, { history })
+  } catch (e) {
+    console.error(`[ENGENHARIA][ROTEIROS][HISTORY][CRÍTICO] Falha ao buscar histórico de ${rotId}:`, e)
+    return err(c, 'Erro ao buscar histórico de versões', 500)
+  }
+})
 
 // ── API: POST /engenharia/api/product/create (removido) ─────────────────────
 // Criação de produtos deve ser feita em /produtos (módulo oficial).
