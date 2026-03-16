@@ -1938,9 +1938,9 @@ app.get('/', async (c) => {
         const pc = PRIORITY_COLORS[t.priority] || '#6c757d';
         const pl = PRIORITY_LABELS_PT[t.priority] || t.priority;
         const overdue = t.due_at && new Date(t.due_at).getTime() < now && t.status !== 'Resolvida';
-        // Prefer stored empresa_name; fall back to masterClientsData lookup then raw id
+        // Prefer stored empresa_name (Razão Social); fall back to masterClientsData lookup then '—' (never show raw id)
         const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
-          ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
+          ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).empresa || '—');
         // Stringify ticket id for data attribute (HTML-escape only for the attribute context, no JS context)
         const tid = String(t.id == null ? '' : t.id);
         return '<div style="background:white;border-radius:8px;border:1px solid #e9ecef;padding:10px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
@@ -1988,8 +1988,9 @@ app.get('/', async (c) => {
     const t = _masterTickets.find(function(x) { return x.id === ticketId; });
     if (!t) return;
     _viewingTicketId = ticketId;
+    // Prefer stored empresa_name (Razão Social); fall back to masterClientsData lookup then '—' (never show raw id)
     const cliName = (t.empresa_name && t.empresa_name !== '') ? t.empresa_name :
-      ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).fantasia || t.empresa_id || '—');
+      ((masterClientsData.find(function(c) { return c.id === t.empresa_id; }) || {}).empresa || '—');
     const pc = PRIORITY_COLORS[t.priority] || '#6c757d';
     const pl = PRIORITY_LABELS_PT[t.priority] || t.priority;
     const now = Date.now();
@@ -2286,15 +2287,21 @@ async function fillMissingEmpresaNames(db: D1Database, tickets: any[]): Promise<
     // `ids` provém de resultados D1 (não de entrada do usuário); os valores
     // são vinculados via .bind(...ids) evitando injeção SQL.
     const placeholders = ids.map(() => '?').join(',')
+    // Prioridade: Razão Social da tabela empresas (via empresa_id do usuário);
+    // fallback para registered_users.empresa se o usuário não tiver empresa vinculada.
     const usersRes = await db.prepare(
-      `SELECT id, empresa FROM registered_users WHERE id IN (${placeholders}) AND (owner_id IS NULL OR owner_id = '')`
+      `SELECT ru.id, COALESCE(e.razao_social, e.name, ru.empresa) AS empresa_name
+       FROM registered_users ru
+       LEFT JOIN empresas e ON e.id = ru.empresa_id
+       WHERE ru.id IN (${placeholders}) AND (ru.owner_id IS NULL OR ru.owner_id = '')`
     ).bind(...ids).all()
     const nameMap: Record<string, string> = {}
     for (const u of (usersRes.results || []) as any[]) {
-      nameMap[u.id] = u.empresa
+      if (u.empresa_name) nameMap[u.id] = u.empresa_name
     }
     for (const t of missing) {
-      t.empresa_name = nameMap[t.empresa_id] || t.empresa_id || ''
+      // Never fall back to empresa_id: if name can't be resolved, leave empty for UI to show '—'
+      t.empresa_name = nameMap[t.empresa_id] || ''
     }
   } catch {
     // Non-fatal: empresa_name will remain null; frontend falls back to masterClientsData lookup
@@ -2324,9 +2331,9 @@ app.post('/api/support/tickets', async (c) => {
   const now        = new Date().toISOString()
   const dueAt      = new Date(Date.now() + (SLA_MS[priority] || SLA_MS.medium)).toISOString()
   const empresaId  = body.empresa_id || ''
-  // Resolve company name from masterClients list (already rebuilt on page load)
+  // Resolve company Razão Social: prefer body-provided name, then masterClients lookup, never fall back to empresaId
   const cliRecord  = masterClients.find(cl => cl.id === empresaId)
-  const empresaName = body.empresa_name || (cliRecord ? (cliRecord.fantasia || cliRecord.empresa) : null) || empresaId || null
+  const empresaName = body.empresa_name || (cliRecord ? (cliRecord.empresa || cliRecord.fantasia) : null)
 
   const ticket = {
     id,
