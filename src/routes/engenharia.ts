@@ -547,6 +547,7 @@ app.get('/', (c) => {
     if (choice === 'keep') {
       await _execUpdateRoteiro(editId, payload);
     } else {
+      if (!editId) { showToast('ID do roteiro não encontrado', 'error'); return; }
       const newVersion = incrementVersion(currentRoute?.version || '1.0');
       await _execNovaVersaoRoteiro(editId, { ...payload, version: newVersion });
     }
@@ -986,8 +987,8 @@ app.post('/api/roteiros/:id/version', async (c) => {
 
   // Update memory only after D1 success (or in demo/no-db mode)
   // Remove archived parent from active list in memory
-  tenant.routes.splice(parentIdx, 1)
   if (!tenant.routes) (tenant as any).routes = []
+  tenant.routes.splice(parentIdx, 1)
   tenant.routes.push(newRoute)
   markTenantModified(userId)
 

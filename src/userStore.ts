@@ -1283,9 +1283,13 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         let opsByRoteiro: Record<string, any[]> = {}
         try {
           const placeholders = roteiroIds.map(() => '?').join(',')
-          const opsRes = await db.prepare(
-            `SELECT * FROM roteiro_operacoes WHERE user_id = ? AND roteiro_id IN (${placeholders}) ORDER BY order_index ASC`
-          ).bind(userId, ...roteiroIds).all()
+          const opsQuery = resolvedEmpresaId
+            ? `SELECT * FROM roteiro_operacoes WHERE user_id = ? AND empresa_id = ? AND roteiro_id IN (${placeholders}) ORDER BY order_index ASC`
+            : `SELECT * FROM roteiro_operacoes WHERE user_id = ? AND roteiro_id IN (${placeholders}) ORDER BY order_index ASC`
+          const opsBindArgs = resolvedEmpresaId
+            ? [userId, resolvedEmpresaId, ...roteiroIds]
+            : [userId, ...roteiroIds]
+          const opsRes = await db.prepare(opsQuery).bind(...opsBindArgs).all()
           for (const op of (opsRes.results || []) as any[]) {
             if (!opsByRoteiro[op.roteiro_id]) opsByRoteiro[op.roteiro_id] = []
             opsByRoteiro[op.roteiro_id].push({

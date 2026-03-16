@@ -881,8 +881,12 @@ describe('userStore.ts source-code safeguard: hydration of roteiros', () => {
 
   it('hydration filtra somente roteiros ativos (is_active = 1)', () => {
     const src = readFileSync(resolve(__dirname, '../userStore.ts'), 'utf8')
-    const blockStart = src.indexOf('FROM roteiros')
-    const block = src.slice(Math.max(0, blockStart - 200), blockStart + 500)
+    // Find the roteiros hydration block delimited by its try/catch comment
+    const blockStart = src.indexOf('// Load roteiros (active only)')
+    const blockEnd = src.indexOf('} catch (e) {\n    console.warn', blockStart)
+    const block = blockStart !== -1 && blockEnd > blockStart
+      ? src.slice(blockStart, blockEnd)
+      : src.slice(src.indexOf('FROM roteiros'), src.indexOf('FROM roteiros') + 600)
     expect(block).toContain('is_active = 1')
   })
 })
