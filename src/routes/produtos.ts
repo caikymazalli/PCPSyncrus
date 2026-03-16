@@ -6,6 +6,19 @@ import { markTenantModified, getTenantData } from '../userStore'
 
 const app = new Hono()
 
+// ── HTML escape helper (server-side) ─────────────────────────────────────────
+// Escapes all characters that are special in HTML attribute values or content,
+// preventing SyntaxError / XSS when product/supplier data contains quotes,
+// angle brackets, ampersands, or other special characters.
+function escHtml(s: string | null | undefined): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // Produtos page
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
@@ -35,12 +48,12 @@ app.get('/', (c) => {
     const serialBadge = p.serialControlled
       ? '<span style="background:' + (_ct ? '#ede9fe' : '#fef3c7') + ';color:' + (_ct ? '#7c3aed' : '#d97706') + ';font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;">' + (_ct ? 'Série' : 'Lote') + '</span>'
       : ''
+    const nameEsc = escHtml(p.name)
+    const descEsc = escHtml(p.description)
+    const codeEsc = escHtml(p.code)
     const descView = p.description
-      ? '<span style="font-size:12px;color:#6c757d;">' + p.description + '</span>'
+      ? '<span style="font-size:12px;color:#6c757d;">' + descEsc + '</span>'
       : '<span style="font-style:italic;color:#ccc;">—</span>'
-    const nameEsc = (p.name || '').replace(/"/g, '&quot;')
-    const descEsc = (p.description || '').replace(/"/g, '&quot;')
-    const codeEsc = (p.code || '').replace(/"/g, '&quot;')
     const unitOptions = ['un','kg','m','l','pc','m2','lt'].map(u =>
       '<option value="' + u + '"' + (p.unit === u ? ' selected' : '') + '>' + (u === 'm2' ? 'm²' : u) + '</option>'
     ).join('')
@@ -50,10 +63,12 @@ app.get('/', (c) => {
     const supplierBadges = supplierIds.map((sid: string, idx: number) => {
       const s = suppList.find((x: any) => x.id === sid)
       if (!s) return ''
-      return '<span style="' + badgeStyles[idx] + ';font-size:9px;padding:2px 6px;border-radius:10px;white-space:nowrap;" title="' + labels[idx] + ': ' + s.name + '">' + (s.name.length > 10 ? s.name.substring(0,10) + '…' : s.name) + '</span>'
+      const sNameEsc = escHtml(s.name)
+      const sNameShort = escHtml(s.name.length > 10 ? s.name.substring(0,10) + '…' : s.name)
+      return '<span style="' + badgeStyles[idx] + ';font-size:9px;padding:2px 6px;border-radius:10px;white-space:nowrap;" title="' + labels[idx] + ': ' + sNameEsc + '">' + sNameShort + '</span>'
     }).filter(Boolean).join(' ')
     return '<tr class="prod-row" data-id="' + p.id + '" data-status="' + p.stockStatus + '"' +
-      ' data-search="' + (p.name || '').toLowerCase() + ' ' + (p.code || '').toLowerCase() + '"' +
+      ' data-search="' + nameEsc.toLowerCase() + ' ' + codeEsc.toLowerCase() + '"' +
       ' style="border-bottom:1px solid #f1f3f5;"' +
       ' onmouseenter="this.style.background=\'#f0f9ff\'" onmouseleave="this.style.background=\'white\'">' +
       '<td style="padding:8px 12px;" ondblclick="startProdEdit(this,\'code\',\'' + p.id + '\')">' +
@@ -61,7 +76,7 @@ app.get('/', (c) => {
         '<input class="form-control prod-cell-input" style="display:none;font-size:11px;font-family:monospace;width:90px;" data-field="code" data-id="' + p.id + '" value="' + codeEsc + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)">' +
       '</td>' +
       '<td style="padding:8px 12px;" ondblclick="startProdEdit(this,\'name\',\'' + p.id + '\')">' +
-        '<div class="prod-cell-view" style="font-weight:600;color:#1B4F72;cursor:pointer;" title="Duplo clique para editar">' + (p.name || '') + serialBadge + '</div>' +
+        '<div class="prod-cell-view" style="font-weight:600;color:#1B4F72;cursor:pointer;" title="Duplo clique para editar">' + nameEsc + serialBadge + '</div>' +
         '<input class="form-control prod-cell-input" style="display:none;font-size:13px;min-width:150px;" data-field="name" data-id="' + p.id + '" value="' + nameEsc + '" onblur="saveProdCell(this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\')cancelProdEdit(this)">' +
       '</td>' +
       '<td style="padding:8px 12px;text-align:center;" ondblclick="startProdEdit(this,\'unit\',\'' + p.id + '\')">' +
@@ -121,7 +136,7 @@ app.get('/', (c) => {
       ${products.filter(p => p.stockStatus === 'critical').map(p => `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f8f9fa;">
         <div>
-          <div style="font-size:12px;font-weight:600;color:#374151;">${p.name}</div>
+          <div style="font-size:12px;font-weight:600;color:#374151;">${escHtml(p.name)}</div>
           <div style="font-size:11px;color:#dc2626;">Atual: ${p.stockCurrent} • Mín: ${p.stockMin}</div>
         </div>
         <span class="badge" style="background:#fef2f2;color:#dc2626;">Crítico</span>
@@ -308,11 +323,11 @@ app.get('/', (c) => {
             <label class="form-label"><i class="fas fa-truck" style="margin-right:5px;color:#27AE60;"></i>Fornecedor(es) Principal(is)</label>
             <select class="form-control" id="newProdSupplier1" style="margin-bottom:6px;">
               <option value="">Selecionar fornecedor principal...</option>
-              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
+              ${suppliers.map((s: any) => `<option value="${escHtml(s.id)}">${escHtml(s.name)} (${escHtml(s.type)}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
             </select>
             <select class="form-control" id="newProdSupplier2">
               <option value="">2º Fornecedor (backup, opcional)...</option>
-              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type})</option>`).join('')}
+              ${suppliers.map((s: any) => `<option value="${escHtml(s.id)}">${escHtml(s.name)} (${escHtml(s.type)})</option>`).join('')}
             </select>
             <div style="font-size:11px;color:#6c757d;margin-top:6px;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Ao atingir estoque crítico, cotação será gerada automaticamente por fornecedor.</div>
           </div>
@@ -410,7 +425,7 @@ app.get('/', (c) => {
             <label class="form-label"><i class="fas fa-truck" style="margin-right:5px;color:#27AE60;"></i>Fornecedor Principal</label>
             <select class="form-control" id="ep_supplier">
               <option value="">Selecionar fornecedor...</option>
-              ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
+              ${suppliers.map((s: any) => `<option value="${escHtml(s.id)}">${escHtml(s.name)} (${escHtml(s.type)}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
             </select>
           </div>
           <div class="form-group" style="grid-column:span 2;display:none;" id="editProdInternalSection">
