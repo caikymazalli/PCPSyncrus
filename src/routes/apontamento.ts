@@ -41,6 +41,26 @@ app.use('*', async (c, next) => {
 
 const NC_LIMIT = 3 // Limite padrão de unidades rejeitadas para gerar NC
 
+// ── Helper: find route for a production order ────────────────────────────────
+function findRouteForOrder(order: any, routes: any[]): any | null {
+  if (!order || !routes || routes.length === 0) return null
+  return routes.find(r =>
+    (r.productId && order.productId && r.productId === order.productId) ||
+    (r.productName && order.productName && r.productName === order.productName)
+  ) || null
+}
+
+// ── Helper: compute step progress for an order ────────────────────────────────
+function computeStepProgress(order: any, entries: any[], routes: any[]): { x: number; y: number } {
+  const route = findRouteForOrder(order, routes)
+  if (!route || !Array.isArray(route.steps) || route.steps.length === 0) return { x: 0, y: 0 }
+  const orderEntries = entries.filter((e: any) => e.orderId === order.id)
+  const doneSteps = new Set(orderEntries.map((e: any) => (e.stepName || '').trim()).filter(Boolean))
+  const validSteps = route.steps.map((s: any) => (s.operation || s.name || '').trim()).filter(Boolean)
+  const x = validSteps.filter(op => doneSteps.has(op)).length
+  return { x, y: validSteps.length }
+}
+
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
@@ -48,7 +68,9 @@ app.get('/', (c) => {
   const productionEntries = (mockData as any).productionEntries || []
   const productionOrders = (mockData as any).productionOrders || []
   const nonConformances = (mockData as any).nonConformances || []
-  const activeOrders = productionOrders.filter(o => o.status === 'in_progress' || o.status === 'planned')
+  const routes = (mockData as any).routes || []
+  const activeOrders = productionOrders.filter((o: any) => o.status === 'in_progress' || o.status === 'planned')
+  const completedOrders = productionOrders.filter((o: any) => o.status === 'completed')
 
   const content = `
   <!-- NC Alert Modal for critical rejections -->
@@ -85,7 +107,7 @@ app.get('/', (c) => {
           <label class="form-label">Ordem de Produção *</label>
           <select class="form-control" id="apt_ordem" onchange="updateOrderInfo()">
             <option value="">Selecionar ordem...</option>
-            ${activeOrders.map(o => `<option value="${o.id}" data-code="${o.code}" data-product="${o.productName}" data-qty="${o.quantity}" data-completed="${o.completedQuantity}">${o.code} — ${o.productName}</option>`).join('')}
+            ${activeOrders.map((o: any) => `<option value="${o.id}" data-code="${o.code}" data-product="${o.productName}" data-productid="${o.productId || ''}" data-qty="${o.quantity}" data-completed="${o.completedQuantity || 0}">${o.code} — ${o.productName}</option>`).join('')}
           </select>
         </div>
         <div id="orderInfoCard" style="display:none;background:#f0f7ff;border:1px solid #bee3f8;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
@@ -98,7 +120,10 @@ app.get('/', (c) => {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
             <label class="form-label">Etapa / Operação</label>
-            <input class="form-control" id="apt_etapa" type="text" placeholder="Ex: Torneamento">
+            <select class="form-control" id="apt_etapa" disabled>
+              <option value="">Selecione a OP primeiro...</option>
+            </select>
+            <div id="apt_etapa_hint" style="display:none;font-size:11px;color:#d97706;margin-top:4px;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Cadastre um roteiro para este produto em Engenharia &gt; Roteiros.</div>
           </div>
           <div class="form-group">
             <label class="form-label">Operador *</label>
@@ -334,34 +359,56 @@ app.get('/', (c) => {
 
   <!-- Active Orders Cards -->
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
-    ${activeOrders.slice(0, 4).map(o => {
-      const progress = o.quantity > 0 ? Math.round((o.completedQuantity / o.quantity) * 100) : 0
+    ${activeOrders.slice(0, 4).map((o: any) => {
+      const progress = o.quantity > 0 ? Math.round(((o.completedQuantity || 0) / o.quantity) * 100) : 0
       const priorityColors: Record<string, string> = { urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#65a30d' }
       const priorityLabel: Record<string, string> = { urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa' }
+      const { x, y } = computeStepProgress(o, productionEntries, routes)
+      const stepBadge = y > 0
+        ? `<span style="font-size:11px;font-weight:700;color:${x >= y ? '#27AE60' : '#3498DB'};background:${x >= y ? '#f0fdf4' : '#eff6ff'};border-radius:12px;padding:2px 8px;border:1px solid ${x >= y ? '#bbf7d0' : '#bfdbfe'};"><i class="fas fa-tasks" style="margin-right:3px;"></i>${x}/${y} etapas</span>`
+        : ''
       return `
       <div class="card" style="padding:16px;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
           <div>
             <div style="font-size:14px;font-weight:700;color:#1B4F72;">${o.code}</div>
             <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${o.productName}</div>
-            ${(o as any).cliente ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;"><i class="fas fa-user" style="margin-right:4px;"></i>${(o as any).cliente}</div>` : ''}
+            ${o.cliente ? `<div style="font-size:11px;color:#6c757d;margin-top:2px;"><i class="fas fa-user" style="margin-right:4px;"></i>${o.cliente}</div>` : ''}
           </div>
           <span class="badge ${o.status === 'in_progress' ? 'badge-info' : 'badge-primary'}">${o.status === 'in_progress' ? 'Em Progresso' : 'Planejada'}</span>
         </div>
         <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
           <span style="font-size:12px;color:#6c757d;">Progresso</span>
-          <span style="font-size:12px;font-weight:700;color:${progress >= 100 ? '#27AE60' : '#3498DB'};">${o.completedQuantity}/${o.quantity} un • ${progress}%</span>
+          <span style="font-size:12px;font-weight:700;color:${progress >= 100 ? '#27AE60' : '#3498DB'};">${o.completedQuantity || 0}/${o.quantity} un • ${progress}%</span>
         </div>
-        <div class="progress-bar" style="margin-bottom:12px;">
+        <div class="progress-bar" style="margin-bottom:8px;">
           <div class="progress-fill" style="width:${progress}%;background:${progress >= 100 ? '#27AE60' : '#3498DB'};"></div>
         </div>
+        ${y > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">${stepBadge}</div>` : '<div style="margin-bottom:10px;"></div>'}
         <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="font-size:11px;color:#9ca3af;">${o.plantName}</span>
-          <span style="font-size:11px;font-weight:700;color:${priorityColors[o.priority]};">● ${priorityLabel[o.priority]}</span>
+          <span style="font-size:11px;color:#9ca3af;">${o.plantName || ''}</span>
+          <span style="font-size:11px;font-weight:700;color:${priorityColors[o.priority] || '#d97706'};">● ${priorityLabel[o.priority] || 'Média'}</span>
         </div>
         <button class="btn btn-primary btn-sm" style="width:100%;" onclick="startTracking('${o.id}','${o.code}')" title="Registrar apontamento para esta ordem">
           <i class="fas fa-check"></i> Realizar Apontamento
         </button>
+      </div>`
+    }).join('')}
+    ${completedOrders.slice(0, 2).map((o: any) => {
+      const { x, y } = computeStepProgress(o, productionEntries, routes)
+      return `
+      <div class="card" style="padding:16px;border-top:3px solid #27AE60;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#1B4F72;">${o.code}</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${o.productName}</div>
+          </div>
+          <span class="badge" style="background:#d1fae5;color:#065f46;">✓ Concluída</span>
+        </div>
+        ${y > 0 ? `<div style="margin-bottom:10px;"><span style="font-size:11px;font-weight:700;color:#27AE60;background:#f0fdf4;border-radius:12px;padding:2px 8px;border:1px solid #bbf7d0;"><i class="fas fa-tasks" style="margin-right:3px;"></i>${x}/${y} etapas</span></div>` : ''}
+        <a href="/apontamento/relatorio/${o.id}" class="btn btn-success btn-sm" style="width:100%;display:block;text-align:center;" title="Gerar relatório de apontamentos">
+          <i class="fas fa-file-alt"></i> Relatório de Apontamentos
+        </a>
       </div>`
     }).join('')}
   </div>
@@ -483,26 +530,41 @@ app.get('/', (c) => {
   // Snapshot of production entries for the view-details modal.
   // Supports both legacy demo-data keys (quantityProduced/quantityRejected/recordedAt)
   // and API-created entry keys (produced/rejected/createdAt).
-  const productionEntriesData = ${JSON.stringify(productionEntries.map(e => ({
-    id: (e as any).id || '',
-    orderCode: (e as any).orderCode || '',
-    stepName: (e as any).stepName || '',
-    operator: (e as any).operator || '',
-    quantityProduced: (e as any).quantityProduced ?? (e as any).produced ?? null,
-    quantityRejected: (e as any).quantityRejected ?? (e as any).rejected ?? null,
-    timeSpent: (e as any).timeSpent ?? null,
-    ncGenerated: !!(e as any).ncGenerated,
-    recordedAt: (e as any).recordedAt || (e as any).createdAt || '',
-    notes: (e as any).notes || '',
+  const productionEntriesData = ${JSON.stringify(productionEntries.map((e: any) => ({
+    id: e.id || '',
+    orderCode: e.orderCode || '',
+    stepName: e.stepName || '',
+    operator: e.operator || '',
+    quantityProduced: e.quantityProduced ?? e.produced ?? null,
+    quantityRejected: e.quantityRejected ?? e.rejected ?? null,
+    timeSpent: e.timeSpent ?? null,
+    ncGenerated: !!e.ncGenerated,
+    recordedAt: e.recordedAt || e.createdAt || '',
+    notes: e.notes || '',
   })))};
 
   // Products data with serial control info
-  const productsSerialData = ${JSON.stringify(mockData.products.map(p => ({
+  const productsSerialData = ${JSON.stringify(mockData.products.map((p: any) => ({
     code: p.code,
     name: p.productName || p.name,
-    serialControlled: (p as any).serialControlled || false,
-    controlType: (p as any).controlType || null
+    serialControlled: p.serialControlled || false,
+    controlType: p.controlType || null
   })))};
+
+  // Routes data keyed for quick lookup (productId -> steps)
+  const allRoutesData = ${JSON.stringify(routes.map((r: any) => ({
+    productId: r.productId || '',
+    productName: r.productName || '',
+    steps: (r.steps || []).map((s: any) => (s.operation || s.name || '').trim()).filter((op: string) => op !== ''),
+  })))};
+
+  function _findRouteStepsForOrder(productId, productName) {
+    const route = allRoutesData.find(r =>
+      (r.productId && productId && r.productId === productId) ||
+      (r.productName && productName && r.productName === productName)
+    );
+    return route ? route.steps : null;
+  }
 
   function updateOrderInfo() {
     const sel = document.getElementById('apt_ordem');
@@ -519,9 +581,45 @@ app.get('/', (c) => {
       // Check serial control for product of this order
       const productName = opt.dataset.product || '';
       checkSerialRequirement(productName);
+      // Populate steps select from route
+      _populateStepsSelect(opt.dataset.productid || '', productName);
     } else {
       card.style.display = 'none';
       document.getElementById('serialLoteGroup').style.display = 'none';
+      _populateStepsSelect('', '');
+    }
+  }
+
+  function _populateStepsSelect(productId, productName) {
+    const sel = document.getElementById('apt_etapa');
+    const hint = document.getElementById('apt_etapa_hint');
+    const steps = _findRouteStepsForOrder(productId, productName);
+    sel.innerHTML = '';
+    if (steps && steps.length > 0) {
+      sel.disabled = false;
+      hint.style.display = 'none';
+      steps.forEach(function(op) {
+        const o = document.createElement('option');
+        o.value = op;
+        o.textContent = op;
+        sel.appendChild(o);
+      });
+    } else if (productId || productName) {
+      // OP selected but no route
+      sel.disabled = true;
+      hint.style.display = 'block';
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = 'Sem roteiro cadastrado';
+      sel.appendChild(o);
+    } else {
+      // No OP selected
+      sel.disabled = true;
+      hint.style.display = 'none';
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = 'Selecione a OP primeiro...';
+      sel.appendChild(o);
     }
   }
 
@@ -644,16 +742,26 @@ app.get('/', (c) => {
     const opt = ordemSel.options[ordemSel.selectedIndex];
     const orderCode = opt.dataset.code || '';
     const productName = opt.dataset.product || '';
+    const productId = opt.dataset.productid || '';
 
     const produzida = parseInt(document.getElementById('apt_produzida').value) || 0;
     const rejeitada = parseInt(document.getElementById('apt_rejeitada').value) || 0;
     const limit = parseInt(document.getElementById('ncLimitInput').value) || 3;
-    const etapa = document.getElementById('apt_etapa').value || 'Produção Geral';
+    const etapaEl = document.getElementById('apt_etapa');
+    const etapa = etapaEl.value || '';
     const operador = document.getElementById('apt_operador').value;
     const tempo = parseInt(document.getElementById('apt_tempo').value) || 0;
     const notes = document.getElementById('apt_obs').value || '';
 
     if (produzida === 0) { showToast('Informe a quantidade produzida!', 'error'); return; }
+
+    // Validate step is selected when route exists
+    const routeSteps = _findRouteStepsForOrder(productId, productName);
+    if (routeSteps && routeSteps.length > 0 && !etapa) {
+      showToast('Selecione a etapa/operação!', 'error');
+      etapaEl.focus();
+      return;
+    }
 
     // Validate serial/lote if required
     const serialGroup = document.getElementById('serialLoteGroup');
@@ -756,7 +864,7 @@ app.get('/', (c) => {
 
   function resetApontamentoForm() {
     document.getElementById('apt_ordem').selectedIndex = 0;
-    document.getElementById('apt_etapa').value = '';
+    _populateStepsSelect('', '');
     document.getElementById('apt_produzida').value = '';
     document.getElementById('apt_rejeitada').value = '';
     document.getElementById('apt_tempo').value = '';
@@ -842,6 +950,19 @@ app.post('/api/create', async (c) => {
   const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
   const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
+
+  // ── Server-side step validation ───────────────────────────────────────────
+  if (body.orderId && body.stepName) {
+    const order = (tenant.productionOrders || []).find((o: any) => o.id === body.orderId)
+    const route = order ? findRouteForOrder(order, tenant.routes || []) : null
+    if (route && Array.isArray(route.steps) && route.steps.length > 0) {
+      const validSteps = route.steps.map((s: any) => (s.operation || s.name || '').trim()).filter(Boolean)
+      if (!validSteps.includes(body.stepName.trim())) {
+        return err(c, `Etapa "${body.stepName}" não pertence ao roteiro deste produto. Etapas válidas: ${validSteps.join(', ')}`)
+      }
+    }
+  }
+
   const id = genId('apt')
   const entry = {
     id, orderId: body.orderId || '', orderCode: body.orderCode || '',
@@ -861,6 +982,7 @@ app.post('/api/create', async (c) => {
       product_name: entry.productName, operator: entry.operator,
       machine: entry.machine, start_time: entry.startTime, end_time: entry.endTime,
       produced: entry.produced, rejected: entry.rejected, shift: entry.shift, notes: entry.notes,
+      step_name: entry.stepName,
     })
     // Link uploaded images to this apontamento record
     if (entry.imageIds.length > 0) {
@@ -873,7 +995,39 @@ app.post('/api/create', async (c) => {
     }
   }
   tenant.productionEntries.push(entry)
-  return ok(c, { entry })
+
+  // ── Auto-complete: mark OP as completed when all route steps are done ─────
+  let orderAutoCompleted = false
+  if (entry.orderId) {
+    const orderIdx = (tenant.productionOrders || []).findIndex((o: any) => o.id === entry.orderId)
+    if (orderIdx !== -1) {
+      const order = tenant.productionOrders[orderIdx]
+      if (order.status !== 'completed' && order.status !== 'cancelled') {
+        const route = findRouteForOrder(order, tenant.routes || [])
+        if (route && Array.isArray(route.steps) && route.steps.length > 0) {
+          const validSteps = route.steps.map((s: any) => (s.operation || s.name || '').trim()).filter(Boolean)
+          const doneSteps = new Set(
+            tenant.productionEntries
+              .filter((e: any) => e.orderId === entry.orderId)
+              .map((e: any) => (e.stepName || '').trim())
+              .filter(Boolean)
+          )
+          const allDone = validSteps.every((op: string) => doneSteps.has(op))
+          if (allDone) {
+            if (db && userId !== 'demo-tenant') {
+              await dbUpdate(db, 'production_orders', order.id, userId, { status: 'completed' })
+                .catch((e: any) => console.error('[APONTAMENTO] Falha ao atualizar status da OP:', e))
+            }
+            tenant.productionOrders[orderIdx] = { ...order, status: 'completed' }
+            orderAutoCompleted = true
+            console.log(`[APONTAMENTO] OP ${order.code} marcada como concluída — todas as etapas apontadas.`)
+          }
+        }
+      }
+    }
+  }
+
+  return ok(c, { entry, orderAutoCompleted })
 })
 
 // ── API: POST /apontamento/api/upload-image ───────────────────────────────────
@@ -968,5 +1122,166 @@ app.delete('/api/:id', async (c) => {
 })
 
 app.get('/api/list', (c) => ok(c, { entries: getCtxTenant(c).productionEntries }))
+
+// ── GET /apontamento/relatorio/:orderId — Printable HTML report ───────────────
+app.get('/relatorio/:orderId', async (c) => {
+  const session = getCtxSession(c)
+  if (!session) return c.html('<h1>Não autenticado</h1>', 401)
+
+  const tenant = getCtxTenant(c)
+  const db = getCtxDB(c)
+  const empresaId = getCtxEmpresaId(c)
+  const orderId = c.req.param('orderId')
+
+  const order = (tenant.productionOrders || []).find((o: any) => o.id === orderId)
+  if (!order) return c.html('<h1>Ordem não encontrada</h1>', 404)
+  if (order.status !== 'completed') return c.html('<h1>Relatório disponível somente para ordens concluídas</h1>', 400)
+
+  const entries: any[] = (tenant.productionEntries || []).filter((e: any) => e.orderId === orderId)
+  const ncs: any[] = (tenant.nonConformances || []).filter((n: any) =>
+    n.orderCode === order.code || n.orderId === orderId
+  )
+  const route = findRouteForOrder(order, tenant.routes || [])
+
+  // Fetch image metadata from D1 for all entries
+  const imagesByEntry: Record<string, string[]> = {}
+  if (db && session.userId !== 'demo-tenant') {
+    const entryIds = entries.map(e => e.id)
+    if (entryIds.length > 0) {
+      const placeholders = entryIds.map(() => '?').join(',')
+      const query = empresaId
+        ? `SELECT id, ref_id FROM apontamento_images WHERE empresa_id = ? AND ref_id IN (${placeholders})`
+        : `SELECT id, ref_id FROM apontamento_images WHERE ref_id IN (${placeholders})`
+      const binds = empresaId ? [empresaId, ...entryIds] : entryIds
+      const imgRows = await db.prepare(query).bind(...binds).all()
+        .then((r: any) => r.results || [])
+        .catch(() => [])
+      for (const row of imgRows as any[]) {
+        if (!imagesByEntry[row.ref_id]) imagesByEntry[row.ref_id] = []
+        imagesByEntry[row.ref_id].push(row.id)
+      }
+    }
+  } else {
+    for (const e of entries) {
+      if (Array.isArray(e.imageIds) && e.imageIds.length > 0) {
+        imagesByEntry[e.id] = e.imageIds
+      }
+    }
+  }
+
+  const sevLabel: Record<string, string> = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' }
+  const stLabel: Record<string, string> = { open: 'Aberta', in_analysis: 'Em Análise', closed: 'Encerrada' }
+  const sevColor: Record<string, string> = { low: '#65a30d', medium: '#d97706', high: '#ea580c', critical: '#dc2626' }
+
+  const fmtDate = (iso: string) => {
+    if (!iso) return '—'
+    try { return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) } catch { return iso }
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório de Apontamentos — ${order.code}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;background:#fff;padding:24px;}
+    h1{font-size:20px;color:#1B4F72;margin-bottom:4px;}
+    h2{font-size:15px;color:#1B4F72;margin:20px 0 8px;border-bottom:2px solid #e0e7ef;padding-bottom:4px;}
+    .meta{display:flex;flex-wrap:wrap;gap:16px;background:#f0f7ff;border:1px solid #bee3f8;border-radius:8px;padding:14px;margin-bottom:20px;}
+    .meta-item{flex:1;min-width:140px;}
+    .meta-label{font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;margin-bottom:2px;}
+    .meta-value{font-size:14px;font-weight:700;color:#1B4F72;}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+    th{background:#1B4F72;color:#fff;padding:8px 10px;font-size:12px;text-align:left;}
+    td{padding:7px 10px;border-bottom:1px solid #e9ecef;vertical-align:top;}
+    tr:nth-child(even) td{background:#f8fafc;}
+    .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;}
+    .img-thumb{width:72px;height:54px;object-fit:cover;border-radius:4px;border:1px solid #e9ecef;margin:2px;}
+    .nc-card{border:1px solid #e9ecef;border-radius:6px;padding:10px;margin-bottom:8px;}
+    .print-btn{position:fixed;top:16px;right:16px;background:#1B4F72;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;}
+    @media print{.print-btn{display:none;}}
+    .steps-list{display:flex;flex-wrap:wrap;gap:6px;}
+    .step-badge{padding:3px 10px;border-radius:10px;font-size:11px;background:#e0e7ef;color:#1B4F72;font-weight:600;}
+  </style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+
+  <h1>Relatório de Apontamentos de Produção</h1>
+  <div style="font-size:11px;color:#6c757d;margin-bottom:14px;">Gerado em ${fmtDate(new Date().toISOString())}</div>
+
+  <h2>Dados da Ordem de Produção</h2>
+  <div class="meta">
+    <div class="meta-item"><div class="meta-label">Código OP</div><div class="meta-value">${order.code}</div></div>
+    <div class="meta-item"><div class="meta-label">Produto</div><div class="meta-value">${order.productName}</div></div>
+    <div class="meta-item"><div class="meta-label">Qtd Planejada</div><div class="meta-value">${order.quantity} un</div></div>
+    <div class="meta-item"><div class="meta-label">Qtd Produzida</div><div class="meta-value">${order.completedQuantity || 0} un</div></div>
+    <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value" style="color:#27AE60;">✓ Concluída</div></div>
+    ${order.cliente ? `<div class="meta-item"><div class="meta-label">Cliente</div><div class="meta-value">${order.cliente}</div></div>` : ''}
+    ${order.pedido ? `<div class="meta-item"><div class="meta-label">Pedido</div><div class="meta-value">${order.pedido}</div></div>` : ''}
+  </div>
+
+  ${route && route.steps && route.steps.length > 0 ? `
+  <h2>Roteiro de Fabricação — ${route.name || ''}</h2>
+  <div class="steps-list" style="margin-bottom:16px;">
+    ${route.steps.map((s: any) => `<span class="step-badge">${s.operation || s.name || ''}</span>`).join('')}
+  </div>` : ''}
+
+  <h2>Apontamentos Realizados (${entries.length})</h2>
+  ${entries.length === 0 ? '<p style="color:#6c757d;">Nenhum apontamento registrado.</p>' : `
+  <table>
+    <thead><tr>
+      <th>Data / Hora</th><th>Operador</th><th>Etapa / Operação</th>
+      <th>Qtd Prod.</th><th>Qtd Rej.</th><th>Tempo (min)</th><th>Observações</th><th>Evidências</th>
+    </tr></thead>
+    <tbody>
+    ${entries.map((e: any) => {
+      const imgs = imagesByEntry[e.id] || []
+      return `<tr>
+        <td style="white-space:nowrap;">${fmtDate(e.recordedAt || e.createdAt)}</td>
+        <td>${e.operator || '—'}</td>
+        <td><strong>${e.stepName || '—'}</strong></td>
+        <td>${e.produced ?? e.quantityProduced ?? '—'}</td>
+        <td style="color:${(e.rejected ?? e.quantityRejected ?? 0) > 0 ? '#dc2626' : 'inherit'};">${e.rejected ?? e.quantityRejected ?? 0}</td>
+        <td>${e.timeSpent != null ? e.timeSpent : '—'}</td>
+        <td style="font-size:12px;">${e.notes || '—'}</td>
+        <td>${imgs.map((imgId: string) => `<img class="img-thumb" src="/apontamento/api/images/${imgId}" alt="evidência">`).join('') || '—'}</td>
+      </tr>`
+    }).join('')}
+    </tbody>
+  </table>`}
+
+  <h2>Não Conformidades Relacionadas (${ncs.length})</h2>
+  ${ncs.length === 0 ? '<p style="color:#6c757d;">Nenhuma NC registrada para esta OP.</p>' : `
+  <div>
+    ${ncs.map((nc: any) => `
+    <div class="nc-card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+        <strong style="color:#1B4F72;">${nc.code || '—'}</strong>
+        <span class="badge" style="background:${sevColor[nc.severity] || '#9ca3af'}22;color:${sevColor[nc.severity] || '#9ca3af'};">${sevLabel[nc.severity] || nc.severity}</span>
+        <span class="badge" style="background:#e9ecef;color:#374151;">${stLabel[nc.status] || nc.status}</span>
+      </div>
+      ${nc.title ? `<div style="font-weight:600;margin-bottom:4px;">${nc.title}</div>` : ''}
+      <div style="font-size:12px;color:#374151;margin-bottom:4px;">${nc.description || '—'}</div>
+      <div style="display:flex;gap:16px;font-size:11px;color:#6c757d;">
+        ${nc.stepName ? `<span>Etapa: ${nc.stepName}</span>` : ''}
+        ${nc.openedAt ? `<span>Aberta em: ${nc.openedAt}</span>` : ''}
+        ${nc.closedAt ? `<span>Encerrada em: ${nc.closedAt}</span>` : ''}
+        ${nc.responsible ? `<span>Responsável: ${nc.responsible}</span>` : ''}
+      </div>
+      ${nc.rootCause ? `<div style="font-size:12px;color:#374151;margin-top:4px;"><strong>Causa Raiz:</strong> ${nc.rootCause}</div>` : ''}
+      ${nc.correctiveAction ? `<div style="font-size:12px;color:#374151;margin-top:2px;"><strong>Ação Corretiva:</strong> ${nc.correctiveAction}</div>` : ''}
+    </div>`).join('')}
+  </div>`}
+
+  <div style="margin-top:24px;border-top:1px solid #e9ecef;padding-top:12px;font-size:11px;color:#9ca3af;text-align:center;">
+    PCPSyncrus — Relatório gerado automaticamente em ${fmtDate(new Date().toISOString())}
+  </div>
+</body>
+</html>`
+
+  return c.html(html)
+})
 
 export default app
