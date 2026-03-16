@@ -342,6 +342,12 @@ describe('admin.ts empresa-config source-code safeguards', () => {
     expect(src).toContain("data.ok && data.warning")
     expect(src).toContain("showToast(data.warning, 'info')")
   })
+
+  it('GET /admin handler has fallback to load CNPJ when razao_social column is missing', () => {
+    expect(src).toContain("no such column: razao_social")
+    // Fallback should query only cnpj when razao_social is absent
+    expect(src).toContain("SELECT cnpj FROM empresas WHERE id = ?")
+  })
 })
 
 // ── empresa-config fallback behaviour tests (mock DB) ────────────────────────

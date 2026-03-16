@@ -163,7 +163,7 @@ app.get('/', async (c) => {
     } catch {}
   }
 
-  // Config da empresa (CNPJ e Razão Social do D1)
+  // Config da empresa (CNPJ e Razão Social do D1 — fonte de verdade)
   let empresaCnpj = ''
   let empresaRazaoSocial = ''
   if (db && !isDemo && resolvedEmpresaId) {
@@ -172,7 +172,17 @@ app.get('/', async (c) => {
         .bind(resolvedEmpresaId).first() as any
       empresaCnpj        = empRow?.cnpj         || ''
       empresaRazaoSocial = empRow?.razao_social  || ''
-    } catch {}
+    } catch (e: any) {
+      // Fallback: quando a coluna razao_social ainda não existe (migration pendente),
+      // carrega pelo menos o CNPJ para não deixar o campo em branco na UI.
+      if (e?.message?.includes('no such column: razao_social')) {
+        try {
+          const empRow = await db.prepare('SELECT cnpj FROM empresas WHERE id = ?')
+            .bind(resolvedEmpresaId).first() as any
+          empresaCnpj = empRow?.cnpj || ''
+        } catch {}
+      }
+    }
   }
 
   const content = `
