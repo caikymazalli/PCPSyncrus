@@ -726,7 +726,8 @@ app.get('/', async (c) => {
         body: JSON.stringify({ cnpj, razao_social: razao })
       });
       const data = await res.json();
-      if (data.ok) showToast('Configurações salvas!', 'success');
+      if (data.ok && data.warning) showToast(data.warning, 'info');
+      else if (data.ok) showToast('Configurações salvas!', 'success');
       else showToast(data.error || 'Erro ao salvar configurações.', 'error');
     } catch { showToast('Erro de conexão ao salvar configurações.', 'error'); }
   }
@@ -1183,7 +1184,20 @@ app.get('/api/empresa-config', async (c) => {
       .bind(resolvedEmpresaId).first() as any
     return c.json({ ok: true, empresa: row || {} })
   } catch (e: any) {
-    return c.json({ ok: false, error: e?.message || 'Erro ao carregar dados da empresa.' }, 500)
+    const msg = e?.message || ''
+    if (msg.includes('no such column: razao_social')) {
+      console.error('[EMPRESA-CONFIG] coluna razao_social ausente no GET — usando fallback sem razao_social')
+      try {
+        const row = await db.prepare('SELECT id, name, cnpj FROM empresas WHERE id = ?')
+          .bind(resolvedEmpresaId).first() as any
+        return c.json({ ok: true, empresa: row ? { ...row, razao_social: null } : {} })
+      } catch (e2: any) {
+        console.error('[EMPRESA-CONFIG] fallback GET também falhou:', e2?.message)
+        return c.json({ ok: false, error: e2?.message || 'Erro ao carregar dados da empresa.' }, 500)
+      }
+    }
+    console.error('[EMPRESA-CONFIG] GET falhou:', msg)
+    return c.json({ ok: false, error: msg || 'Erro ao carregar dados da empresa.' }, 500)
   }
 })
 
@@ -1206,7 +1220,20 @@ app.post('/api/empresa-config', async (c) => {
       .bind(cnpj, razaoSocial, resolvedEmpresaId).run()
     return c.json({ ok: true })
   } catch (e: any) {
-    return c.json({ ok: false, error: e?.message || 'Erro ao salvar dados da empresa.' }, 500)
+    const msg = e?.message || ''
+    if (msg.includes('no such column: razao_social')) {
+      console.error('[EMPRESA-CONFIG] coluna razao_social ausente — usando fallback apenas com cnpj')
+      try {
+        await db.prepare('UPDATE empresas SET cnpj = ? WHERE id = ?')
+          .bind(cnpj, resolvedEmpresaId).run()
+        return c.json({ ok: true, warning: 'Razão Social não pôde ser salva (migration pendente). CNPJ atualizado com sucesso.' })
+      } catch (e2: any) {
+        console.error('[EMPRESA-CONFIG] fallback POST também falhou:', e2?.message)
+        return c.json({ ok: false, error: e2?.message || 'Erro ao salvar CNPJ.' }, 500)
+      }
+    }
+    console.error('[EMPRESA-CONFIG] POST falhou:', msg)
+    return c.json({ ok: false, error: msg || 'Erro ao salvar dados da empresa.' }, 500)
   }
 })
 

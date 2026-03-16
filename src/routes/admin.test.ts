@@ -332,4 +332,89 @@ describe('admin.ts empresa-config source-code safeguards', () => {
     expect(src).toContain('id="cfgRazao"')
     expect(src).toContain('value="${empresaRazaoSocial}"')
   })
+
+  it('POST /api/empresa-config has fallback for missing razao_social column', () => {
+    expect(src).toContain('no such column: razao_social')
+    expect(src).toContain('UPDATE empresas SET cnpj = ? WHERE id = ?')
+  })
+
+  it('saveConfig handles warning response with info toast', () => {
+    expect(src).toContain("data.ok && data.warning")
+    expect(src).toContain("showToast(data.warning, 'info')")
+  })
+})
+
+// ── empresa-config fallback behaviour tests (mock DB) ────────────────────────
+
+/** Build a minimal D1-like mock. sqlResponses maps a SQL substring to a handler. */
+function makeMockDb(sqlResponses: Record<string, () => any>) {
+  return {
+    prepare(sql: string) {
+      const key = Object.keys(sqlResponses).find(k => sql.includes(k))
+      const handler = key ? sqlResponses[key] : () => { throw new Error('unexpected SQL: ' + sql) }
+      return {
+        bind(..._args: any[]) {
+          return {
+            run:   () => Promise.resolve(handler()),
+            first: () => Promise.resolve(handler()),
+          }
+        },
+      }
+    },
+  }
+}
+
+describe('POST /api/empresa-config — fallback when razao_social column missing', () => {
+  beforeEach(setupSession)
+  afterEach(cleanup)
+
+  it('returns ok:true with warning when razao_social column does not exist', async () => {
+    let cnpjOnlyCallCount = 0
+    const mockDb = makeMockDb({
+      'razao_social = ? WHERE': () => { throw new Error('no such column: razao_social') },
+      'cnpj = ? WHERE': () => { cnpjOnlyCallCount++; return { success: true } },
+    })
+
+    const res = await app.request(
+      '/api/empresa-config',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'pcp_session=' + TEST_TOKEN },
+        body: JSON.stringify({ cnpj: '00.000.000/0001-00', razao_social: 'Empresa Teste' }),
+      },
+      { DB: mockDb },
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(typeof data.warning).toBe('string')
+    expect(data.warning.length).toBeGreaterThan(0)
+    expect(cnpjOnlyCallCount).toBe(1)
+  })
+})
+
+describe('GET /api/empresa-config — fallback when razao_social column missing', () => {
+  beforeEach(setupSession)
+  afterEach(cleanup)
+
+  it('returns ok:true with razao_social:null when column does not exist', async () => {
+    const mockDb = makeMockDb({
+      'razao_social FROM': () => { throw new Error('no such column: razao_social') },
+      'cnpj FROM': () => ({ id: '1', name: 'Empresa Teste', cnpj: '00.000.000/0001-00' }),
+    })
+
+    const res = await app.request(
+      '/api/empresa-config',
+      { headers: { Cookie: 'pcp_session=' + TEST_TOKEN } },
+      { DB: mockDb },
+    )
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.ok).toBe(true)
+    expect(data.empresa).toBeDefined()
+    expect(data.empresa.razao_social).toBeNull()
+    expect(data.empresa.cnpj).toBe('00.000.000/0001-00')
+  })
 })
