@@ -702,3 +702,191 @@ describe('PUT /engenharia/api/route/:id — D1 com sucesso em produção', () =>
     expect(route.status).toBe('obsolete')
   })
 })
+
+// ── POST /api/roteiros/:id/version — source-code safeguards ─────────────────
+
+describe('engenharia.ts source-code safeguards (POST /api/roteiros/:id/version)', () => {
+  const src = readFileSync(resolve(__dirname, 'engenharia.ts'), 'utf8')
+
+  it('handler POST /api/roteiros/:id/version existe no código-fonte', () => {
+    expect(src).toContain("app.post('/api/roteiros/:id/version'")
+  })
+
+  it('arquiva o roteiro anterior (is_active=0) antes de criar o novo', () => {
+    const handlerStart = src.indexOf("app.post('/api/roteiros/:id/version'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('is_active=0')
+  })
+
+  it('remove o roteiro pai da memória e adiciona o novo (D1-first)', () => {
+    const handlerStart = src.indexOf("app.post('/api/roteiros/:id/version'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('tenant.routes.splice')
+    expect(handlerBody).toContain('tenant.routes.push')
+    const splicePos = handlerBody.indexOf('tenant.routes.splice')
+    const pushPos = handlerBody.indexOf('tenant.routes.push')
+    // memória só deve ser atualizada APÓS bloco D1
+    const d1Pos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    expect(d1Pos).toBeLessThan(splicePos)
+    expect(d1Pos).toBeLessThan(pushPos)
+  })
+
+  it('inclui log [CRÍTICO] no catch do handler de nova versão', () => {
+    const handlerStart = src.indexOf("app.post('/api/roteiros/:id/version'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+})
+
+// ── POST /api/roteiros/:id/version — modo demo (sem db) ─────────────────────
+
+describe('POST /engenharia/api/roteiros/:id/version — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('cria nova versão e remove roteiro anterior de memória no modo demo', async () => {
+    const initialCount = (tenants[TEST_USER_ID].routes as any[]).length
+    expect(initialCount).toBe(1)
+
+    const res = await authedRequest(`/api/roteiros/${TEST_ROUTE_ID}/version`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Roteiro v2',
+        productId: TEST_PRODUCT_ID,
+        productCode: 'PROD-001',
+        productName: 'Produto Teste',
+        version: '2.0',
+        status: 'active',
+        steps: [{ order: 1, operation: 'Novo Passo', standardTime: 15, resourceType: 'manual', machine: '' }],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    expect(data.route).toBeDefined()
+    expect((data.route as any).version).toBe('2.0')
+    expect((data.route as any).parentId).toBe(TEST_ROUTE_ID)
+
+    const tenant = tenants[TEST_USER_ID]
+    // Count is the same: 1 removed (archived), 1 added (new version)
+    expect((tenant.routes as any[]).length).toBe(initialCount)
+    // Old route must be gone
+    const oldRoute = (tenant.routes as any[]).find((r: any) => r.id === TEST_ROUTE_ID)
+    expect(oldRoute).toBeUndefined()
+    // New route must exist
+    const newRoute = (tenant.routes as any[]).find((r: any) => r.version === '2.0')
+    expect(newRoute).toBeDefined()
+    expect(newRoute.parentId).toBe(TEST_ROUTE_ID)
+  })
+
+  it('retorna 404 quando roteiro pai não existe', async () => {
+    const res = await authedRequest('/api/roteiros/non-existent/version', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Teste', productId: TEST_PRODUCT_ID }),
+    })
+    expect(res.status).toBe(404)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+})
+
+// ── POST /api/roteiros/:id/version — D1 falhando em produção ─────────────────
+
+describe('POST /engenharia/api/roteiros/:id/version — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO altera memória quando D1 falha', async () => {
+    const initialCount = (tenants[TEST_USER_ID].routes as any[]).length
+
+    const res = await authedRequest(`/api/roteiros/${TEST_ROUTE_ID}/version`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Roteiro v2 Fail',
+        productId: TEST_PRODUCT_ID,
+        version: '2.0',
+        status: 'active',
+        steps: [],
+      }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido alterada
+    const tenant = tenants[TEST_USER_ID]
+    expect((tenant.routes as any[]).length).toBe(initialCount)
+    const original = (tenant.routes as any[]).find((r: any) => r.id === TEST_ROUTE_ID)
+    expect(original).toBeDefined()
+  })
+})
+
+// ── POST /api/roteiros/:id/version — D1 com sucesso em produção ──────────────
+
+describe('POST /engenharia/api/roteiros/:id/version — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200, arquiva o anterior e adiciona novo roteiro em memória quando D1 tem sucesso', async () => {
+    const initialCount = (tenants[TEST_USER_ID].routes as any[]).length
+
+    const res = await authedRequest(`/api/roteiros/${TEST_ROUTE_ID}/version`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Roteiro v2 OK',
+        productId: TEST_PRODUCT_ID,
+        productCode: 'PROD-001',
+        productName: 'Produto Teste',
+        version: '1.1',
+        status: 'active',
+        steps: [{ order: 1, operation: 'Passo Novo', standardTime: 20, resourceType: 'machine', machine: 'Torno-01' }],
+      }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    expect((data.route as any).parentId).toBe(TEST_ROUTE_ID)
+
+    const tenant = tenants[TEST_USER_ID]
+    // Count stays the same: old archived (removed), new added
+    expect((tenant.routes as any[]).length).toBe(initialCount)
+    const newRoute = (tenant.routes as any[]).find((r: any) => r.name === 'Roteiro v2 OK')
+    expect(newRoute).toBeDefined()
+    expect(newRoute.version).toBe('1.1')
+    // Old version no longer in active list
+    const oldRoute = (tenant.routes as any[]).find((r: any) => r.id === TEST_ROUTE_ID)
+    expect(oldRoute).toBeUndefined()
+  })
+})
+
+// ── userStore.ts source-code safeguard: hydration of roteiros ────────────────
+
+describe('userStore.ts source-code safeguard: hydration of roteiros', () => {
+  it('loadTenantFromDB carrega roteiros da tabela roteiros (não work_instructions)', () => {
+    const src = readFileSync(resolve(__dirname, '../userStore.ts'), 'utf8')
+    expect(src).toContain('FROM roteiros')
+    expect(src).toContain('FROM roteiro_operacoes')
+    expect(src).toContain('tenant.routes =')
+  })
+
+  it('hydration filtra somente roteiros ativos (is_active = 1)', () => {
+    const src = readFileSync(resolve(__dirname, '../userStore.ts'), 'utf8')
+    // Find the roteiros hydration block delimited by its try/catch comment
+    const blockStart = src.indexOf('// Load roteiros (active only)')
+    const blockEnd = src.indexOf('} catch (e) {\n    console.warn', blockStart)
+    const block = blockStart !== -1 && blockEnd > blockStart
+      ? src.slice(blockStart, blockEnd)
+      : src.slice(src.indexOf('FROM roteiros'), src.indexOf('FROM roteiros') + 600)
+    expect(block).toContain('is_active = 1')
+  })
+})

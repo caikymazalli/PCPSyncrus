@@ -1272,6 +1272,59 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar apontamentos:', (e as any).message)
       if (!tenant.productionEntries) tenant.productionEntries = []
     }
+
+    // Load roteiros (active only) + their operations
+    try {
+      const roteirosRes = await db.prepare(
+        `SELECT * FROM roteiros WHERE user_id = ?${byEmpresa} AND is_active = 1 ORDER BY created_at DESC`
+      ).bind(...bindEmpresa([userId])).all()
+      if (roteirosRes.results && roteirosRes.results.length > 0) {
+        const roteiroIds = (roteirosRes.results as any[]).map((r: any) => r.id)
+        let opsByRoteiro: Record<string, any[]> = {}
+        try {
+          const placeholders = roteiroIds.map(() => '?').join(',')
+          const opsQuery = resolvedEmpresaId
+            ? `SELECT * FROM roteiro_operacoes WHERE user_id = ? AND empresa_id = ? AND roteiro_id IN (${placeholders}) ORDER BY order_index ASC`
+            : `SELECT * FROM roteiro_operacoes WHERE user_id = ? AND roteiro_id IN (${placeholders}) ORDER BY order_index ASC`
+          const opsBindArgs = resolvedEmpresaId
+            ? [userId, resolvedEmpresaId, ...roteiroIds]
+            : [userId, ...roteiroIds]
+          const opsRes = await db.prepare(opsQuery).bind(...opsBindArgs).all()
+          for (const op of (opsRes.results || []) as any[]) {
+            if (!opsByRoteiro[op.roteiro_id]) opsByRoteiro[op.roteiro_id] = []
+            opsByRoteiro[op.roteiro_id].push({
+              order: op.order_index,
+              operation: op.operation || '',
+              standardTime: op.standard_time || 0,
+              resourceType: op.resource_type || 'manual',
+              machine: op.machine || '',
+            })
+          }
+        } catch {}
+        tenant.routes = (roteirosRes.results as any[]).map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          productId: r.product_id || '',
+          productCode: r.product_code || '',
+          productName: r.product_name || '',
+          version: r.version || '1.0',
+          status: r.status || 'active',
+          notes: r.observacoes || '',
+          steps: opsByRoteiro[r.id] || [],
+          isActive: 1,
+          parentId: r.parent_id || null,
+          createdAt: r.created_at || new Date().toISOString(),
+          updatedAt: r.updated_at || new Date().toISOString(),
+        }))
+        console.log(`[HYDRATION] ✅ ${tenant.routes.length} roteiros carregados de D1 para ${userId}`)
+      } else {
+        if (!tenant.routes) tenant.routes = []
+        console.log(`[HYDRATION] ⚠️ Nenhum roteiro ativo encontrado em D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar roteiros:', (e as any).message)
+      if (!tenant.routes) tenant.routes = []
+    }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
     // Reset the hydration timestamp so the next request retries loading from D1.
