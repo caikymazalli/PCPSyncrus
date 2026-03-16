@@ -234,6 +234,60 @@ nenhuma coluna tenha sido adicionada) e código `1` se alguma tabela falhar.
 
 ---
 
+## Migration 0035 — Coluna `razao_social` em `empresas`
+
+A migration `0035_empresa_razao_social.sql` adiciona a coluna `razao_social TEXT`
+à tabela `empresas`, permitindo que o painel Admin persista e exiba a Razão Social
+da empresa a partir do D1 (fonte de verdade).
+
+### Sintoma quando a migration não foi aplicada
+
+Ao salvar no painel Admin → Configurações, o endpoint `POST /admin/api/empresa-config`
+retorna:
+
+```json
+{ "ok": true, "warning": "Razão Social não pôde ser salva (migration pendente). CNPJ atualizado com sucesso." }
+```
+
+O campo de CNPJ é salvo normalmente, mas a Razão Social não persiste.
+
+### Aplicar via Wrangler (recomendado)
+
+```bash
+wrangler d1 migrations apply pcpsyncrus-production --remote
+```
+
+### Verificar se a coluna já existe
+
+```bash
+wrangler d1 execute pcpsyncrus-production --remote \
+  --command "PRAGMA table_info(empresas)"
+```
+
+Se `razao_social` **aparecer** na saída, a migration foi aplicada com sucesso.
+
+### Script Idempotente: `d1:ensure-razao-social`
+
+Para ambientes onde o Wrangler migration tracker não é confiável, use o script
+idempotente que verifica e adiciona a coluna apenas se ela estiver ausente:
+
+```bash
+# Banco padrão (pcpsyncrus-production), modo remoto (produção)
+npm run d1:ensure-razao-social
+
+# Banco específico por argumento
+npm run d1:ensure-razao-social -- pcpsyncrus-production
+
+# Banco local (desenvolvimento / testes)
+npm run d1:ensure-razao-social -- --local
+```
+
+O script usa `PRAGMA table_info(empresas)` para inspecionar o schema antes de
+executar o `ALTER TABLE`, garantindo que o comando não seja executado se a coluna
+já existir (evita erro `duplicate column name: razao_social`).
+
+---
+
 ## Ambientes
 
 | Ambiente | Banco | Como Aplicar |
@@ -243,4 +297,5 @@ nenhuma coluna tenha sido adicionada) e código `1` se alguma tabela falhar.
 
 > **Importante:** Sempre aplique migrations em **produção** após qualquer deploy
 > que inclua novos arquivos em `migrations/`.
-> Após o deploy, execute `npm run d1:ensure-empresa-id` como verificação final.
+> Após o deploy, execute `npm run d1:ensure-empresa-id` e `npm run d1:ensure-razao-social`
+> como verificação final.
