@@ -352,14 +352,45 @@ describe('master.ts source-code: JS fixes and security', () => {
     expect(fnBody).toContain('masterClientsData.find')
   })
 
-  it('fillMissingEmpresaNames: uses correct "id" column (not non-existent "user_id")', () => {
+  it('fillMissingEmpresaNames: resolves Razão Social via empresas table (COALESCE razao_social, name)', () => {
     const fnStart = masterSrc.indexOf('async function fillMissingEmpresaNames(')
     const fnEnd   = masterSrc.indexOf('\n// ── API: POST /api/support/tickets', fnStart)
     const fnBody  = masterSrc.slice(fnStart, fnEnd)
-    // Must use column 'id', not 'user_id' (which does not exist in registered_users)
-    expect(fnBody).toContain('SELECT id, empresa FROM registered_users WHERE id IN')
+    // Must join empresas table and prefer razao_social/name over registered_users.empresa
+    expect(fnBody).toContain('COALESCE(e.razao_social, e.name, ru.empresa)')
+    expect(fnBody).toContain('LEFT JOIN empresas e ON e.id = ru.empresa_id')
+    expect(fnBody).toContain('WHERE ru.id IN')
     expect(fnBody).not.toContain('WHERE user_id IN')
+    // Must use empresa_name alias from query result
     expect(fnBody).toContain('nameMap[u.id]')
     expect(fnBody).not.toContain('nameMap[u.user_id]')
+    // Must NOT fall back to empresa_id when name not found
+    expect(fnBody).not.toContain('t.empresa_id || \'\'')
+    expect(fnBody).not.toContain("|| t.empresa_id ||")
+  })
+
+  it('renderKanban and viewTicket: never use empresa_id as fallback for cliName display', () => {
+    // renderKanban
+    const kanbanStart = masterSrc.indexOf('function renderKanban(')
+    const kanbanEnd   = masterSrc.indexOf('\n  async function updateTicketStatus', kanbanStart)
+    const kanbanBody  = masterSrc.slice(kanbanStart, kanbanEnd)
+    expect(kanbanBody).not.toContain('t.empresa_id ||')
+    expect(kanbanBody).toContain("'—'")
+
+    // viewTicket
+    const viewStart = masterSrc.indexOf('function viewTicket(')
+    const viewEnd   = masterSrc.indexOf('\n  function switchToViewMode(', viewStart)
+    const viewBody  = masterSrc.slice(viewStart, viewEnd)
+    expect(viewBody).not.toContain('t.empresa_id ||')
+    expect(viewBody).toContain("'—'")
+  })
+
+  it('POST /api/support/tickets backend: never persists empresa_id as empresa_name', () => {
+    const handlerStart = masterSrc.indexOf('\n// ── API: POST /api/support/tickets')
+    const handlerEnd   = masterSrc.indexOf('\n// ── API: GET /api/support/tickets/', handlerStart)
+    const handlerBody  = masterSrc.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    // empresaName must NOT fall back to empresaId
+    expect(handlerBody).not.toContain('|| empresaId ||')
+    expect(handlerBody).not.toContain("|| empresaId || null")
   })
 })
