@@ -233,3 +233,103 @@ describe('admin.ts resolveGrupoId source-code safeguards', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2)
   })
 })
+
+// ── empresa-config endpoint safeguard tests ───────────────────────────────────
+
+describe('GET /api/empresa-config — authentication', () => {
+  beforeEach(setupSession)
+  afterEach(cleanup)
+
+  it('returns 401 for unauthenticated request', async () => {
+    const res = await unauthRequest('/api/empresa-config')
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 for demo session', async () => {
+    const res = await demoRequest('/api/empresa-config')
+    expect(res.status).toBe(401)
+  })
+
+  it('endpoint is defined (not 404)', async () => {
+    const res = await unauthRequest('/api/empresa-config')
+    expect(res.status).not.toBe(404)
+  })
+})
+
+describe('POST /api/empresa-config — authentication', () => {
+  beforeEach(setupSession)
+  afterEach(cleanup)
+
+  it('returns 401 for unauthenticated request', async () => {
+    const res = await unauthRequest('/api/empresa-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cnpj: '00.000.000/0001-00', razao_social: 'Empresa Teste' }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 for demo session', async () => {
+    const res = await demoRequest('/api/empresa-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cnpj: '00.000.000/0001-00', razao_social: 'Empresa Teste' }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 503 when no DB binding is present', async () => {
+    const res = await authedRequest('/api/empresa-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cnpj: '00.000.000/0001-00', razao_social: 'Empresa Teste' }),
+    })
+    // No DB available in unit tests — 503 or 404 if empresa not resolved
+    expect([404, 503]).toContain(res.status)
+    const data = await res.json() as any
+    expect(data.ok).toBe(false)
+  })
+
+  it('endpoint is defined (not 404 for unauthenticated path)', async () => {
+    const res = await unauthRequest('/api/empresa-config', { method: 'POST' })
+    expect(res.status).not.toBe(404)
+  })
+})
+
+describe('admin.ts empresa-config source-code safeguards', () => {
+  const src = readFileSync(resolve(__dirname, 'admin.ts'), 'utf-8')
+
+  it('saveConfig sends a POST fetch to /admin/api/empresa-config', () => {
+    expect(src).toContain("fetch('/admin/api/empresa-config'")
+  })
+
+  it('saveConfig reads cfgCNPJ input value', () => {
+    expect(src).toContain("getElementById('cfgCNPJ')")
+  })
+
+  it('saveConfig reads cfgRazao input value', () => {
+    expect(src).toContain("getElementById('cfgRazao')")
+  })
+
+  it('GET /api/empresa-config endpoint is declared', () => {
+    expect(src).toContain("app.get('/api/empresa-config'")
+  })
+
+  it('POST /api/empresa-config endpoint is declared', () => {
+    expect(src).toContain("app.post('/api/empresa-config'")
+  })
+
+  it('POST /api/empresa-config updates cnpj and razao_social in empresas', () => {
+    expect(src).toContain('UPDATE empresas SET cnpj = ?, razao_social = ? WHERE id = ?')
+  })
+
+  it('cfgCNPJ input has a value binding in the template', () => {
+    expect(src).toContain('id="cfgCNPJ"')
+    expect(src).toContain('value="${empresaCnpj}"')
+  })
+
+  it('cfgRazao input has a value binding in the template', () => {
+    expect(src).toContain('id="cfgRazao"')
+    expect(src).toContain('value="${empresaRazaoSocial}"')
+  })
+})

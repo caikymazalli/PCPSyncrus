@@ -163,6 +163,18 @@ app.get('/', async (c) => {
     } catch {}
   }
 
+  // Config da empresa (CNPJ e Razão Social do D1)
+  let empresaCnpj = ''
+  let empresaRazaoSocial = ''
+  if (db && !isDemo && resolvedEmpresaId) {
+    try {
+      const empRow = await db.prepare('SELECT cnpj, razao_social FROM empresas WHERE id = ?')
+        .bind(resolvedEmpresaId).first() as any
+      empresaCnpj        = empRow?.cnpj         || ''
+      empresaRazaoSocial = empRow?.razao_social  || ''
+    } catch {}
+  }
+
   const content = `
   <div class="section-header">
     <div style="font-size:14px;color:#6c757d;">Gestão da empresa e usuários</div>
@@ -535,8 +547,8 @@ app.get('/', async (c) => {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
               <div class="form-group"><label class="form-label">Nome da Empresa</label><input class="form-control" type="text" id="cfgEmpresa" value="${userEmpresa}"></div>
               <div class="form-group"><label class="form-label">E-mail Administrativo</label><input class="form-control" type="email" id="cfgEmail" value="${userEmail}"></div>
-              <div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" type="text" id="cfgCNPJ" placeholder="00.000.000/0001-00"></div>
-              <div class="form-group"><label class="form-label">Razão Social</label><input class="form-control" type="text" id="cfgRazao" placeholder="Razão Social da Empresa"></div>
+              <div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" type="text" id="cfgCNPJ" placeholder="00.000.000/0001-00" value="${empresaCnpj}"></div>
+              <div class="form-group"><label class="form-label">Razão Social</label><input class="form-control" type="text" id="cfgRazao" placeholder="Razão Social da Empresa" value="${empresaRazaoSocial}"></div>
               <div class="form-group"><label class="form-label">Turno Padrão</label>
                 <select class="form-control" id="cfgTurno">
                   <option>1 turno (8h)</option><option>2 turnos (16h)</option><option>3 turnos (24h)</option>
@@ -704,7 +716,20 @@ app.get('/', async (c) => {
   </div>
 
   <script>
-  function saveConfig() { showToast('Configurações salvas!', 'success'); }
+  async function saveConfig() {
+    const cnpj  = document.getElementById('cfgCNPJ')?.value.trim() ?? '';
+    const razao = document.getElementById('cfgRazao')?.value.trim() ?? '';
+    try {
+      const res  = await fetch('/admin/api/empresa-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cnpj, razao_social: razao })
+      });
+      const data = await res.json();
+      if (data.ok) showToast('Configurações salvas!', 'success');
+      else showToast(data.error || 'Erro ao salvar configurações.', 'error');
+    } catch { showToast('Erro de conexão ao salvar configurações.', 'error'); }
+  }
 
   // ── Logo do Grupo ────────────────────────────────────────────────────────────
   let _logoFileResized = null; // Blob or File ready to upload
@@ -1128,6 +1153,61 @@ app.post('/api/email-config', async (c) => {
   `).bind(id, session.userId, apiKey, fromEmail, fromName || 'PCP Syncrus', replyTo || null).run()
 
   return c.json({ ok: true })
+})
+
+// ── GET /api/empresa-config — carregar CNPJ e Razão Social da empresa ─────────
+
+/** Resolve o empresa_id do usuário logado a partir da sessão ou do D1. */
+async function resolveEmpresaId(session: any, db: D1Database): Promise<string | null> {
+  if (session?.empresaId) return session.empresaId
+  try {
+    const myRow = await db.prepare('SELECT empresa_id FROM registered_users WHERE id = ? AND is_demo = 0')
+      .bind(session.userId).first() as any
+    return myRow?.empresa_id || null
+  } catch {
+    return null
+  }
+}
+
+app.get('/api/empresa-config', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ ok: false, error: 'Não autorizado.' }, 401)
+  if (!db) return c.json({ ok: false, error: 'Banco indisponível.' }, 503)
+
+  const resolvedEmpresaId = await resolveEmpresaId(session, db)
+  if (!resolvedEmpresaId) return c.json({ ok: true, empresa: {} })
+
+  try {
+    const row = await db.prepare('SELECT id, name, cnpj, razao_social FROM empresas WHERE id = ?')
+      .bind(resolvedEmpresaId).first() as any
+    return c.json({ ok: true, empresa: row || {} })
+  } catch (e: any) {
+    return c.json({ ok: false, error: e?.message || 'Erro ao carregar dados da empresa.' }, 500)
+  }
+})
+
+// ── POST /api/empresa-config — salvar CNPJ e Razão Social da empresa ──────────
+app.post('/api/empresa-config', async (c) => {
+  const session = getCtxSession(c)
+  const db      = c.env?.DB || null
+  if (!session || session.isDemo) return c.json({ ok: false, error: 'Não autorizado.' }, 401)
+  if (!db) return c.json({ ok: false, error: 'Banco indisponível.' }, 503)
+
+  const body = await c.req.json() as any
+  const cnpj        = (body.cnpj        || '').trim()
+  const razaoSocial = (body.razao_social || '').trim()
+
+  const resolvedEmpresaId = await resolveEmpresaId(session, db)
+  if (!resolvedEmpresaId) return c.json({ ok: false, error: 'Empresa não encontrada para este usuário.' }, 404)
+
+  try {
+    await db.prepare('UPDATE empresas SET cnpj = ?, razao_social = ? WHERE id = ?')
+      .bind(cnpj, razaoSocial, resolvedEmpresaId).run()
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ ok: false, error: e?.message || 'Erro ao salvar dados da empresa.' }, 500)
+  }
 })
 
 // ── POST /api/email-test — testar envio de e-mail ─────────────────────────────
