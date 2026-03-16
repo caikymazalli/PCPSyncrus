@@ -543,3 +543,162 @@ describe('POST /engenharia/api/bom/create — D1 com sucesso em produção', () 
     expect(savedBom).toBeDefined()
   })
 })
+
+// ── PUT /api/route/:id — Source-code safeguards ───────────────────────────────
+
+describe('engenharia.ts source-code safeguards (PUT /api/route/:id)', () => {
+  const src = readFileSync(resolve(__dirname, 'engenharia.ts'), 'utf8')
+
+  it('handler PUT /api/route/:id existe no código-fonte', () => {
+    expect(src).toContain("app.put('/api/route/:id'")
+  })
+
+  it('a atualização de memória (tenant.routes[idx] = updated) ocorre APÓS o bloco D1 no PUT', () => {
+    const handlerStart = src.indexOf("app.put('/api/route/:id'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+
+    const d1BlockPos = handlerBody.indexOf("userId !== 'demo-tenant'")
+    const memUpdatePos = handlerBody.indexOf('tenant.routes[idx] = updated')
+    expect(d1BlockPos).toBeGreaterThan(-1)
+    expect(memUpdatePos).toBeGreaterThan(-1)
+    expect(d1BlockPos).toBeLessThan(memUpdatePos)
+  })
+
+  it('handler PUT /api/route/:id inclui log [CRÍTICO] no catch D1', () => {
+    const handlerStart = src.indexOf("app.put('/api/route/:id'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).toContain('[CRÍTICO]')
+  })
+
+  it('handler PUT /api/route/:id não contém catch{} silencioso em writes D1', () => {
+    const handlerStart = src.indexOf("app.put('/api/route/:id'")
+    const handlerEnd = src.indexOf('\napp.', handlerStart + 1)
+    const handlerBody = src.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : undefined)
+    expect(handlerBody).not.toMatch(/catch\s*\{\s*\}/)
+  })
+})
+
+// ── PUT /api/route/:id — modo demo (sem db) ───────────────────────────────────
+
+describe('PUT /engenharia/api/route/:id — modo demo (sem db)', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza roteiro em memória no modo demo', async () => {
+    const res = await authedRequest(`/api/route/${TEST_ROUTE_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Roteiro Atualizado',
+        productId: TEST_PRODUCT_ID,
+        productCode: 'PROD-001',
+        productName: 'Produto Teste',
+        version: '1.1',
+        status: 'active',
+        steps: [{ order: 1, operation: 'Corte', standardTime: 15, resourceType: 'machine', machine: 'CNC-01' }],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+    expect(data.route).toBeDefined()
+
+    const tenant = tenants[TEST_USER_ID]
+    const updated = (tenant.routes as any[]).find((r: any) => r.id === TEST_ROUTE_ID)
+    expect(updated).toBeDefined()
+    expect(updated.name).toBe('Roteiro Atualizado')
+    expect(updated.version).toBe('1.1')
+  })
+
+  it('retorna 404 quando roteiro não existe', async () => {
+    const res = await authedRequest('/api/route/non-existent-id', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Teste', productId: TEST_PRODUCT_ID }),
+    })
+    expect(res.status).toBe(404)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+
+  it('retorna erro quando nome não é fornecido', async () => {
+    const res = await authedRequest(`/api/route/${TEST_ROUTE_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: TEST_PRODUCT_ID }),
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+  })
+})
+
+// ── PUT /api/route/:id — D1 falhando em produção ─────────────────────────────
+
+describe('PUT /engenharia/api/route/:id — D1 falhando em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna erro 500 e NÃO atualiza memória quando D1 falha', async () => {
+    const originalName = (tenants[TEST_USER_ID].routes as any[])[0]?.name
+
+    const res = await authedRequest(`/api/route/${TEST_ROUTE_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Nome Novo',
+        productId: TEST_PRODUCT_ID,
+        version: '1.1',
+        status: 'active',
+        steps: [],
+      }),
+    }, { DB: failingDB })
+
+    expect(res.status).toBe(500)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(false)
+
+    // Memória NÃO deve ter sido alterada
+    const tenant = tenants[TEST_USER_ID]
+    const route = (tenant.routes as any[]).find((r: any) => r.id === TEST_ROUTE_ID)
+    expect(route).toBeDefined()
+    expect(route.name).toBe(originalName)
+  })
+})
+
+// ── PUT /api/route/:id — D1 com sucesso em produção ──────────────────────────
+
+describe('PUT /engenharia/api/route/:id — D1 com sucesso em produção', () => {
+  beforeEach(() => { setupSession(); setupTenant(true) })
+  afterEach(cleanup)
+
+  it('retorna 200 e atualiza memória quando D1 tem sucesso', async () => {
+    const res = await authedRequest(`/api/route/${TEST_ROUTE_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Roteiro D1 OK',
+        productId: TEST_PRODUCT_ID,
+        productCode: 'PROD-001',
+        productName: 'Produto Teste',
+        version: '2.0',
+        status: 'obsolete',
+        steps: [{ order: 1, operation: 'Fresagem', standardTime: 30, resourceType: 'machine', machine: '' }],
+      }),
+    }, { DB: successDB })
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as ApiResponse
+    expect(data.ok).toBe(true)
+
+    const tenant = tenants[TEST_USER_ID]
+    const route = (tenant.routes as any[]).find((r: any) => r.id === TEST_ROUTE_ID)
+    expect(route).toBeDefined()
+    expect(route.name).toBe('Roteiro D1 OK')
+    expect(route.version).toBe('2.0')
+    expect(route.status).toBe('obsolete')
+  })
+})

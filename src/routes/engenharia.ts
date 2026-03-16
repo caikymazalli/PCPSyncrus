@@ -166,9 +166,13 @@ app.get('/', (c) => {
               <div style="font-size:15px;font-weight:700;color:#1B4F72;">${r.name}</div>
               <div style="font-size:12px;color:#9ca3af;margin-top:2px;"><i class="fas fa-box" style="margin-right:4px;"></i>${r.productName || '—'} ${r.productCode ? '(' + r.productCode + ')' : ''}</div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+              <span class="chip" style="background:#e8f4fd;color:#1B4F72;font-size:11px;">v${r.version || '1.0'}</span>
+              <span class="chip" style="font-size:11px;background:${r.status === 'active' ? '#d1fae5' : r.status === 'draft' ? '#fef3c7' : '#f1f5f9'};color:${r.status === 'active' ? '#065f46' : r.status === 'draft' ? '#92400e' : '#6c757d'};">${r.status === 'active' ? '✅ Ativo' : r.status === 'draft' ? '📝 Rascunho' : '⚠️ Obsoleto'}</span>
               <span style="font-size:12px;color:#6c757d;">${(r.steps||[]).length} operação(ões)</span>
               <span style="font-size:12px;color:#27AE60;font-weight:700;"><i class="fas fa-clock" style="margin-right:4px;"></i>${(r.steps||[]).reduce((acc: number, s: any) => acc + (s.standardTime||0), 0)} min total</span>
+              <button class="btn btn-secondary btn-sm" onclick="usarComoModelo('${r.id}')" title="Usar como modelo"><i class="fas fa-copy"></i> Usar como Modelo</button>
+              <button class="btn btn-secondary btn-sm" onclick="openEditarRoteiro('${r.id}')" title="Editar roteiro"><i class="fas fa-edit"></i> Editar</button>
               <button class="btn btn-danger btn-sm" onclick="deleteRoteiro('${r.id}')" title="Excluir roteiro"><i class="fas fa-trash"></i></button>
             </div>
           </div>
@@ -236,10 +240,11 @@ app.get('/', (c) => {
   <div class="modal-overlay" id="novoRoteiroModal">
     <div class="modal" style="max-width:700px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
-        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-route" style="margin-right:8px;color:#27AE60;"></i>Novo Roteiro de Fabricação</h3>
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-route" style="margin-right:8px;color:#27AE60;"></i><span id="roteiroModalTitle">Novo Roteiro de Fabricação</span></h3>
         <button onclick="closeModal('novoRoteiroModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:20px 24px;max-height:70vh;overflow-y:auto;">
+        <input type="hidden" id="rot_edit_id" value="">
 
         <!-- Dados gerais -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
@@ -300,12 +305,42 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Modal: Escolha de Versão (edição) -->
+  <div class="modal-overlay" id="versaoRoteiroModal">
+    <div class="modal" style="max-width:440px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-code-branch" style="margin-right:8px;color:#27AE60;"></i>Salvar Alterações</h3>
+        <button onclick="closeModal('versaoRoteiroModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="font-size:13px;color:#374151;margin-bottom:20px;">Como deseja salvar as alterações deste roteiro?</p>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <button onclick="confirmarVersaoRoteiro('keep')" class="btn btn-secondary" style="text-align:left;padding:12px 16px;">
+            <div style="font-size:13px;font-weight:700;color:#374151;">Manter versão <span id="versaoAtualLabel">1.0</span></div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Sobrescreve o roteiro atual sem criar histórico</div>
+          </button>
+          <button onclick="confirmarVersaoRoteiro('new')" class="btn btn-primary" style="text-align:left;padding:12px 16px;">
+            <div style="font-size:13px;font-weight:700;">Criar nova versão <span id="versaoNovaLabel">1.1</span></div>
+            <div style="font-size:11px;opacity:0.8;margin-top:2px;">Cria novo registro mantendo histórico do anterior (arquiva o atual)</div>
+          </button>
+        </div>
+      </div>
+      <div style="padding:12px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('versaoRoteiroModal')" class="btn btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
   const allBOM = ${JSON.stringify(bomItems)};
   const allProducts = ${JSON.stringify(products)};
+  const allRoutes = ${JSON.stringify(routes)};
 
   // ── Roteiro: abrir modal ──────────────────────────────────────────────────────
   function openNovoRoteiro() {
+    _roteiroEditId = '';
+    document.getElementById('rot_edit_id').value = '';
+    document.getElementById('roteiroModalTitle').textContent = 'Novo Roteiro de Fabricação';
     // Limpar campos
     document.getElementById('rot_nome').value = '';
     document.getElementById('rot_produto').value = '';
@@ -320,20 +355,23 @@ app.get('/', (c) => {
   }
 
   let _roteiroStepCount = 0;
+  let _roteiroEditId = '';
+  let _pendingRoteiroSave = null;
 
   function addRoteiroStep() {
     _roteiroStepCount++;
     const idx = _roteiroStepCount;
     document.getElementById('roteiroStepsEmpty').style.display = 'none';
-    document.getElementById('rotStepCount').textContent = idx + ' operação(ões)';
     const container = document.getElementById('roteiroStepsContainer');
     const div = document.createElement('div');
     div.id = 'step_' + idx;
     div.style.cssText = 'background:#f8f9fa;border-radius:8px;padding:12px 14px;border:1px solid #e9ecef;';
     div.innerHTML = \`
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="width:24px;height:24px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">\${idx}</div>
-        <span style="font-size:13px;font-weight:700;color:#374151;flex:1;">Operação \${idx}</span>
+        <div data-step-badge style="width:24px;height:24px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">\${idx}</div>
+        <span data-step-label style="font-size:13px;font-weight:700;color:#374151;flex:1;">Operação \${idx}</span>
+        <button type="button" onclick="moveStepUp(\${idx})" title="Mover para cima" style="background:none;border:1px solid #d1d5db;border-radius:4px;padding:2px 7px;cursor:pointer;color:#6c757d;font-size:12px;line-height:1.4;">↑</button>
+        <button type="button" onclick="moveStepDown(\${idx})" title="Mover para baixo" style="background:none;border:1px solid #d1d5db;border-radius:4px;padding:2px 7px;cursor:pointer;color:#6c757d;font-size:12px;line-height:1.4;">↓</button>
         <button type="button" onclick="removeStep(\${idx})" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:14px;" title="Remover operação"><i class="fas fa-times"></i></button>
       </div>
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
@@ -360,14 +398,112 @@ app.get('/', (c) => {
       </div>
     \`;
     container.appendChild(div);
+    refreshStepBadges();
   }
 
   function removeStep(idx) {
     const el = document.getElementById('step_' + idx);
     if (el) el.remove();
-    const remaining = document.querySelectorAll('[id^="step_"]').length;
-    document.getElementById('rotStepCount').textContent = remaining + ' operação(ões)';
+    refreshStepBadges();
+    const remaining = document.querySelectorAll('#roteiroStepsContainer > [id^="step_"]').length;
     if (remaining === 0) document.getElementById('roteiroStepsEmpty').style.display = 'block';
+  }
+
+  function moveStepUp(idx) {
+    const el = document.getElementById('step_' + idx);
+    if (!el || !el.previousElementSibling) return;
+    el.parentNode.insertBefore(el, el.previousElementSibling);
+    refreshStepBadges();
+  }
+
+  function moveStepDown(idx) {
+    const el = document.getElementById('step_' + idx);
+    if (!el || !el.nextElementSibling) return;
+    el.parentNode.insertBefore(el.nextElementSibling, el);
+    refreshStepBadges();
+  }
+
+  function refreshStepBadges() {
+    const steps = document.querySelectorAll('#roteiroStepsContainer > [id^="step_"]');
+    steps.forEach((stepEl, i) => {
+      const badge = stepEl.querySelector('[data-step-badge]');
+      if (badge) badge.textContent = String(i + 1);
+      const label = stepEl.querySelector('[data-step-label]');
+      if (label) label.textContent = 'Operação ' + (i + 1);
+    });
+    document.getElementById('rotStepCount').textContent = steps.length + ' operação(ões)';
+  }
+
+  function addRoteiroStepWithData(stepData) {
+    addRoteiroStep();
+    const idx = _roteiroStepCount;
+    const opEl = document.getElementById('step_op_' + idx);
+    const timeEl = document.getElementById('step_time_' + idx);
+    const resEl = document.getElementById('step_res_' + idx);
+    const maqEl = document.getElementById('step_maq_' + idx);
+    if (opEl) opEl.value = stepData.operation || stepData.name || '';
+    if (timeEl) timeEl.value = stepData.standardTime != null ? stepData.standardTime : 0;
+    if (resEl) resEl.value = stepData.resourceType || 'manual';
+    if (maqEl) maqEl.value = stepData.machine || '';
+  }
+
+  function _collectSteps() {
+    const stepEls = Array.from(document.querySelectorAll('#roteiroStepsContainer > [id^="step_"]'));
+    const steps = [];
+    for (let i = 0; i < stepEls.length; i++) {
+      const stepEl = stepEls[i];
+      const idxStr = stepEl.id.replace('step_', '');
+      const op    = document.getElementById('step_op_' + idxStr)?.value?.trim() || '';
+      const time  = parseFloat(document.getElementById('step_time_' + idxStr)?.value || '0') || 0;
+      const res   = document.getElementById('step_res_' + idxStr)?.value || 'manual';
+      const maq   = document.getElementById('step_maq_' + idxStr)?.value?.trim() || '';
+      if (!op) { showToast('Preencha o nome de todas as operações!', 'error'); return null; }
+      steps.push({ order: i + 1, operation: op, standardTime: time, resourceType: res, machine: maq });
+    }
+    return steps;
+  }
+
+  function _openRoteiroWith(route, title, editId) {
+    _roteiroEditId = editId || '';
+    document.getElementById('rot_edit_id').value = _roteiroEditId;
+    document.getElementById('roteiroModalTitle').textContent = title;
+    document.getElementById('rot_nome').value = route.name || '';
+    const sel = document.getElementById('rot_produto');
+    if (sel) sel.value = route.productId || '';
+    document.getElementById('rot_versao').value = route.version || '1.0';
+    const statusEl = document.getElementById('rot_status');
+    if (statusEl) statusEl.value = route.status || 'active';
+    document.getElementById('rot_obs').value = route.notes || '';
+    document.getElementById('roteiroStepsContainer').innerHTML = '';
+    _roteiroStepCount = 0;
+    (route.steps || []).forEach(s => addRoteiroStepWithData(s));
+    const hasSteps = _roteiroStepCount > 0;
+    document.getElementById('roteiroStepsEmpty').style.display = hasSteps ? 'none' : 'block';
+    refreshStepBadges();
+    openModal('novoRoteiroModal');
+  }
+
+  function usarComoModelo(routeId) {
+    const route = allRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    _openRoteiroWith(
+      { ...route, name: route.name + ' (Cópia)', productId: '', version: '1.0', status: 'active' },
+      'Novo Roteiro (baseado em modelo)',
+      ''
+    );
+  }
+
+  function openEditarRoteiro(routeId) {
+    const route = allRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    _openRoteiroWith(route, 'Editar Roteiro de Fabricação', routeId);
+  }
+
+  function incrementVersion(v) {
+    const parts = String(v || '1.0').split('.');
+    const major = parseInt(parts[0] || '1', 10);
+    const minor = parseInt(parts[1] || '0', 10);
+    return major + '.' + (minor + 1);
   }
 
   async function salvarRoteiro() {
@@ -384,26 +520,56 @@ app.get('/', (c) => {
     if (!nome)   { showToast('Informe o nome do roteiro!', 'error'); return; }
     if (!prodId) { showToast('Selecione o produto!', 'error'); return; }
 
-    // Coletar passos
-    const stepEls = document.querySelectorAll('[id^="step_op_"]');
-    const steps = [];
-    let valid = true;
-    stepEls.forEach((el, i) => {
-      const idxStr = el.id.replace('step_op_', '');
-      const op    = el.value?.trim() || '';
-      const time  = parseFloat(document.getElementById('step_time_' + idxStr)?.value || '0') || 0;
-      const res   = document.getElementById('step_res_' + idxStr)?.value || 'manual';
-      const maq   = document.getElementById('step_maq_' + idxStr)?.value?.trim() || '';
-      if (!op) { showToast('Preencha o nome de todas as operações!', 'error'); valid = false; return; }
-      steps.push({ order: i + 1, operation: op, standardTime: time, resourceType: res, machine: maq });
-    });
-    if (!valid) return;
+    const steps = _collectSteps();
+    if (!steps) return;
 
+    const payload = { name: nome, productId: prodId, productCode, productName, version: versao, status, notes: obs, steps };
+    const editId = document.getElementById('rot_edit_id')?.value || '';
+
+    if (editId) {
+      const currentRoute = allRoutes.find(r => r.id === editId);
+      const curVersion = currentRoute?.version || versao;
+      document.getElementById('versaoAtualLabel').textContent = curVersion;
+      document.getElementById('versaoNovaLabel').textContent = incrementVersion(curVersion);
+      _pendingRoteiroSave = { editId, payload, currentRoute };
+      openModal('versaoRoteiroModal');
+    } else {
+      await _execSalvarRoteiro(payload);
+    }
+  }
+
+  async function confirmarVersaoRoteiro(choice) {
+    closeModal('versaoRoteiroModal');
+    if (!_pendingRoteiroSave) return;
+    const { editId, payload, currentRoute } = _pendingRoteiroSave;
+    _pendingRoteiroSave = null;
+
+    if (choice === 'keep') {
+      await _execUpdateRoteiro(editId, payload);
+    } else {
+      const newVersion = incrementVersion(currentRoute?.version || '1.0');
+      if (currentRoute) {
+        try {
+          const archiveRes = await fetch('/engenharia/api/route/' + editId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...currentRoute, status: 'obsolete' })
+          });
+          if (!archiveRes.ok) showToast('⚠️ Não foi possível arquivar a versão anterior, mas a nova versão será criada.', 'info');
+        } catch(e) {
+          showToast('⚠️ Não foi possível arquivar a versão anterior, mas a nova versão será criada.', 'info');
+        }
+      }
+      await _execSalvarRoteiro({ ...payload, version: newVersion });
+    }
+  }
+
+  async function _execSalvarRoteiro(payload) {
     try {
       const res = await fetch('/engenharia/api/route/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nome, productId: prodId, productCode, productName, version: versao, status, notes: obs, steps })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.ok) {
@@ -412,6 +578,24 @@ app.get('/', (c) => {
         setTimeout(() => location.reload(), 800);
       } else {
         showToast(data.error || 'Erro ao salvar roteiro', 'error');
+      }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  async function _execUpdateRoteiro(id, payload) {
+    try {
+      const res = await fetch('/engenharia/api/route/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Roteiro atualizado com sucesso!');
+        closeModal('novoRoteiroModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Erro ao atualizar roteiro', 'error');
       }
     } catch(e) { showToast('Erro de conexão', 'error'); }
   }
@@ -652,6 +836,58 @@ app.delete('/api/route/:id', async (c) => {
   markTenantModified(userId)
 
   return ok(c)
+})
+
+app.put('/api/route/:id', async (c) => {
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.productId)
+    return err(c, 'Nome e produto são obrigatórios')
+
+  const idx = (tenant.routes || []).findIndex((r: any) => r.id === id)
+  if (idx === -1) return err(c, 'Roteiro não encontrado', 404)
+
+  const now = new Date().toISOString()
+  const existing = tenant.routes[idx]
+  const updated = {
+    ...existing,
+    name:        body.name,
+    productId:   body.productId,
+    productCode: body.productCode ?? existing.productCode,
+    productName: body.productName ?? existing.productName,
+    version:     body.version     ?? existing.version,
+    status:      body.status      ?? existing.status,
+    notes:       body.notes       !== undefined ? body.notes : existing.notes,
+    steps:       Array.isArray(body.steps) ? body.steps : existing.steps,
+    updatedAt:   now,
+  }
+
+  // D1-first: update D1 before updating memory (production only)
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const totalTime = updated.steps.reduce((acc: number, s: any) => acc + (s.standardTime || 0), 0)
+      console.log(`[ENGENHARIA][ROTEIROS] Atualizando roteiro ${id} para ${userId}`)
+      await db.prepare(`
+        UPDATE work_instructions SET title=?, code=?, version=?, status=?, product_id=?, estimated_time=?, steps=?, updated_at=? WHERE id=? AND user_id=?
+      `).bind(
+        updated.name, updated.productCode, updated.version, updated.status,
+        updated.productId, totalTime, JSON.stringify(updated.steps), now, id, userId
+      ).run()
+      console.log(`[ENGENHARIA][ROTEIROS] Roteiro ${id} atualizado em D1 com sucesso`)
+    } catch (e) {
+      console.error(`[ENGENHARIA][ROTEIROS][CRÍTICO] Falha ao atualizar roteiro ${id} em D1:`, e)
+      return err(c, 'Erro ao atualizar roteiro no banco de dados', 500)
+    }
+  }
+
+  // Update memory only after D1 success (or in demo/no-db mode)
+  tenant.routes[idx] = updated
+  markTenantModified(userId)
+
+  return ok(c, { route: updated })
 })
 
 app.get('/api/routes', (c) => ok(c, { routes: getCtxTenant(c).routes || [] }))
