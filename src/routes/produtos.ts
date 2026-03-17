@@ -1480,6 +1480,16 @@ app.post('/api/create', async (c) => {
     if (!hasSupplier4) {
       try { await db.prepare('ALTER TABLE products ADD COLUMN supplier_id_4 TEXT').run() } catch (e: any) { if (!e.message?.includes('duplicate column')) throw e }
     }
+    // Garantir coluna notes (ausente no schema original)
+    const hasNotes = columns.includes('notes')
+    if (!hasNotes) {
+      try {
+        await db.prepare("ALTER TABLE products ADD COLUMN notes TEXT DEFAULT ''").run()
+        console.log('[PRODUTOS] ✅ Coluna notes adicionada à tabela products')
+      } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) console.warn('[PRODUTOS] Aviso ao adicionar notes:', e.message)
+      }
+    }
     console.log('[PRODUTOS] ✅ Schema de products verificado')
   } catch (migError: any) {
     console.error('[PRODUTOS] Erro na migração de schema:', migError.message)
@@ -1529,7 +1539,37 @@ app.put('/api/:id', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body) return err(c, 'Dados inválidos')
 
-  const idx = tenant.products.findIndex((p: any) => p.id === id)
+  let idx = tenant.products.findIndex((p: any) => p.id === id)
+  // Fallback: produto pode estar em D1 mas não carregado na memória deste isolate
+  if (idx === -1 && db && userId !== 'demo-tenant') {
+    try {
+      const dbProd = await db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?')
+        .bind(id, userId).first() as any
+      if (dbProd) {
+        const loaded = {
+          id: dbProd.id, name: dbProd.name, code: dbProd.code, unit: dbProd.unit || 'un',
+          type: dbProd.type || 'external', stockMin: dbProd.stock_min || 0,
+          stockMax: dbProd.stock_max || 0, stockCurrent: dbProd.stock_current || 0,
+          stockStatus: dbProd.stock_status || 'normal', price: dbProd.price || 0,
+          notes: dbProd.notes || '', description: dbProd.description || '',
+          serialControlled: dbProd.serial_controlled === 1,
+          controlType: dbProd.control_type || '',
+          supplierId: dbProd.supplier_id_1 || dbProd.supplier_id || '',
+          supplier_id_1: dbProd.supplier_id_1 || dbProd.supplier_id || '',
+          supplier_id_2: dbProd.supplier_id_2 || '',
+          supplier_id_3: dbProd.supplier_id_3 || '',
+          supplier_id_4: dbProd.supplier_id_4 || '',
+          criticalPercentage: dbProd.critical_percentage || 50,
+          createdAt: dbProd.created_at || new Date().toISOString(),
+        }
+        tenant.products.push(loaded)
+        idx = tenant.products.length - 1
+        console.log(`[PRODUTOS][PUT] Produto ${id} recuperado do D1 e adicionado à memória`)
+      }
+    } catch (dbLookupErr: any) {
+      console.warn(`[PRODUTOS][PUT] Erro ao buscar produto ${id} no D1:`, dbLookupErr.message)
+    }
+  }
   if (idx === -1) return err(c, 'Produto não encontrado', 404)
 
   console.log(`[PRODUTOS][PUT /${id}] ATUALIZANDO`, { userId, hasDB: !!db })
@@ -1775,25 +1815,27 @@ app.post('/api/import', async (c) => {
 
     if (db && userId !== 'demo-tenant') {
       // Persistir em D1 primeiro; só adiciona à memória se D1 tiver sucesso
-      // dbInsert retorna false silenciosamente em caso de erro — verificar retorno
-      const insertOk = await dbInsert(db, 'products', {
+      // dbInsertWithRetry: retorna {success, attempts, error} — falhas são tratadas com skip
+      const importInsertResult = await dbInsertWithRetry(db, 'products', {
         id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
         stock_min: stockMin, stock_max: stockMax, stock_current: stockCurrent,
         stock_status: stockStatus,
         serial_controlled: serialControlled ? 1 : 0,
         control_type: controlType,
         critical_percentage: criticalPct,
-        price, notes: notes || description,
+        price,
+        description: description || notes,
+        notes: notes || description,
       })
-      if (!insertOk) {
-        console.error(`[IMPORT] [CRÍTICO] dbInsert retornou false para produto ${codigo} — não persistido em D1`)
+      if (!importInsertResult.success) {
+        console.error(`[IMPORT] [CRÍTICO] dbInsertWithRetry falhou para ${codigo} após ${importInsertResult.attempts} tentativas: ${importInsertResult.error}`)
         report.push({
           rowNumber,
           code: codigo,
           name: nome,
           action: 'SKIPPED',
           errorCode: 'D1_ERROR',
-          message: 'Erro ao persistir produto no banco de dados. Verifique os logs do Worker.',
+          message: `Erro ao persistir produto no banco de dados: ${importInsertResult.error}`,
         })
         skipped++
         continue
