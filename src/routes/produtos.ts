@@ -1001,8 +1001,8 @@ app.get('/', (c) => {
   }
 
   // ── Import via Planilha ───────────────────────────────────────────────────
-  function escHtml(s: string | null | undefined): string {
-  return String(s ?? '')
+  function escHtml(s) {
+    return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
