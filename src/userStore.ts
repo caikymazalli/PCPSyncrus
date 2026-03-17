@@ -1324,6 +1324,44 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     } catch (e) {
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar roteiros:', (e as any).message)
       if (!tenant.routes) tenant.routes = []
+
+    // Load non_conformances
+    try {
+      const ncRes = await db.prepare(
+        `SELECT * FROM non_conformances WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`
+      ).bind(...bindEmpresa([userId])).all()
+      if (ncRes.results && ncRes.results.length > 0) {
+        const existingIds = new Set((tenant.nonConformances || []).map((n: any) => n.id))
+        const fromDb = (ncRes.results as any[])
+          .filter(r => !existingIds.has(r.id))
+          .map(r => ({
+            id: r.id,
+            code: r.code || r.id,
+            title: r.title || r.description || '',
+            type: r.type || 'processo',
+            severity: r.severity || 'medium',
+            status: r.status || 'open',
+            product: r.product || '',
+            description: r.description || '',
+            responsible: r.responsible || '',
+            dueDate: r.due_date || '',
+            openedAt: r.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+            orderCode: r.order_code || r.order_id || '—',
+            stepName: r.step_name || r.step || '—',
+            quantityRejected: r.quantity_rejected || 0,
+            operator: r.operator || r.responsible || '—',
+            images: [],
+            createdAt: r.created_at || new Date().toISOString(),
+          }))
+        tenant.nonConformances = [...(tenant.nonConformances || []), ...fromDb]
+        console.log(`[HYDRATION] ✅ ${tenant.nonConformances.length} não conformidades carregadas de D1 para ${userId}`)
+      } else {
+        if (!tenant.nonConformances) tenant.nonConformances = []
+        console.log(`[HYDRATION] ⚠️ Nenhuma não conformidade encontrada em D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar non_conformances:', (e as any).message)
+      if (!tenant.nonConformances) tenant.nonConformances = []
     }
   } catch (e) {
     console.error(`[HYDRATION][ERROR] loadTenantFromDB failed for ${userId}:`, e)
