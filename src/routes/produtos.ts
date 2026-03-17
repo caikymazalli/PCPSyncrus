@@ -1775,36 +1775,39 @@ app.post('/api/import', async (c) => {
 
     if (db && userId !== 'demo-tenant') {
       // Persistir em D1 primeiro; só adiciona à memória se D1 tiver sucesso
-      try {
-        await dbInsert(db, 'products', {
-          id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
-          stock_min: stockMin, stock_max: stockMax, stock_current: stockCurrent,
-          critical_percentage: criticalPct,
-          price, notes: notes || description,
-        })
-        ;(tenant.products as any[]).push(product)
-        created++
-        report.push({
-          rowNumber,
-          code: codigo,
-          name: nome,
-          action: 'IMPORTED',
-          errorCode: '',
-          message: '',
-        })
-      } catch (e: any) {
-        console.error(`[IMPORT] [CRÍTICO] Erro ao criar produto ${codigo} em D1:`, e)
+      // dbInsert retorna false silenciosamente em caso de erro — verificar retorno
+      const insertOk = await dbInsert(db, 'products', {
+        id: productId, user_id: userId, empresa_id: empresaId, name: nome, code: codigo, unit, type,
+        stock_min: stockMin, stock_max: stockMax, stock_current: stockCurrent,
+        stock_status: stockStatus,
+        serial_controlled: serialControlled ? 1 : 0,
+        control_type: controlType,
+        critical_percentage: criticalPct,
+        price, notes: notes || description,
+      })
+      if (!insertOk) {
+        console.error(`[IMPORT] [CRÍTICO] dbInsert retornou false para produto ${codigo} — não persistido em D1`)
         report.push({
           rowNumber,
           code: codigo,
           name: nome,
           action: 'SKIPPED',
           errorCode: 'D1_ERROR',
-          message: 'Erro ao persistir produto no banco de dados.',
+          message: 'Erro ao persistir produto no banco de dados. Verifique os logs do Worker.',
         })
         skipped++
         continue
       }
+      ;(tenant.products as any[]).push(product)
+      created++
+      report.push({
+        rowNumber,
+        code: codigo,
+        name: nome,
+        action: 'IMPORTED',
+        errorCode: '',
+        message: '',
+      })
     } else {
       // Demo: apenas memória
       ;(tenant.products as any[]).push(product)
@@ -1846,6 +1849,7 @@ app.post('/api/import', async (c) => {
     }
   }
 
+  if (created > 0) markTenantModified(userId)
   return ok(c, { created, skipped, total: rows.length, pendingSerial, report })
 })
 
