@@ -1008,8 +1008,8 @@ app.get('/', (c) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-    .replace(/\n/g, '&#10;')   
-    .replace(/\r/g, '&#13;');  
+    replace(/\\n/g, '&#10;')   
+    .replace(/\\r/g, '&#13;');
 }
 
   var _importRows = [];
@@ -1038,7 +1038,7 @@ app.get('/', (c) => {
   function importDownloadTemplate() {
     var hdr = 'code,name,unit,stockMin,stockMax,stockCurrent,criticalPercentage,serial,type,price,notes';
     var ex  = 'PROD-001,Parafuso M6,un,100,500,200,50,none,external,0.50,Parafuso aço inox';
-    var blob = new Blob([hdr+'\n'+ex+'\n'],{type:'text/csv;charset=utf-8;'});
+    var blob = new Blob([hdr+'\\n'+ex+'\\n'],{type:'text/csv;charset=utf-8;'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href=url; a.download='modelo_produtos.csv'; a.click();
   }
@@ -1053,7 +1053,7 @@ app.get('/', (c) => {
   }
 
   function importParseCSV(text) {
-    var lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(function(l){ return l.trim(); });
+   var lines = text.replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n').split('\\n').filter(function(l){ return l.trim(); });
     if (lines.length < 2) return [];
     var delim = importDetectDelimiter(lines[0]);
     function splitLine(line) {
@@ -1308,7 +1308,7 @@ app.get('/', (c) => {
     var rows = _importLastReport.map(function(r) {
       return [r.rowNumber, csvEsc(r.code), csvEsc(r.name), r.action, r.errorCode, csvEsc(r.message)].join(',');
     });
-    var blob = new Blob([hdr+'\n'+rows.join('\n')+'\n'], {type:'text/csv;charset=utf-8;'});
+    var blob = new Blob([hdr+'\\n'+rows.join('\\n')+'\\n'], {type:'text/csv;charset=utf-8;'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href=url; a.download='relatorio_importacao.csv'; a.click();
   }
