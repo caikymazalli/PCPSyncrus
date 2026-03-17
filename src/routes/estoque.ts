@@ -1149,11 +1149,19 @@ app.get('/', (c) => {
         </div>
         <div class="form-group">
           <label class="form-label">Item *</label>
-          <select class="form-control" id="baixa_item">
+          <select class="form-control" id="baixa_item" onchange="updateBaixaSerialField()">
             <option value="">Selecionar item...</option>
-            ${stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
-            ${products.map((p: any) => `<option value="${p.code}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
+            ${stockItems.map((s: any) => `<option value="${s.code}" data-serial="${s.serialControlled ? '1' : '0'}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
+            ${products.map((p: any) => `<option value="${p.code}" data-serial="${p.serialControlled ? '1' : '0'}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
           </select>
+        </div>
+        <!-- Campo de Número de Série — aparece apenas para itens com controle serial -->
+        <div class="form-group" id="baixa_serial_group" style="display:none;">
+          <label class="form-label"><i class="fas fa-barcode" style="margin-right:5px;color:#7c3aed;"></i>Número de Série *</label>
+          <select class="form-control" id="baixa_serial">
+            <option value="">Selecionar S/N disponível...</option>
+          </select>
+          <div style="font-size:11px;color:#7c3aed;margin-top:4px;"><i class="fas fa-info-circle"></i> Item com controle serial — selecione o S/N que será baixado. Quantidade fixada em 1.</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
@@ -1237,7 +1245,51 @@ app.get('/', (c) => {
     for (let i = 0; i < sel.options.length; i++) {
       if (sel.options[i].value === code) { sel.selectedIndex = i; break; }
     }
+    updateBaixaSerialField();
     openModal('novaBaixaModal');
+  }
+
+  function updateBaixaSerialField() {
+    const sel = document.getElementById('baixa_item');
+    const opt = sel.options[sel.selectedIndex];
+    const isSerial = opt && opt.getAttribute('data-serial') === '1';
+    const group = document.getElementById('baixa_serial_group');
+    const snSel = document.getElementById('baixa_serial');
+    const qtyInput = document.getElementById('baixa_qty');
+
+    if (isSerial) {
+      const itemCode = opt.value;
+      // Populate serial dropdown with SNs em_estoque for this item
+      const available = serialNumbersData.filter(function(sn) {
+        return sn.itemCode === itemCode && sn.status === 'em_estoque';
+      });
+      snSel.innerHTML = '<option value="">Selecionar S/N disponível...</option>';
+      available.forEach(function(sn) {
+        const o = document.createElement('option');
+        o.value = sn.id;
+        o.textContent = sn.number + (sn.location ? ' — ' + sn.location : '');
+        o.setAttribute('data-number', sn.number);
+        snSel.appendChild(o);
+      });
+      if (available.length === 0) {
+        const o = document.createElement('option');
+        o.value = '';
+        o.textContent = '— Nenhum S/N disponível para este item —';
+        snSel.appendChild(o);
+      }
+      group.style.display = 'block';
+      // Lock qty to 1 for serial items
+      qtyInput.value = '1';
+      qtyInput.readOnly = true;
+      qtyInput.style.background = '#f1f5f9';
+      qtyInput.title = 'Quantidade fixada em 1 para itens com controle de número de série';
+    } else {
+      group.style.display = 'none';
+      snSel.innerHTML = '';
+      qtyInput.readOnly = false;
+      qtyInput.style.background = '';
+      qtyInput.title = '';
+    }
   }
 
   function openSeparacaoModal(code, name, unit) {
@@ -1303,6 +1355,23 @@ app.get('/', (c) => {
     const item = document.getElementById('baixa_item').value;
     const qty = parseInt(document.getElementById('baixa_qty').value) || 0;
     if (!item || qty <= 0) { showEstoqueToast('Selecione o item e informe a quantidade!', 'error'); return; }
+
+    // Serial number validation
+    const serialGroup = document.getElementById('baixa_serial_group');
+    const isSerialItem = serialGroup && serialGroup.style.display !== 'none';
+    let serialId = null;
+    let serialNumber = null;
+    if (isSerialItem) {
+      const snSel = document.getElementById('baixa_serial');
+      serialId = snSel.value;
+      const snOpt = snSel.options[snSel.selectedIndex];
+      serialNumber = snOpt ? snOpt.getAttribute('data-number') : null;
+      if (!serialId) {
+        showEstoqueToast('Selecione o número de série para registrar a baixa!', 'error');
+        return;
+      }
+    }
+
     const tipo = document.getElementById('baixa_tipo').value;
     const pedido = document.getElementById('baixa_pedido').value;
     const nf = document.getElementById('baixa_nf').value;
@@ -1313,11 +1382,16 @@ app.get('/', (c) => {
       const res = await fetch('/estoque/api/exit/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: tipo, pedido, nf, dataBaixa: data_b, responsavel, notes, items: [{ code: item, quantity: qty }] })
+        body: JSON.stringify({
+          type: tipo, pedido, nf, dataBaixa: data_b, responsavel, notes,
+          items: [{ code: item, quantity: qty }],
+          serialId: serialId || undefined,
+          serialNumber: serialNumber || undefined
+        })
       });
       const d = await res.json();
       if (d.ok) {
-        showEstoqueToast('✅ Baixa ' + d.exit.code + ' registrada!');
+        showEstoqueToast('\u2705 Baixa ' + d.exit.code + ' registrada!' + (serialNumber ? ' S/N: ' + serialNumber : ''));
         closeModal('novaBaixaModal');
         setTimeout(() => location.reload(), 900);
       } else {
@@ -2844,6 +2918,61 @@ app.post('/api/exit/create', async (c) => {
     const product = tenant.products?.find((p: any) => p.code === it.code)
     if (product) product.stockCurrent = Math.max(0, (product.stockCurrent || 0) - (parseInt(it.quantity) || 1))
   }
+
+  // ── Baixa com Número de Série ────────────────────────────────────────────
+  if (body.serialId && body.serialNumber) {
+    if (!Array.isArray((tenant as any).serialNumbers)) (tenant as any).serialNumbers = []
+    if (!Array.isArray((tenant as any).kardexMovements)) (tenant as any).kardexMovements = []
+
+    // 1. Mark serial as 'baixado'
+    const sn = (tenant as any).serialNumbers.find((s: any) => s.id === body.serialId)
+    if (sn) {
+      sn.status = 'baixado'
+      sn.baixaCode = exit.code
+      sn.baixaDate = exit.date
+      if (db && userId !== 'demo-tenant') {
+        try {
+          await db.prepare(
+            `UPDATE serial_numbers SET status = 'baixado' WHERE id = ? AND user_id = ?`
+          ).bind(body.serialId, userId).run()
+        } catch (e) { console.warn('[ESTOQUE][EXIT] D1 update serial_numbers status failed:', (e as any).message) }
+      }
+    }
+
+    // 2. Create kardex 'saida' movement
+    const itemForKardex = exit.items[0]
+    const kmId = genId('kx')
+    const km = {
+      id: kmId,
+      serialNumber: body.serialNumber,
+      itemCode: itemForKardex?.code || '',
+      itemName: itemForKardex?.name || itemForKardex?.code || '',
+      movType: 'saida',
+      quantity: 1,
+      description: 'Baixa de estoque ' + exit.code + (exit.pedido ? ' — ' + exit.pedido : ''),
+      orderCode: null,
+      pedido: exit.pedido || null,
+      nf: exit.nf || null,
+      date: exit.createdAt,
+      user: exit.responsavel || userId,
+    }
+    ;(tenant as any).kardexMovements.push(km)
+
+    // 3. Persist to D1 kardex table
+    if (db && userId !== 'demo-tenant') {
+      try {
+        await db.prepare(
+          `INSERT OR IGNORE INTO kardex (id, item_code, item_name, mov_type, quantity, serial_number, description, pedido, nf, user_name, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+        ).bind(
+          kmId, km.itemCode, km.itemName, km.movType, km.quantity,
+          km.serialNumber, km.description, km.pedido, km.nf,
+          km.user, km.date
+        ).run()
+      } catch (e) { console.warn('[ESTOQUE][EXIT] D1 insert kardex failed:', (e as any).message) }
+    }
+  }
+
   return ok(c, { exit })
 })
 
