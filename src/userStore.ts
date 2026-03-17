@@ -1324,7 +1324,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     } catch (e) {
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar roteiros:', (e as any).message)
       if (!tenant.routes) tenant.routes = []
-
+    }
     // Load non_conformances
     try {
       const ncRes = await db.prepare(
