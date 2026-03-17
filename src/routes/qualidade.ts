@@ -538,9 +538,13 @@ app.post('/api/create', async (c) => {
   if (!Array.isArray(tenant.nonConformances)) tenant.nonConformances = []
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'non_conformances', {
-      id, user_id: userId, empresa_id: empresaId, title: nc.title, type: nc.type,
+      id, user_id: userId, empresa_id: empresaId,
+      code: nc.code, title: nc.title, type: nc.type,
       severity: nc.severity, status: nc.status, product: nc.product,
       description: nc.description, responsible: nc.responsible, due_date: nc.dueDate,
+      order_code: nc.orderCode || '', step_name: nc.stepName || '',
+      quantity_rejected: nc.quantityRejected || 0, operator: nc.operator || '',
+      root_cause: nc.rootCause || '', corrective_action: nc.correctiveAction || '',
     })
   }
   tenant.nonConformances.push(nc)
@@ -555,8 +559,18 @@ app.put('/api/:id', async (c) => {
   if (idx === -1) return err(c, 'NC não encontrada', 404)
   if (db && userId !== 'demo-tenant') {
     await dbUpdate(db, 'non_conformances', id, userId, {
-      status: body.status, severity: body.severity, responsible: body.responsible,
-      corrective_action: body.correctiveAction, root_cause: body.rootCause,
+      status: body.status !== undefined ? body.status : undefined,
+      severity: body.severity !== undefined ? body.severity : undefined,
+      responsible: body.responsible !== undefined ? body.responsible : undefined,
+      corrective_action: body.correctiveAction !== undefined ? body.correctiveAction : undefined,
+      root_cause: body.rootCause !== undefined ? body.rootCause : undefined,
+      title: body.title !== undefined ? body.title : undefined,
+      description: body.description !== undefined ? body.description : undefined,
+      order_code: body.orderCode !== undefined ? body.orderCode : undefined,
+      step_name: body.stepName !== undefined ? body.stepName : undefined,
+      quantity_rejected: body.quantityRejected !== undefined ? body.quantityRejected : undefined,
+      operator: body.operator !== undefined ? body.operator : undefined,
+      due_date: body.dueDate !== undefined ? body.dueDate : undefined,
     })
   }
   Object.assign(tenant.nonConformances[idx], body)
