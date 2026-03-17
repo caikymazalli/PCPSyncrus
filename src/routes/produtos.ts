@@ -1014,6 +1014,7 @@ app.get('/', (c) => {
 
   var _importRows = [];
   var _importLastReport = null;
+  var _importCommitted = false; // flag: reload needed after successful import
 
   function openImportModal() {
     var modal = document.getElementById('importProdModal');
@@ -1024,6 +1025,10 @@ app.get('/', (c) => {
 
   function closeImportModal() {
     document.getElementById('importProdModal').style.display = 'none';
+    if (_importCommitted) {
+      _importCommitted = false;
+      location.reload();
+    }
   }
 
   function showImportTab(n) {
@@ -1243,8 +1248,11 @@ app.get('/', (c) => {
       _importRows = [];
       // Verificar se há duplicatas para mostrar aviso
       var hasDup = _importLastReport.some(function(r){ return r.errorCode === 'DUPLICATE_CODE_DB' || r.errorCode === 'DUPLICATE_CODE_FILE'; });
-      if (hasDup) {
-        showToast('Alguns produtos já possuem cadastro no sistema, verifique relatório de erros no final!','error');
+      if (d.created > 0) _importCommitted = true; // reload list when modal closes
+      if (hasDup && d.created === 0) {
+        showToast('Todos os produtos já possuem cadastro. Nenhum importado.','error');
+      } else if (hasDup) {
+        showToast(d.created+' produto(s) importado(s). Verifique relatório de erros!','error');
       } else if (d.created > 0) {
         showToast(d.created+' produto(s) importado(s) com sucesso!','success');
       }
