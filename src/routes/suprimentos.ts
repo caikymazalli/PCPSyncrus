@@ -1413,6 +1413,8 @@ app.get('/cotacao/:id/responder', (c) => {
   <script>
   const items = ${JSON.stringify(q.items)};
   const totals = new Array(items.length).fill(0);
+  const quotId = ${JSON.stringify(q.id || '')};
+  const supplierNameFromCtx = ${JSON.stringify(supplier?.name || '')};
 
   function calcTotal(idx, qty) {
     const price = parseFloat(document.getElementById('unitPrice_' + idx).value) || 0;
@@ -1422,21 +1424,57 @@ app.get('/cotacao/:id/responder', (c) => {
     document.getElementById('grandTotal').textContent = 'R$ ' + grand.toLocaleString('pt-BR', {minimumFractionDigits:2});
   }
 
-  function submitQuotation() {
+  async function submitQuotation() {
     const days = document.getElementById('deliveryDays').value;
+    const paymentTerms = document.getElementById('paymentTerms').value || '';
+    const supNotes = document.getElementById('supNotes').value || '';
     const allFilled = items.every((_, idx) => parseFloat(document.getElementById('unitPrice_' + idx).value) > 0);
-    if (!allFilled) { alert('⚠ Preencha o preço de todos os itens!'); return; }
+    if (!allFilled) { alert('⚠ Preencha o preço unitário de todos os itens!'); return; }
     if (!days) { alert('⚠ Informe o prazo de entrega!'); return; }
     const grand = totals.reduce((a, b) => a + b, 0);
-    document.querySelector('.btn-success').disabled = true;
-    document.querySelector('.btn-success').innerHTML = '<i class="fas fa-check"></i> Enviado!';
-    document.querySelector('body > div').innerHTML += '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;">' +
-      '<div style="background:white;border-radius:16px;padding:40px;text-align:center;max-width:400px;">' +
-      '<i class="fas fa-check-circle" style="font-size:64px;color:#27AE60;margin-bottom:16px;"></i>' +
-      '<h2 style="color:#1B4F72;margin-bottom:8px;">Cotação Enviada!</h2>' +
-      '<p style="color:#6c757d;font-size:14px;">Sua cotação foi recebida.<br>Total: <strong>R$ ' + grand.toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</strong><br>Prazo: <strong>' + days + ' dias</strong></p>' +
-      '<p style="color:#6c757d;font-size:12px;margin-top:12px;">A equipe de compras será notificada e entrará em contato em caso de aprovação.</p>' +
-      '</div></div>';
+    const itemsWithPrice = items.map((it, idx) => ({
+      productCode: it.productCode,
+      productName: it.productName,
+      quantity: it.quantity,
+      unit: it.unit || 'un',
+      unitPrice: parseFloat(document.getElementById('unitPrice_' + idx).value) || 0,
+      totalPrice: totals[idx] || 0,
+    }));
+    const btn = document.querySelector('.btn-success');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    try {
+      const res = await fetch('/suprimentos/api/quotations/' + quotId + '/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplierName: supplierNameFromCtx || 'Fornecedor',
+          totalPrice: grand,
+          deliveryDays: parseInt(days),
+          paymentTerms,
+          notes: supNotes,
+          items: itemsWithPrice,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        document.querySelector('body > div').innerHTML += '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;">' +
+          '<div style="background:white;border-radius:16px;padding:40px;text-align:center;max-width:400px;">' +
+          '<i class="fas fa-check-circle" style="font-size:64px;color:#27AE60;margin-bottom:16px;"></i>' +
+          '<h2 style="color:#1B4F72;margin-bottom:8px;">Cotação Enviada!</h2>' +
+          '<p style="color:#6c757d;font-size:14px;">Sua cotação foi recebida.<br>Total: <strong>R$ ' + grand.toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</strong><br>Prazo: <strong>' + days + ' dias</strong></p>' +
+          '<p style="color:#6c757d;font-size:12px;margin-top:12px;">A equipe de compras será notificada e entrará em contato em caso de aprovação.</p>' +
+          '</div></div>';
+      } else {
+        alert('❌ Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Cotação';
+      }
+    } catch(e) {
+      alert('❌ Erro de conexão. Verifique sua internet e tente novamente.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Cotação';
+    }
   }
 </script>
 </body>
@@ -1515,17 +1553,39 @@ app.get('/quote-response', async (c) => {
           <label for="supplierName">Nome do Fornecedor <span class="required">*</span></label>
           <input type="text" id="supplierName" name="supplierName" placeholder="Ex: Woson Ningbo" required>
         </div>
-        <div class="form-group">
-          <label for="totalPrice">Preço Total (R$) <span class="required">*</span></label>
-          <input type="number" id="totalPrice" name="totalPrice" placeholder="0.00" step="0.01" min="0" required>
-        </div>
-        <div class="form-group">
-          <label for="deliveryDays">Prazo de Entrega (dias) <span class="required">*</span></label>
-          <input type="number" id="deliveryDays" name="deliveryDays" placeholder="30" min="1" required>
-        </div>
-        <div class="form-group">
-          <label for="paymentTerms">Condições de Pagamento</label>
-          <input type="text" id="paymentTerms" name="paymentTerms" placeholder="Ex: 30 dias, À vista, etc">
+
+        ${quotItems.length > 0 ? `
+        <div class="form-group" style="margin-bottom:20px;">
+          <label style="margin-bottom:10px;display:block;">Itens da Cotação — Preencha o preço unitário de cada item <span class="required">*</span></label>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f0f4f8;">
+                <th style="padding:8px 10px;text-align:left;font-weight:600;color:#374151;">Produto</th>
+                <th style="padding:8px 10px;text-align:center;font-weight:600;color:#374151;">Qtd</th>
+                <th style="padding:8px 10px;text-align:center;font-weight:600;color:#374151;">Un.</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#374151;">Preço Unit. (R$) *</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#1B4F72;">Total (R$)</th>
+              </tr>
+            </thead>
+            <tbody id="itemsTableBody"></tbody>
+            <tfoot>
+              <tr style="background:#f0f4f8;font-weight:700;">
+                <td colspan="4" style="padding:8px 10px;text-align:right;color:#374151;">TOTAL GERAL:</td>
+                <td style="padding:8px 10px;text-align:right;color:#1B4F72;font-size:15px;" id="grandTotalCell">R$ 0,00</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>` : ''}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label for="deliveryDays">Prazo de Entrega (dias) <span class="required">*</span></label>
+            <input type="number" id="deliveryDays" name="deliveryDays" placeholder="30" min="1" required>
+          </div>
+          <div class="form-group">
+            <label for="paymentTerms">Condições de Pagamento</label>
+            <input type="text" id="paymentTerms" name="paymentTerms" placeholder="Ex: 30 dias, À vista">
+          </div>
         </div>
         <div class="form-group">
           <label for="notes">Observações</label>
@@ -1537,6 +1597,8 @@ app.get('/quote-response', async (c) => {
   </div>
   <script>
     const quotId = ${JSON.stringify(quotId)}
+    const quotItems = ${JSON.stringify(quotItems)}
+    const itemTotals = []
 
     function showFeedback(message, type) {
       const el = document.getElementById('feedback')
@@ -1545,17 +1607,73 @@ app.get('/quote-response', async (c) => {
       el.style.display = 'block'
     }
 
+    // Render items table dynamically
+    function renderItemsTable() {
+      const tbody = document.getElementById('itemsTableBody')
+      if (!tbody || quotItems.length === 0) return
+      tbody.innerHTML = quotItems.map((it, idx) => {
+        itemTotals[idx] = 0
+        return '<tr style="border-bottom:1px solid #e5e7eb;">' +
+          '<td style="padding:8px 10px;font-weight:600;color:#374151;">' + (it.productName || it.name || '—') + '</td>' +
+          '<td style="padding:8px 10px;text-align:center;font-weight:700;color:#1B4F72;">' + (it.quantity || 1) + '</td>' +
+          '<td style="padding:8px 10px;text-align:center;color:#6c757d;">' + (it.unit || 'un') + '</td>' +
+          '<td style="padding:8px 10px;text-align:right;">' +
+            '<input type="number" id="unitPrice_' + idx + '" style="width:120px;padding:6px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;text-align:right;" ' +
+            'placeholder="0,00" min="0" step="0.01" oninput="calcItemTotal(' + idx + ',' + (it.quantity||1) + ')" required>' +
+          '</td>' +
+          '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#27AE60;" id="itemTotal_' + idx + '">R$ 0,00</td>' +
+          '</tr>'
+      }).join('')
+    }
+
+    function calcItemTotal(idx, qty) {
+      const val = parseFloat(document.getElementById('unitPrice_' + idx).value) || 0
+      itemTotals[idx] = val * qty
+      const el = document.getElementById('itemTotal_' + idx)
+      if (el) el.textContent = 'R$ ' + itemTotals[idx].toLocaleString('pt-BR', {minimumFractionDigits:2})
+      const grand = itemTotals.reduce((a,b) => a+b, 0)
+      const gc = document.getElementById('grandTotalCell')
+      if (gc) gc.textContent = 'R$ ' + grand.toLocaleString('pt-BR', {minimumFractionDigits:2})
+    }
+
+    renderItemsTable()
+
     document.getElementById('responseForm').addEventListener('submit', async (e) => {
       e.preventDefault()
       const btn = document.getElementById('submitBtn')
+      const supplierName = document.getElementById('supplierName').value.trim()
+      if (!supplierName) { showFeedback('❌ Informe o nome do fornecedor', 'error'); return }
+
+      // Validate per-item prices if items exist
+      let itemsWithPrice = []
+      let grand = 0
+      if (quotItems.length > 0) {
+        const allFilled = quotItems.every((_, idx) => parseFloat(document.getElementById('unitPrice_' + idx)?.value || '0') > 0)
+        if (!allFilled) { showFeedback('❌ Preencha o preço unitário de todos os itens', 'error'); return }
+        itemsWithPrice = quotItems.map((it, idx) => ({
+          productCode: it.productCode || it.code || '',
+          productName: it.productName || it.name || '',
+          quantity: it.quantity || 1,
+          unit: it.unit || 'un',
+          unitPrice: parseFloat(document.getElementById('unitPrice_' + idx).value) || 0,
+          totalPrice: itemTotals[idx] || 0,
+        }))
+        grand = itemTotals.reduce((a,b) => a+b, 0)
+      } else {
+        // fallback: single total price field (legacy)
+        const tp = document.getElementById('totalPrice')
+        grand = tp ? parseFloat(tp.value) || 0 : 0
+      }
+
       btn.disabled = true
       btn.textContent = '⏳ Enviando...'
       const formData = {
-        supplierName: document.getElementById('supplierName').value,
-        totalPrice: parseFloat(document.getElementById('totalPrice').value),
-        deliveryDays: parseInt(document.getElementById('deliveryDays').value),
+        supplierName,
+        totalPrice: grand,
+        deliveryDays: parseInt(document.getElementById('deliveryDays').value) || 30,
         paymentTerms: document.getElementById('paymentTerms').value || '',
         notes: document.getElementById('notes').value || '',
+        items: itemsWithPrice,
       }
       try {
         const res = await fetch('/suprimentos/api/quotations/' + quotId + '/respond', {
@@ -1617,6 +1735,9 @@ app.post('/api/quotations/:id/respond', async (c) => {
 
       if (!q.supplierResponses) q.supplierResponses = []
 
+      const respId = genId('resp')
+      const respondedAt = new Date().toISOString()
+
       if (existingResponseIdx !== -1 && q.status === 'awaiting_negotiation') {
         const { negotiationHistory: _nh, ...previousResponse } = q.supplierResponses[existingResponseIdx]
         if (!q.supplierResponses[existingResponseIdx].negotiationHistory) {
@@ -1627,32 +1748,51 @@ app.post('/api/quotations/:id/respond', async (c) => {
         q.supplierResponses[existingResponseIdx].deliveryDays = body.deliveryDays || 0
         q.supplierResponses[existingResponseIdx].paymentTerms = body.paymentTerms || ''
         q.supplierResponses[existingResponseIdx].notes = body.notes || ''
-        q.supplierResponses[existingResponseIdx].respondedAt = new Date().toISOString()
+        q.supplierResponses[existingResponseIdx].respondedAt = respondedAt
+        q.supplierResponses[existingResponseIdx].items = body.items || []
         console.log('[COTAÇÃO-RESPOSTA] ♻️ Resposta atualizada durante negociação:', body.supplierName)
       } else {
         q.supplierResponses.push({
-          id: genId('resp'),
+          id: respId,
           supplierName: body.supplierName,
           totalPrice: body.totalPrice,
           deliveryDays: body.deliveryDays || 0,
           paymentTerms: body.paymentTerms || '',
           notes: body.notes || '',
-          respondedAt: new Date().toISOString(),
+          respondedAt,
+          items: body.items || [],
         })
       }
 
       q.status = 'with_responses'
       markTenantModified(userId)
 
-      // Persist updated status to D1
+      // Persist to D1: status + response in quotation_responses table
       const db = getCtxDB(c)
       if (db && userId !== 'demo-tenant') {
         try {
           await db.prepare(`UPDATE quotations SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`)
-            .bind(q.status, new Date().toISOString(), quotId, userId).run()
+            .bind(q.status, respondedAt, quotId, userId).run()
           console.log('[COTAÇÃO-RESPOSTA] ✅ Status persistido em D1:', q.status)
         } catch (e) {
           console.error('[COTAÇÃO-RESPOSTA] ⚠️ Erro ao persistir status:', (e as any).message)
+        }
+        // Persist supplier response to quotation_responses for post-deploy survival
+        try {
+          const itemsJson = JSON.stringify(body.items || [])
+          if (existingResponseIdx !== -1 && q.status === 'awaiting_negotiation') {
+            await db.prepare(`UPDATE quotation_responses SET total_price=?, delivery_days=?, payment_terms=?, notes=?, responded_at=? WHERE quotation_id=? AND supplier_name=? AND user_id=?`)
+              .bind(body.totalPrice, body.deliveryDays||0, body.paymentTerms||'', itemsJson, respondedAt, quotId, body.supplierName, userId).run()
+          } else {
+            await db.prepare(`INSERT INTO quotation_responses (id, quotation_id, supplier_id, supplier_name, unit_price, total_price, delivery_days, payment_terms, notes, responded_at, user_id, empresa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+              .bind(respId, quotId, '', body.supplierName,
+                (body.items && body.items[0]) ? (body.items[0].unitPrice || 0) : 0,
+                body.totalPrice, body.deliveryDays||0, body.paymentTerms||'',
+                itemsJson, respondedAt, userId, q.empresaId || '1').run()
+          }
+          console.log('[COTAÇÃO-RESPOSTA] ✅ Resposta persistida em D1 quotation_responses')
+        } catch (e) {
+          console.error('[COTAÇÃO-RESPOSTA] ⚠️ Erro ao persistir resposta em quotation_responses:', (e as any).message)
         }
       }
 
@@ -1779,12 +1919,18 @@ app.post('/api/quotations/:id/approve', async (c) => {
   
   // D1-first: inserir Pedido de Compra antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
+    const supplierId = bestResponse?.supplierId || quotation.supplierIds?.[0] || 'sem-fornecedor'
     const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
       id: pcId, user_id: userId, empresa_id: empresaId, code: pcCode,
-      quotation_id: id,
-      supplier_id: bestResponse?.supplierId || quotation.supplierIds?.[0] || '',
-      supplier_name: purchaseOrder.supplierName, status: 'pending_approval', total_value: totalValue,
-      currency: 'BRL', is_import: isImport ? 1 : 0, notes: JSON.stringify({ items: purchaseOrder.items }),
+      quotation_id: id, quotation_code: quotation.code || '',
+      supplier_id: supplierId,
+      supplier_name: purchaseOrder.supplierName,
+      status: 'pending_approval', total_value: totalValue,
+      currency: 'BRL',
+      is_import: isImport ? 1 : 0,
+      import_flag: isImport ? 1 : 0,
+      notes: JSON.stringify({ items: purchaseOrder.items }),
+      expected_delivery: purchaseOrder.expectedDelivery,
     })
     if (!persistResult.success) {
       console.error(`[SUPRIMENTOS][PC][CRÍTICO] Falha ao persistir pedido ${pcId} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
@@ -1903,12 +2049,14 @@ app.post('/api/purchase-orders/create', async (c) => {
   }
   // D1-first: inserir antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
+    const supplierId2 = bestResponse?.supplierId || quot.supplierIds?.[0] || 'sem-fornecedor'
     const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
       id, user_id: userId, empresa_id: empresaId, code,
-      quotation_id: quot.id,
-      supplier_id: bestResponse?.supplierId || quot.supplierIds?.[0] || '',
+      quotation_id: quot.id, quotation_code: quot.code || '',
+      supplier_id: supplierId2,
       supplier_name: pedido.supplierName, status: 'pending_approval',
-      total_value: pedido.totalValue, currency: 'BRL', is_import: isImport ? 1 : 0,
+      total_value: pedido.totalValue, currency: 'BRL',
+      is_import: isImport ? 1 : 0, import_flag: isImport ? 1 : 0,
       notes: JSON.stringify({ items: pedido.items, pedidoData: pedido.pedidoData, dataEntrega: pedido.dataEntrega, observacoes: pedido.observacoes }),
     })
     if (!persistResult.success) {
