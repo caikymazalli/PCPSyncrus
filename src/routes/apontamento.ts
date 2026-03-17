@@ -981,8 +981,9 @@ app.post('/api/create', async (c) => {
       id, user_id: userId, empresa_id: empresaId, order_id: entry.orderId, order_code: entry.orderCode,
       product_name: entry.productName, operator: entry.operator,
       machine: entry.machine, start_time: entry.startTime, end_time: entry.endTime,
-      produced: entry.produced, rejected: entry.rejected, shift: entry.shift, notes: entry.notes,
-      step_name: entry.stepName,
+      produced: entry.produced, rejected: entry.rejected, shift: entry.shift,
+      notes: entry.notes, reason: entry.reason || '',
+      step_name: entry.stepName, time_spent: entry.timeSpent || 0,
     })
     // Link uploaded images to this apontamento record
     if (entry.imageIds.length > 0) {
