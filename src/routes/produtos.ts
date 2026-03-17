@@ -1002,14 +1002,14 @@ app.get('/', (c) => {
 
   // ── Import via Planilha ───────────────────────────────────────────────────
   function escHtml(s) {
-    return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;')
+     return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')  
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
     .replace(/\n/g, '&#10;')   
-    .replace(/\r/g, '&#13;')   
+    .replace(/\r/g, '&#13;');  
 }
 
   var _importRows = [];
