@@ -931,6 +931,50 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     } catch (e) {
       console.warn(`[HYDRATION] ⚠️ Não foi possível carregar quotation_negotiations de D1:`, (e as any).message)
     }
+    // Load quotation_responses and merge into quotations' supplierResponses
+    try {
+      const qresps = await db.prepare(`SELECT * FROM quotation_responses WHERE user_id = ?${byEmpresa} ORDER BY responded_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (qresps.results && qresps.results.length > 0) {
+        // Group responses by quotation_id
+        const byQuotId: Record<string, any[]> = {}
+        for (const r of qresps.results as any[]) {
+          if (!byQuotId[r.quotation_id]) byQuotId[r.quotation_id] = []
+          let items: any[] = []
+          try { items = JSON.parse(r.notes || '[]') } catch { items = [] }
+          byQuotId[r.quotation_id].push({
+            id: r.id,
+            supplierId: r.supplier_id || '',
+            supplierName: r.supplier_name || '',
+            totalPrice: r.total_price || 0,
+            unitPrice: r.unit_price || 0,
+            deliveryDays: r.delivery_days || 0,
+            paymentTerms: r.payment_terms || '',
+            notes: '',
+            respondedAt: r.responded_at || r.created_at || '',
+            items,
+          })
+        }
+        // Merge into in-memory quotations
+        if (tenant.quotations) {
+          for (const q of tenant.quotations) {
+            if (byQuotId[q.id] && byQuotId[q.id].length > 0) {
+              // Replace if in-memory has empty supplierResponses (fresh instance after deploy)
+              if (!q.supplierResponses || q.supplierResponses.length === 0) {
+                q.supplierResponses = byQuotId[q.id]
+                if (q.supplierResponses.length > 0 && q.status === 'sent') {
+                  q.status = 'with_responses'
+                }
+              }
+            }
+          }
+        }
+        console.log(`[HYDRATION] ✅ ${qresps.results.length} respostas de cotação carregadas de D1 para ${userId}`)
+      }
+    } catch (e) {
+      console.warn(`[HYDRATION] ⚠️ Não foi possível carregar quotation_responses:`, (e as any).message)
+    }
+
     // Load product_supplier_links
     try {
       console.log('[HYDRATION] Carregando product_supplier_links...')
