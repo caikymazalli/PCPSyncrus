@@ -17,7 +17,10 @@ function escHtml(s: string | null | undefined): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+    .replace(/\n/g, '&#10;')   
+    .replace(/\r/g, '&#13;')   
 }
+
 
 // Produtos page
 app.get('/', (c) => {
@@ -1033,7 +1036,7 @@ app.get('/', (c) => {
   function importDownloadTemplate() {
     var hdr = 'code,name,unit,stockMin,stockMax,stockCurrent,criticalPercentage,serial,type,price,notes';
     var ex  = 'PROD-001,Parafuso M6,un,100,500,200,50,none,external,0.50,Parafuso aço inox';
-    var blob = new Blob([hdr+'\n'+ex+'\n'], {type:'text/csv;charset=utf-8;'});
+    var blob = new Blob([hdr+'\n'+ex+'\n'],{type:'text/csv;charset=utf-8;'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href=url; a.download='modelo_produtos.csv'; a.click();
   }
