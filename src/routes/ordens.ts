@@ -488,7 +488,7 @@ app.post('/api/create', async (c) => {
     await dbInsert(db, 'production_orders', {
       id, user_id: userId, empresa_id: empresaId,
       code: order.code, product_name: order.productName,
-      quantity: order.quantity, completed_quantity: 0,
+      quantity: order.quantity, quantity_produced: 0, completed_quantity: 0,
       status: order.status, priority: order.priority,
       start_date: order.startDate, end_date: order.endDate,
       plant_id: order.plantId, notes: order.notes,
@@ -517,7 +517,7 @@ app.put('/api/:id', async (c) => {
     const updateData: Record<string, any> = {}
     if (body.status !== undefined) updateData.status = body.status
     if (body.priority !== undefined) updateData.priority = body.priority
-    if (body.completedQuantity !== undefined) updateData.completed_quantity = body.completedQuantity
+    if (body.completedQuantity !== undefined) updateData.quantity_produced = body.completedQuantity; updateData.completed_quantity = body.completedQuantity
     if (body.code !== undefined) updateData.code = body.code
     if (body.productName !== undefined) updateData.product_name = body.productName
     if (body.quantity !== undefined) updateData.quantity = body.quantity
