@@ -95,8 +95,12 @@ export async function dbInsertWithRetry(
 /** Update a record in D1 */
 export async function dbUpdate(db: D1Database, table: string, id: string, userId: string, data: Record<string, any>): Promise<boolean> {
   try {
-    const keys = Object.keys(data)
-    const vals = Object.values(data)
+    // Filter out undefined values — only update fields explicitly provided
+    const filtered = Object.fromEntries(Object.entries(data).filter(([_, v]) => v !== undefined))
+    if (Object.keys(filtered).length === 0) return true // nothing to update
+
+    const keys = Object.keys(filtered)
+    const vals = Object.values(filtered)
 
     const setClause = keys.map(k => `${k} = ?`).join(', ')
     const sql = `UPDATE ${table} SET ${setClause} WHERE id = ? AND user_id = ?`
