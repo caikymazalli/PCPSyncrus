@@ -665,9 +665,12 @@ app.get('/', (c) => {
                       const qty = item.quantity ?? item.stockCurrent ?? 0
                       const subtotal = refUnitPrice * qty
                       // NCM: pegar do processo de importação se existir
-                      const ncm = relatedImp?.ncm || sup?.notes?.match(/NCM\s*([\d.]+)/)?.[1] || '—'
+                      // NCM: prioridade = cadastro do produto > processo de importação > notas do fornecedor
+                      const ncm = item.ncm || (tenant.impProdDesc?.[item.code]?.['ncm']) || relatedImp?.ncm || sup?.notes?.match(/NCM\s*([\d.]+)/)?.[1] || '—'
                       // Descrição EN: baseada no nome do produto
-                      const descEN = item.englishDescription || item.descEN || item.englishDesc || ''
+                      const descEN = item.descEN || (tenant.impProdDesc?.[item.code]?.['descEN']) || item.englishDescription || item.englishDesc || ''
+                      // descPT: prioridade = cadastro do produto > impProdDesc > descrição genérica
+                      const itemDescPT = item.descPT || (tenant.impProdDesc?.[item.code]?.['descPT']) || item.description || ''
                       const autoDescEN = descEN || (() => {
                         const nameMap: Record<string,string> = {
                           'Chapa Al 6061': 'Aluminum Alloy 6061 Sheet',
@@ -701,10 +704,10 @@ app.get('/', (c) => {
                           <div style="font-size:10px;color:#9ca3af;">${item.unit}</div>
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescPT','${item.code}','descPT')">
-                          <div class="imp-inline-view" style="font-size:12px;color:${(item.descPT||item.description)?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
-                            ${item.descPT || item.description || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
+                          <div class="imp-inline-view" style="font-size:12px;color:${itemDescPT?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
+                            ${itemDescPT || '<span style=&quot;font-style:italic;font-size:11px;&quot;>— clique para preencher —</span>'}
                           </div>
-                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${escapeHtmlAttr(item.descPT||item.description||'')}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
+                          <input class="form-control imp-inline-input" style="display:none;font-size:12px;" data-field="descPT" data-code="${item.code}" value="${escapeHtmlAttr(itemDescPT)}" onblur="saveInlineEdit(this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape')cancelInlineEdit(this)" placeholder="Descrição em português...">
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescEN','${item.code}','descEN')">
                           <div class="imp-inline-view" style="font-size:12px;color:${item.descEN||autoDescEN?'#374151':'#dc2626'};cursor:pointer;min-height:24px;padding:3px 6px;border-radius:4px;border:1px solid transparent;font-style:italic;" title="Duplo clique para editar" onmouseenter="this.style.borderColor='#bee3f8'" onmouseleave="this.style.borderColor='transparent'">
@@ -2385,35 +2388,73 @@ app.post('/api/product-imp-field', async (c) => {
   // Campos permitidos para edição inline
   const allowedFields = ['descPT', 'descEN', 'ncm']
   if (!allowedFields.includes(field)) return err(c, 'Campo não permitido')
-  // Atualizar em stockItems ou products do tenant
-  const allItems: any[] = [...(tenant.stockItems || []), ...(tenant.products || [])]
-  const item = allItems.find((i: any) => i.code === code)
+  // Atualizar em stockItems ou products do tenant (memória)
+  const stockItem = (tenant.stockItems || []).find((i: any) => i.code === code)
+  const product   = (tenant.products   || []).find((i: any) => i.code === code)
+  const item = stockItem || product
   if (item) {
     item[field] = value
-  } else {
-    // Criar entrada no mapa de descrições importadas se não existir
-    if (!tenant.impProdDesc) tenant.impProdDesc = {}
-    if (!tenant.impProdDesc[code]) tenant.impProdDesc[code] = {}
-    tenant.impProdDesc[code][field] = value
   }
+  // Atualizar impProdDesc em memória
+  if (!tenant.impProdDesc) tenant.impProdDesc = {}
+  if (!tenant.impProdDesc[code]) tenant.impProdDesc[code] = {}
+  tenant.impProdDesc[code][field] = value
+
   // Persistir no DB se disponível
   if (db && userId !== 'demo-tenant') {
-    // Para NCM: tentar atualizar diretamente na tabela products (coluna ncm existe)
-    if (field === 'ncm') {
+    // 1. Para produtos cadastrados (tabela products): colunas ncm, desc_pt, desc_en existem
+    if (product) {
       try {
-        await db.prepare(
-          `UPDATE products SET ncm = ? WHERE user_id = ? AND code = ?`
-        ).bind(value, userId, code).run()
-      } catch(_) { /* ignora falha */ }
+        if (field === 'ncm') {
+          const res = await db.prepare(
+            `UPDATE products SET ncm = ? WHERE user_id = ? AND code = ?`
+          ).bind(value, userId, code).run()
+          console.log(`[NCM] UPDATE products ncm OK para ${code}, changes=${(res as any).meta?.changes}`)
+        } else if (field === 'descPT') {
+          // desc_pt pode não existir (adicionado via migration 0043)
+          try {
+            await db.prepare(
+              `UPDATE products SET desc_pt = ? WHERE user_id = ? AND code = ?`
+            ).bind(value, userId, code).run()
+          } catch(_) { /* coluna pode não existir ainda, salva em imp_prod_desc */ }
+        } else if (field === 'descEN') {
+          try {
+            await db.prepare(
+              `UPDATE products SET desc_en = ? WHERE user_id = ? AND code = ?`
+            ).bind(value, userId, code).run()
+          } catch(_) { /* coluna pode não existir ainda, salva em imp_prod_desc */ }
+        }
+      } catch(e) {
+        console.error(`[NCM] Falha ao UPDATE products para ${code}:`, (e as any).message)
+      }
     }
-    // Sempre salvar na tabela auxiliar imp_prod_desc (suporta ncm, descPT, descEN)
+    // 2. Auto-criar tabela imp_prod_desc se não existir (garante funcionamento sem migration manual)
+    try {
+      await db.prepare(
+        `CREATE TABLE IF NOT EXISTS imp_prod_desc (
+          id         INTEGER  PRIMARY KEY AUTOINCREMENT,
+          user_id    TEXT     NOT NULL,
+          empresa_id TEXT     DEFAULT '',
+          code       TEXT     NOT NULL,
+          field      TEXT     NOT NULL,
+          value      TEXT     DEFAULT '',
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, code, field)
+        )`
+      ).run()
+    } catch(_) { /* tabela já existe, ok */ }
+    // 3. Upsert em imp_prod_desc (salva ncm, descPT, descEN para products E stockItems)
     try {
       await db.prepare(
         `INSERT INTO imp_prod_desc (user_id, empresa_id, code, field, value, updated_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(user_id, code, field) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
       ).bind(userId, empresaId || '', code, field, value).run()
-    } catch(e) { console.warn('[SUPRIMENTOS] imp_prod_desc save falhou:', (e as any).message) }
+      console.log(`[NCM] imp_prod_desc upsert OK: user=${userId} code=${code} field=${field} value=${value}`)
+    } catch(e) {
+      console.error(`[NCM] imp_prod_desc upsert FALHOU para ${code}:`, (e as any).message)
+      return c.json({ ok: false, error: 'Falha ao salvar no banco de dados: ' + (e as any).message }, 500)
+    }
   }
   return ok(c, { code, field, value })
 })
