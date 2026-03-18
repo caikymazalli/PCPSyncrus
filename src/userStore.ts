@@ -1015,15 +1015,25 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
               description: r.description || '',
               ncm: r.ncm || '',
               taxes: {
-                ii:      r.tax_ii     || taxes.ii     || 0,
-                ipi:     r.tax_ipi    || taxes.ipi    || 0,
-                pis:     r.tax_pis    || taxes.pis    || 0,
-                cofins:  r.tax_cofins || taxes.cofins || 0,
-                icms:    r.tax_icms   || taxes.icms   || 0,
-                afrmm:   r.tax_afrmm  || taxes.afrmm  || 0,
+                ii:       r.tax_ii       ?? taxes.ii       ?? 0,
+                ipi:      r.tax_ipi      ?? taxes.ipi      ?? 0,
+                pis:      r.tax_pis      ?? taxes.pis      ?? 0,
+                cofins:   r.tax_cofins   ?? taxes.cofins   ?? 0,
+                icms:     r.tax_icms     ?? taxes.icms     ?? 0,
+                afrmm:    r.tax_afrmm    ?? taxes.afrmm    ?? 0,
+                siscomex: r.tax_siscomex ?? taxes.siscomex ?? 0,
+              },
+              numerario: {
+                frete:  numerario.frete  || 0,
+                seguro: numerario.seguro || 0,
+                desp:   numerario.desp   || 0,
+                porto:  numerario.porto  || 0,
+                arm:    numerario.arm    || 0,
+                totalLandedCostBRL: numerario.totalLandedCostBRL || 0,
+                unitCostBRL:        numerario.unitCostBRL        || 0,
               },
               createdAt: r.created_at || new Date().toISOString(),
-              items, numerario, timeline: [],
+              items, timeline: [],
             })
           }
         }
