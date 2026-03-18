@@ -1819,7 +1819,21 @@ app.post('/api/quotations/create', async (c) => {
   if (body.tipo !== 'critico' && (!body.items || body.items.length === 0)) return err(c, 'Adicione pelo menos um produto')
   
   const id = genId('cot')
-  const code = `COT-${new Date().getFullYear()}-${String(tenant.quotations.length + 1).padStart(3,'0')}`
+  // Use D1 last code to avoid UNIQUE collision after deploy/reload
+  let cotSeq = tenant.quotations.length + 1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const maxCot = await db.prepare(
+        `SELECT code FROM quotations WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`
+      ).bind(userId).first() as any
+      if (maxCot?.code) {
+        const parts = String(maxCot.code).split('-')
+        const lastNum = parseInt(parts[parts.length - 1] || '0', 10)
+        if (!isNaN(lastNum) && lastNum >= cotSeq) cotSeq = lastNum + 1
+      }
+    } catch(_) { /* fallback to memory count */ }
+  }
+  const code = `COT-${new Date().getFullYear()}-${String(cotSeq).padStart(3,'0')}`
   const quotation = {
     id, code,
     descricao: body.descricao || 'Cotação de suprimentos',
@@ -1900,7 +1914,21 @@ app.post('/api/quotations/:id/approve', async (c) => {
 
   // Gerar Pedido de Compra automaticamente
   const pcId = genId('pc')
-  const pcCode = `PC-${new Date().getFullYear()}-${String(tenant.purchaseOrders.length + 1).padStart(4,'0')}`
+  // Use D1 MAX(code) or timestamp to avoid UNIQUE collision after deploy/reload
+  let pcSeq = tenant.purchaseOrders.length + 1
+  if (db && userId !== 'demo-tenant') {
+    try {
+      const maxRow = await db.prepare(
+        `SELECT code FROM purchase_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`
+      ).bind(userId).first() as any
+      if (maxRow?.code) {
+        const parts = String(maxRow.code).split('-')
+        const lastNum = parseInt(parts[parts.length - 1] || '0', 10)
+        if (!isNaN(lastNum) && lastNum >= pcSeq) pcSeq = lastNum + 1
+      }
+    } catch(_) { /* fallback to memory count */ }
+  }
+  const pcCode = `PC-${new Date().getFullYear()}-${String(pcSeq).padStart(4,'0')}`
   
   const purchaseOrder = {
     id: pcId,
@@ -2323,6 +2351,7 @@ app.post('/api/product-imp-field', async (c) => {
   const tenant = getCtxTenant(c)
   const db = getCtxDB(c)
   const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
   const body = await c.req.json().catch(() => null)
   if (!body || !body.code || !body.field) return err(c, 'code e field obrigatórios')
   const { code, field, value } = body
@@ -2342,19 +2371,22 @@ app.post('/api/product-imp-field', async (c) => {
   }
   // Persistir no DB se disponível
   if (db && userId !== 'demo-tenant') {
+    // Para NCM: tentar atualizar diretamente na tabela products (coluna ncm existe)
+    if (field === 'ncm') {
+      try {
+        await db.prepare(
+          `UPDATE products SET ncm = ? WHERE user_id = ? AND code = ?`
+        ).bind(value, userId, code).run()
+      } catch(_) { /* ignora falha */ }
+    }
+    // Sempre salvar na tabela auxiliar imp_prod_desc (suporta ncm, descPT, descEN)
     try {
       await db.prepare(
-        `UPDATE products SET ${field} = ? WHERE user_id = ? AND code = ?`
-      ).bind(value, userId, code).run()
-    } catch(_) { /* tabela pode não ter coluna ainda */ }
-    // Salvar em tabela auxiliar de descrições de importação
-    try {
-      await db.prepare(
-        `INSERT INTO imp_prod_desc (user_id, code, field, value, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'))
+        `INSERT INTO imp_prod_desc (user_id, empresa_id, code, field, value, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(user_id, code, field) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`
-      ).bind(userId, code, field, value).run()
-    } catch(_) { /* ignora se tabela não existir */ }
+      ).bind(userId, empresaId || '', code, field, value).run()
+    } catch(e) { console.warn('[SUPRIMENTOS] imp_prod_desc save falhou:', (e as any).message) }
   }
   return ok(c, { code, field, value })
 })
