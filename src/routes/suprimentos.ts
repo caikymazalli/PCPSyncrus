@@ -936,6 +936,10 @@ app.get('/', (c) => { try {
             <div class="form-group">
               <label class="form-label">Data Invoice</label>
               <input class="form-control" id="impDataInvoice" type="date">
+              </div>
+              <div class="form-group">
+                <label class="form-label" id="impValorLabel">Valor Invoice (USD)</label>
+                <input class="form-control" type="number" id="impValorInvoice" value="0" min="0" step="0.01" oninput="calcImpBRL()">
             </div>
             <!-- Modalidade de transporte -->
             <div class="form-group" style="grid-column:span 2;">
@@ -2397,19 +2401,58 @@ app.post('/api/imports/create', async (c) => {
   if (!body.supplierId) return err(c, 'Fornecedor obrigatório')
   const id = genId('imp')
   const code = `IMP-${new Date().getFullYear()}-${String((tenant.imports?.length || 0) + 1).padStart(3,'0')}`
+  const taxes  = body.taxes  || {}
+  const impItems = Array.isArray(body.items) ? body.items : []
   const imp = {
-    id, code, invoiceNumber: body.invoiceNumber,
+    id, code,
+    invoiceNumber: body.invoiceNumber || '',
     supplierId: body.supplierId || '', supplierName: body.supplierName || '',
     modality: body.modality || 'maritimo', status: 'waiting_ship',
+    invoiceDate: body.invoiceDate || '',
+    incoterm: body.incoterm || 'FOB',
+    currency: body.currency || 'USD',
+    exchangeRate: body.exchangeRate || 5.52,
+    portOfOrigin: body.portOfOrigin || '',
+    portOfDestination: body.portOfDestination || 'Santos',
+    expectedArrival: body.expectedArrival || '',
+    grossWeight: body.grossWeight || 0,
+    netWeight: body.netWeight || 0,
+    invoiceValueEUR: body.invoiceValueEUR || 0,
+    invoiceValueUSD: body.invoiceValueUSD || 0,
+    invoiceValueBRL: body.invoiceValueBRL || 0,
+    description: body.description || '',
+    ncm: body.ncm || '',
     createdAt: new Date().toISOString(),
-    items: [],
-    taxes: {},
+    items: impItems,
+    taxes,
     numerario: {},
     timeline: [],
   }
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'imports', {
-      id, user_id: userId, empresa_id: empresaId, code, invoice_number: imp.invoiceNumber,
+      id, user_id: userId, empresa_id: empresaId, code,
+      invoice_number: imp.invoiceNumber,
+      invoice_date: imp.invoiceDate || null,
+      incoterm: imp.incoterm,
+      currency: imp.currency,
+      exchange_rate: imp.exchangeRate,
+      value_eur: imp.invoiceValueEUR,
+      value_usd: imp.invoiceValueUSD,
+      value_brl: imp.invoiceValueBRL,
+      port_origin: imp.portOfOrigin,
+      port_dest: imp.portOfDestination,
+      expected_arrival: imp.expectedArrival || null,
+      weight_gross: imp.grossWeight,
+      weight_net: imp.netWeight,
+      description: imp.description,
+      ncm: imp.ncm,
+      tax_ii: taxes.ii || 0,
+      tax_ipi: taxes.ipi || 0,
+      tax_pis: taxes.pis || 0,
+      tax_cofins: taxes.cofins || 0,
+      tax_icms: taxes.icms || 0,
+      tax_afrmm: taxes.afrmm || 0,
+      notes: JSON.stringify({ items: impItems, taxes, numerario: {} }),
       supplier_id: imp.supplierId, supplier_name: imp.supplierName, modality: imp.modality, status: 'waiting_ship',
     })
     if (!persistResult.success) {
