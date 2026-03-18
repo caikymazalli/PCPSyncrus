@@ -980,6 +980,64 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     } catch (e) {
       console.warn(`[HYDRATION] ⚠️ Não foi possível carregar quotation_responses:`, (e as any).message)
     }
+    // Load imports (processos de importação) do D1
+    try {
+      const imps = await db.prepare(`SELECT * FROM imports WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
+        .bind(...bindEmpresa([userId])).all()
+      if (imps.results && imps.results.length > 0) {
+        const existingImpIds = new Set((tenant.imports || []).map((i: any) => i.id))
+        const newImps: any[] = []
+        for (const r of imps.results as any[]) {
+          if (!existingImpIds.has(r.id)) {
+            let items: any[] = []
+            let taxes: any = {}
+            let numerario: any = {}
+            try { const n = JSON.parse(r.notes || '{}'); items = n.items || []; taxes = n.taxes || {}; numerario = n.numerario || {} } catch {}
+            newImps.push({
+              id: r.id, code: r.code || r.id,
+              invoiceNumber: r.invoice_number || '',
+              supplierId: r.supplier_id || '',
+              supplierName: r.supplier_name || '',
+              modality: r.modality || r.modalidade || 'maritimo',
+              status: r.status || 'waiting_ship',
+              invoiceDate: r.invoice_date || '',
+              incoterm: r.incoterm || 'FOB',
+              currency: r.currency || 'USD',
+              exchangeRate: r.exchange_rate || 5.52,
+              portOfOrigin: r.port_origin || '',
+              portOfDestination: r.port_dest || 'Santos',
+              expectedArrival: r.expected_arrival || '',
+              grossWeight: r.weight_gross || 0,
+              netWeight: r.weight_net || 0,
+              invoiceValueEUR: r.value_eur || 0,
+              invoiceValueUSD: r.value_usd || 0,
+              invoiceValueBRL: r.value_brl || 0,
+              description: r.description || '',
+              ncm: r.ncm || '',
+              taxes: {
+                ii:      r.tax_ii     || taxes.ii     || 0,
+                ipi:     r.tax_ipi    || taxes.ipi    || 0,
+                pis:     r.tax_pis    || taxes.pis    || 0,
+                cofins:  r.tax_cofins || taxes.cofins || 0,
+                icms:    r.tax_icms   || taxes.icms   || 0,
+                afrmm:   r.tax_afrmm  || taxes.afrmm  || 0,
+              },
+              createdAt: r.created_at || new Date().toISOString(),
+              items, numerario, timeline: [],
+            })
+          }
+        }
+        if (newImps.length > 0) {
+          if (!tenant.imports) tenant.imports = []
+          tenant.imports.push(...newImps)
+          console.log(`[HYDRATION] ✅ ${newImps.length} importações carregadas de D1 para ${userId}`)
+        }
+      }
+    } catch (e) {
+      console.warn('[HYDRATION] ⚠️ Não foi possível carregar imports:', (e as any).message)
+    }
+
+
 
     // Load product_supplier_links
     try {
