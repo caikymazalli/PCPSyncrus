@@ -546,19 +546,29 @@ function addCotItem() {
     const sel = document.getElementById('impItemProd'+idx);
     const code = sel.value;
     if (!code || code==='__manual__') return;
-    const item = window.allItemsData.find(i => i.code===code);
+    const item = window.allItemsData ? window.allItemsData.find(function(i){ return i.code===code; }) : null;
     if (!item) return;
-    // Pré-preenche descrição PT e EN dos dados do produto importado
+    // Buscar também em impProdEdits local
+    const localEdits = (impProdEdits && impProdEdits[code]) ? impProdEdits[code] : {};
+    // Pré-preenche descrição PT: prioridade = impProdEdits > item.descPT > (não usa name)
+    const descPT = localEdits.descPT || item.descPT || '';
+    // Pré-preenche descrição EN: prioridade = impProdEdits > item.descEN
+    const descEN = localEdits.descEN || item.descEN || item.englishDescription || item.englishDesc || '';
+    // NCM: prioridade = impProdEdits > item.ncm > célula da tabela
     const impProdEl = document.querySelector('.imp-prod-row[data-code="'+code+'"]');
-    const descPT = item.descPT || item.name || '';
-    const descEN = item.descEN || item.englishDescription || item.englishDesc || '';
-    const ncm = item.ncm || (impProdEl ? (() => {
+    const ncmFromTable = impProdEl ? (function() {
       const cells = impProdEl.querySelectorAll('td');
-      return cells[4]?.textContent?.trim() || '';
-    })() : '');
-    if (document.getElementById('impItemDescPT'+idx)) document.getElementById('impItemDescPT'+idx).value = descPT;
-    if (document.getElementById('impItemDescEN'+idx)) document.getElementById('impItemDescEN'+idx).value = descEN;
-    if (document.getElementById('impItemNCM'+idx) && ncm) document.getElementById('impItemNCM'+idx).value = ncm;
+      // NCM está na 5ª coluna (index 4) da tabela de produtos importados
+      const raw = cells[4] ? cells[4].textContent.trim() : '';
+      return (raw && raw !== '— preencher —') ? raw : '';
+    })() : '';
+    const ncm = localEdits.ncm || item.ncm || ncmFromTable;
+    const descPTEl = document.getElementById('impItemDescPT'+idx);
+    const descENEl = document.getElementById('impItemDescEN'+idx);
+    const ncmEl   = document.getElementById('impItemNCM'+idx);
+    if (descPTEl) descPTEl.value = descPT;
+    if (descENEl) descENEl.value = descEN;
+    if (ncmEl && ncm) ncmEl.value = ncm;
     calcImpTotal();
   }
 
