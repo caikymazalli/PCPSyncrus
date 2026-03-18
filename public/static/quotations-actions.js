@@ -488,48 +488,50 @@ function addCotItem() {
     const div = document.createElement('div');
     div.id = 'impItem'+idx;
     div.style.cssText = 'background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:10px;margin-bottom:4px;';
-    div.innerHTML = `
-      <div style="display:grid;grid-template-columns:90px 2fr 70px 1fr 90px 90px 80px 36px;gap:6px;align-items:start;">
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Cód.</label>
-          <select class="form-control" style="font-size:11px;" id="impItemProd\${idx}" onchange="onImpItemChange(\${idx})">
-            <option value="">Selecionar...</option>
-            \${window.allItemsData.map(i => '<option value="'+i.code+'">'+i.code+' — '+i.name+'</option>').join('')}
-            <option value="__manual__">— Manual —</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Descrição EN *</label>
-          <input class="form-control" id="impItemDescEN\${idx}" type="text" placeholder="English description..." style="font-size:12px;" oninput="calcImpTotal()">
-        </div>
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Qtd</label>
-          <input class="form-control" id="impItemQtd\${idx}" type="number" placeholder="Qtd" min="0" step="0.001" style="font-size:12px;" value="1" oninput="recalcImpItem(\${idx})">
-        </div>
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Observações</label>
-          <input class="form-control" id="impItemObs\${idx}" type="text" placeholder="Especificação, uso..." style="font-size:12px;">
-        </div>
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Val. Unit.</label>
-          <input class="form-control" id="impItemVU\${idx}" type="number" placeholder="0.00" min="0" step="0.01" style="font-size:12px;" value="0" oninput="recalcImpItem(\${idx})">
-        </div>
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Val. Total</label>
-          <input class="form-control" id="impItemSub\${idx}" type="text" placeholder="Subtotal" readonly style="font-size:12px;background:#fff;color:#1B4F72;font-weight:700;">
-        </div>
-        <div>
-          <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">NCM</label>
-          <input class="form-control" id="impItemNCM\${idx}" type="text" placeholder="0000.00.00" style="font-size:11px;font-family:monospace;" value="">
-        </div>
-        <div style="padding-top:18px;">
-          <button class="btn btn-danger btn-sm" style="padding:6px 8px;" onclick="removeImpItem(\${idx})"><i class="fas fa-trash"></i></button>
-        </div>
-      </div>
-      <div style="margin-top:6px;">
-        <label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descrição PT (para LI)</label>
-        <input class="form-control" id="impItemDescPT\${idx}" type="text" placeholder="Ex: Chapa de Alumínio Liga 6061 esp. 3mm" style="font-size:12px;margin-top:2px;" oninput="calcImpTotal()">
-      </div>`;
+    // Gerar options do dropdown com produtos cadastrados
+    const prodOpts = '<option value="">Selecionar...</option>' +
+      (window.allItemsData||[]).map(function(i){ return '<option value="'+i.code+'">'+i.code+' \u2014 '+i.name+'</option>'; }).join('') +
+      '<option value="__manual__">\u2014 Manual \u2014</option>';
+    div.innerHTML =
+      '<div style="display:grid;grid-template-columns:90px 2fr 70px 1fr 90px 90px 80px 36px;gap:6px;align-items:start;">' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">C\u00f3d.</label>' +
+          '<select class="form-control" style="font-size:11px;" id="impItemProd'+idx+'" onchange="onImpItemChange('+idx+')">' +
+            prodOpts +
+          '</select>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Descri\u00e7\u00e3o EN *</label>' +
+          '<input class="form-control" id="impItemDescEN'+idx+'" type="text" placeholder="English description..." style="font-size:12px;" oninput="calcImpTotal()">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Qtd</label>' +
+          '<input class="form-control" id="impItemQtd'+idx+'" type="number" placeholder="Qtd" min="0" step="0.001" style="font-size:12px;" value="1" oninput="recalcImpItem('+idx+')">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Observa\u00e7\u00f5es</label>' +
+          '<input class="form-control" id="impItemObs'+idx+'" type="text" placeholder="Especifica\u00e7\u00e3o, uso..." style="font-size:12px;">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Val. Unit.</label>' +
+          '<input class="form-control" id="impItemVU'+idx+'" type="number" placeholder="0.00" min="0" step="0.01" style="font-size:12px;" value="0" oninput="recalcImpItem('+idx+')">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">Val. Total</label>' +
+          '<input class="form-control" id="impItemSub'+idx+'" type="text" placeholder="Subtotal" readonly style="font-size:12px;background:#fff;color:#1B4F72;font-weight:700;">' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;display:block;margin-bottom:2px;">NCM</label>' +
+          '<input class="form-control" id="impItemNCM'+idx+'" type="text" placeholder="0000.00.00" style="font-size:11px;font-family:monospace;" value="">' +
+        '</div>' +
+        '<div style="padding-top:18px;">' +
+          '<button class="btn btn-danger btn-sm" style="padding:6px 8px;" onclick="removeImpItem('+idx+')"><i class="fas fa-trash"></i></button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:6px;">' +
+        '<label style="font-size:9px;font-weight:700;color:#6c757d;text-transform:uppercase;">Descri\u00e7\u00e3o PT (para LI)</label>' +
+        '<input class="form-control" id="impItemDescPT'+idx+'" type="text" placeholder="Ex: Chapa de Alum\u00ednio Liga 6061 esp. 3mm" style="font-size:12px;margin-top:2px;" oninput="calcImpTotal()">' +
+      '</div>';
     list.appendChild(div);
     calcImpTotal();
   }
