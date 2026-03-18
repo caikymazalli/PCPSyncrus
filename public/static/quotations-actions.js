@@ -380,6 +380,7 @@ function addCotItem() {
   function openImportDetail(id) {
     const imp = window.importsData.find(x => x.id === id);
     if (!imp) return;
+    window._currentImpDetailId = id; // guarda para botão Gerar Invoice
     const taxes = imp.taxes || {};
     const num = imp.numerario || {};
     document.getElementById('importDetailTitle').innerHTML = '<i class="fas fa-ship" style="margin-right:8px;"></i>' + imp.code + ' — ' + imp.supplierName;
@@ -758,12 +759,21 @@ function addCotItem() {
     const invoiceValueBRL = invoiceValueRaw * exchangeRate;
     // Impostos
     const taxes = {
-      ii:       parseFloat(document.getElementById('taxII')?.value || '0'),
-      ipi:      parseFloat(document.getElementById('taxIPI')?.value || '0'),
-      pis:      parseFloat(document.getElementById('taxPIS')?.value || '0'),
-      cofins:   parseFloat(document.getElementById('taxCOFINS')?.value || '0'),
-      icms:     parseFloat(document.getElementById('taxICMS')?.value || '0'),
-      afrmm:    parseFloat(document.getElementById('taxAFRMM')?.value || '0'),
+      ii:        parseFloat(document.getElementById('taxII')?.value || '0'),
+      ipi:       parseFloat(document.getElementById('taxIPI')?.value || '0'),
+      pis:       parseFloat(document.getElementById('taxPIS')?.value || '0'),
+      cofins:    parseFloat(document.getElementById('taxCOFINS')?.value || '0'),
+      icms:      parseFloat(document.getElementById('taxICMS')?.value || '0'),
+      afrmm:     parseFloat(document.getElementById('taxAFRMM')?.value || '0'),
+      siscomex:  parseFloat(document.getElementById('taxSISCOMEX')?.value || '0'),
+    };
+    // Numerário (custos adicionais de desembaraço)
+    const numerario = {
+      frete:    parseFloat(document.getElementById('numFrete')?.value  || '0'),
+      seguro:   parseFloat(document.getElementById('numSeguro')?.value || '0'),
+      desp:     parseFloat(document.getElementById('numDesp')?.value   || '0'),
+      porto:    parseFloat(document.getElementById('numPorto')?.value  || '0'),
+      arm:      parseFloat(document.getElementById('numArm')?.value    || '0'),
     };
     // Itens da importação
     const items = getImpItemsData();
@@ -775,7 +785,7 @@ function addCotItem() {
           invoiceDate, incoterm, currency, exchangeRate,
           portOfOrigin, portOfDestination, expectedArrival, grossWeight,
           invoiceValueEUR, invoiceValueUSD, invoiceValueBRL,
-          taxes, items
+          taxes, numerario, items
         })
       });
       const data = await res.json();
@@ -795,67 +805,89 @@ function addCotItem() {
   function openRascunhoLI(id) {
     const imp = window.importsData.find(x => x.id === id);
     if (!imp) return;
+    // Obter edições salvas localmente para este processo
+    const liEditsKey = 'liEdits_' + id;
+    const liEdits = JSON.parse(localStorage.getItem(liEditsKey) || '{}');
     document.getElementById('liImpCodigo').textContent = imp.code;
     const hoje = new Date().toLocaleDateString('pt-BR');
+    const moedaSym = (imp.invoiceValueEUR||0) > 0 ? '€' : 'US$';
+
+    // Helper para campo editável (edições salvas no localStorage, apenas para este embarque)
+    function liField(key, defaultVal) {
+      const val = liEdits[key] !== undefined ? liEdits[key] : (defaultVal || '—');
+      return `<span class="li-edit-field" contenteditable="true" data-li-key="${key}" data-imp-id="${id}"
+        title="Clique para editar · Alterações salvas apenas neste embarque"
+        style="outline:none;border-bottom:1px dashed #7c3aed;cursor:text;min-width:60px;display:inline-block;color:inherit;"
+        onblur="saveLiEdit('${id}','${key}',this.textContent)">${val}</span>`;
+    }
+
+    // Calcular país de origem a partir do porto
+    const origin = imp.portOfOrigin || '';
+    const paises = origin.includes('Hamburg')||origin.includes('München')||origin.includes('Berlin') ? 'Alemanha' :
+                   origin.includes('Chicago')||origin.includes('New York')||origin.includes('Los Angeles') ? 'EUA' :
+                   origin.includes('Shanghai')||origin.includes('Ningbo')||origin.includes('Shenzhen') ? 'China' :
+                   origin.includes('Tokyo')||origin.includes('Osaka') ? 'Japão' :
+                   origin.includes('Seoul') ? 'Coreia do Sul' : liEdits['paisOrigem'] || '—';
+
+    const liItems = imp.items && imp.items.length > 0
+      ? imp.items
+      : [{ code: imp.code, descPT: imp.description||'—', ncm: imp.ncm||'—', qty: imp.netWeight||1, vu: imp.invoiceValueEUR||imp.invoiceValueUSD||0, sub: imp.invoiceValueEUR||imp.invoiceValueUSD||0 }];
+    const totalCIF = (imp.invoiceValueEUR||0) > 0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
+
     let html = `
-    <div style="background:#f5f3ff;border-radius:8px;padding:16px;margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div style="font-size:16px;font-weight:800;color:#7c3aed;"><i class="fas fa-stamp" style="margin-right:8px;"></i>RASCUNHO DE LICENÇA DE IMPORTAÇÃO</div>
-        <span style="background:#fef2f2;color:#dc2626;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid #fecaca;">MINUTA — Não oficial</span>
+    <div style="background:#f5f3ff;border-radius:8px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:15px;font-weight:800;color:#7c3aed;"><i class="fas fa-stamp" style="margin-right:8px;"></i>RASCUNHO DE LICENÇA DE IMPORTAÇÃO</div>
+        <div style="font-size:11px;color:#6c757d;margin-top:4px;">Gerado em ${hoje} · Processo: ${imp.code}
+          · <span style="color:#7c3aed;font-size:10px;"><i class="fas fa-pencil-alt"></i> Campos roxos sublinhados são editáveis (só para este embarque)</span>
+        </div>
       </div>
-      <div style="font-size:11px;color:#6c757d;">Gerado automaticamente em ${hoje} · Processo: ${imp.code}</div>
+      <span style="background:#fef2f2;color:#dc2626;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid #fecaca;">MINUTA — Não oficial</span>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      ${detRow('IMPORTADOR (CNPJ)', 'Sua Empresa Ltda — 00.000.000/0001-00')}
-      ${detRow('FORNECEDOR / EXPORTADOR', imp.supplierName)}
-      ${detRow('PAÍS DE ORIGEM', (imp.portOfOrigin||'').includes('Hamburg')||(imp.portOfOrigin||'').includes('München')?'Alemanha':(imp.portOfOrigin||'').includes('Chicago')?'EUA':'—')}
-      ${detRow('PAÍS DE PROCEDÊNCIA', (imp.portOfOrigin||'').includes('Hamburg')||(imp.portOfOrigin||'').includes('München')?'Alemanha':(imp.portOfOrigin||'').includes('Chicago')?'EUA':'—')}
-      ${detRow('PORTO/AEROPORTO DESCARGA', imp.portOfDestination)}
-      ${detRow('VIA DE TRANSPORTE', (imp.incoterm||'').includes('CIF')?'Marítima':'A definir')}
-      ${detRow('INCOTERM', imp.incoterm)}
-      ${detRow('REGIME ADUANEIRO', 'Importação Comum')}
-      ${detRow('ENQUADRAMENTO CAMBIAL', 'SEM COBERTURA CAMBIAL — LUCROS E DIVIDENDOS')}
-      ${detRow('MODALIDADE PAGAMENTO', 'Pagamento Antecipado / L/C à vista')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      ${detRow('IMPORTADOR (CNPJ)', liField('importador', 'Sua Empresa Ltda — 00.000.000/0001-00'))}
+      ${detRow('FORNECEDOR / EXPORTADOR', imp.supplierName||'—')}
+      ${detRow('PAÍS DE ORIGEM', liField('paisOrigem', paises))}
+      ${detRow('PAÍS DE PROCEDÊNCIA', liField('paisProcedencia', paises))}
+      ${detRow('PORTO/AEROPORTO DESCARGA', imp.portOfDestination||'—')}
+      ${detRow('VIA DE TRANSPORTE', liField('viaTransporte', (imp.incoterm||'').includes('CIF')?'Marítima':'A definir'))}
+      ${detRow('INCOTERM', imp.incoterm||'—')}
+      ${detRow('REGIME ADUANEIRO', liField('regimeAduaneiro', 'Importação Comum'))}
+      ${detRow('ENQUADRAMENTO CAMBIAL', liField('enquadramentoCambial', 'SEM COBERTURA CAMBIAL — LUCROS E DIVIDENDOS'))}
+      ${detRow('MODALIDADE PAGAMENTO', liField('modalidadePagamento', 'Pagamento Antecipado / L/C à vista'))}
     </div>
 
     <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Relação de Mercadorias</div>
-    ${(() => {
-      // Tentar montar itens a partir dos dados do processo (itens da invoice)
-      const liItems = imp.items && imp.items.length > 0 ? imp.items : [{ productCode: imp.code, descPT: imp.description, ncm: imp.ncm, qty: imp.netWeight, totalCIF: imp.invoiceValueEUR || imp.invoiceValueUSD }];
-      const moedaSym = imp.invoiceValueEUR > 0 ? '€' : 'US$';
-      const liRows = liItems.map((it, i) => {
-        const valTotal = it.totalCIF || it.subtotal || ((it.qty||1) * (it.unitPrice||0));
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+      <thead><tr style="background:#7c3aed;color:white;">
+        <th style="padding:8px 10px;text-align:left;">Cód.</th>
+        <th style="padding:8px 10px;text-align:left;">Descrição PT (LI)</th>
+        <th style="padding:8px 10px;text-align:right;">Qtd</th>
+        <th style="padding:8px 10px;text-align:left;">NCM</th>
+        <th style="padding:8px 10px;text-align:right;">Valor Total CIF</th>
+      </tr></thead>
+      <tbody>${liItems.map((it, i) => {
+        const valT = it.sub || it.subtotal || ((it.qty||1)*(it.vu||it.unitPrice||0));
         return '<tr style="background:'+(i%2===0?'#f8f9fa':'white')+';border-bottom:1px solid #e9ecef;">' +
-          '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#1B4F72;font-size:11px;">'+(it.productCode||'—')+'</td>' +
-          '<td style="padding:8px 10px;font-weight:500;color:#374151;">'+(it.descPT||it.description||imp.description||'— preencher —')+'</td>' +
+          '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#1B4F72;font-size:11px;">'+(it.code||it.productCode||'—')+'</td>' +
+          '<td style="padding:8px 10px;font-weight:500;color:#374151;">'+(it.descPT||it.description||'— preencher —')+'</td>' +
           '<td style="padding:8px 10px;text-align:right;">'+(it.qty||it.quantity||'—')+'</td>' +
           '<td style="padding:8px 10px;font-weight:700;color:#7c3aed;font-family:monospace;">'+(it.ncm||imp.ncm||'—')+'</td>' +
-          '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">'+moedaSym+' '+(valTotal>0?valTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>' +
-          '</tr>';
-      }).join('');
-      const totalCIF = imp.invoiceValueEUR > 0 ? imp.invoiceValueEUR : imp.invoiceValueUSD;
-      return '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">' +
-        '<thead><tr style="background:#7c3aed;color:white;">' +
-        '<th style="padding:8px 10px;text-align:left;">Cód.</th>' +
-        '<th style="padding:8px 10px;text-align:left;">Descrição PT</th>' +
-        '<th style="padding:8px 10px;text-align:right;">Qtd</th>' +
-        '<th style="padding:8px 10px;text-align:left;">NCM</th>' +
-        '<th style="padding:8px 10px;text-align:right;">Valor Total CIF</th>' +
-        '</tr></thead>' +
-        '<tbody>'+liRows+'</tbody>' +
-        '<tfoot><tr style="background:#f5f3ff;">' +
-        '<td colspan="4" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL CIF:</td>' +
-        '<td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">'+moedaSym+' '+totalCIF.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>' +
-        '</tr></tfoot>' +
-        '</table>';
-    })()}
+          '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">'+moedaSym+' '+(valT>0?valT.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>' +
+        '</tr>';
+      }).join('')}</tbody>
+      <tfoot><tr style="background:#f5f3ff;">
+        <td colspan="4" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL CIF:</td>
+        <td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">${moedaSym} ${(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+      </tr></tfoot>
+    </table>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      ${detRow('VALOR TOTAL CIF (USD/EUR)', (imp.invoiceValueEUR||0) > 0 ? '€ '+(imp.invoiceValueEUR||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+(imp.invoiceValueUSD||0).toLocaleString('pt-BR',{minimumFractionDigits:2}))}
-      ${detRow('VALOR TOTAL CIF (BRL)', 'R$ '+(imp.invoiceValueBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+imp.exchangeRate+')')}
-      ${detRow('PESO LÍQUIDO', imp.netWeight+' kg')}
-      ${detRow('PESO BRUTO', imp.grossWeight+' kg')}
+      ${detRow('VALOR TOTAL CIF ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+      ${detRow('VALOR TOTAL CIF (BRL)', 'R$ '+(imp.invoiceValueBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+(imp.exchangeRate||0)+')')}
+      ${detRow('PESO LÍQUIDO', (imp.netWeight||0)+' kg')}
+      ${detRow('PESO BRUTO', (imp.grossWeight||0)+' kg')}
     </div>
 
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;">
@@ -865,6 +897,187 @@ function addCotItem() {
     </div>`;
     document.getElementById('rascunhoLIBody').innerHTML = html;
     openModal('rascunhoLIModal');
+  }
+
+  // Salvar edição de campo da LI no localStorage (somente este embarque)
+  function saveLiEdit(impId, key, value) {
+    const k = 'liEdits_' + impId;
+    const edits = JSON.parse(localStorage.getItem(k) || '{}');
+    edits[key] = value.trim();
+    localStorage.setItem(k, JSON.stringify(edits));
+  }
+
+  // ── Invoice Comercial ────────────────────────────────────────────────────
+  function openInvoiceComercial(id) {
+    const imp = window.importsData.find(x => x.id === id);
+    if (!imp) return;
+    const invEditsKey = 'invEdits_' + id;
+    const invEdits = JSON.parse(localStorage.getItem(invEditsKey) || '{}');
+    document.getElementById('invoiceImpCodigo').textContent = imp.code;
+    const moedaSym = (imp.invoiceValueEUR||0) > 0 ? '€' : 'US$';
+    const moedaLabel = (imp.invoiceValueEUR||0) > 0 ? 'EUR' : 'USD';
+    const fmtVal = v => (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+    const hoje = new Date().toLocaleDateString('pt-BR');
+
+    // Helper para campo editável (salvo no localStorage deste embarque)
+    function invField(key, defaultVal, style) {
+      const val = invEdits[key] !== undefined ? invEdits[key] : (defaultVal || '—');
+      return `<span contenteditable="true" data-inv-key="${key}"
+        title="Clique para editar"
+        style="outline:none;border-bottom:1px dashed #1B4F72;cursor:text;display:inline-block;min-width:80px;${style||''}"
+        onblur="saveInvEdit('${id}','${key}',this.textContent)">${val}</span>`;
+    }
+
+    const invItems = imp.items && imp.items.length > 0 ? imp.items
+      : [{ code: imp.code||'—', descEN: imp.description||'—', qty: imp.netWeight||1, vu: imp.invoiceValueEUR||imp.invoiceValueUSD||0, sub: imp.invoiceValueEUR||imp.invoiceValueUSD||0, ncm: imp.ncm||'—' }];
+
+    const itemsTotal = invItems.reduce((acc, it) => acc + (it.sub||((it.qty||0)*(it.vu||0))), 0);
+    const freight    = parseFloat(invEdits['freight'] || '0');
+    const insurance  = parseFloat(invEdits['insurance'] || '0');
+    const grandTotal = itemsTotal + freight + insurance;
+
+    const invoiceNumber = invEdits['invoiceNumber'] || imp.invoiceNumber || '';
+    const invoiceDate   = invEdits['invoiceDate'] || imp.invoiceDate || hoje;
+
+    let html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;max-width:860px;margin:0 auto;">
+
+      <!-- Cabeçalho da Invoice -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #1B4F72;">
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#1B4F72;letter-spacing:1px;">COMMERCIAL INVOICE</div>
+          <div style="font-size:13px;color:#6c757d;margin-top:4px;">Invoice No: ${invField('invoiceNumber', invoiceNumber, 'font-weight:700;font-size:14px;color:#1B4F72;')} &nbsp;·&nbsp; Date: ${invField('invoiceDate', invoiceDate)}</div>
+          <div style="font-size:12px;color:#6c757d;">Incoterm: <strong>${imp.incoterm||'—'}</strong> &nbsp;·&nbsp; Port of Loading: <strong>${imp.portOfOrigin||'—'}</strong> &nbsp;·&nbsp; Port of Discharge: <strong>${imp.portOfDestination||'—'}</strong></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px;color:#9ca3af;">Processo</div>
+          <div style="font-size:18px;font-weight:800;color:#1B4F72;">${imp.code}</div>
+          <div style="font-size:11px;color:#6c757d;margin-top:4px;">🖊 Campos sublinhados são editáveis</div>
+        </div>
+      </div>
+
+      <!-- Vendedor / Importador / Notify (3 colunas editáveis) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px;">
+        <div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid #1B4F72;">
+          <div style="font-size:10px;font-weight:700;color:#1B4F72;text-transform:uppercase;margin-bottom:6px;">SELLER (VENDEDOR)</div>
+          <div style="font-size:13px;">${invField('sellerName', imp.supplierName||'—', 'font-weight:700;')}</div>
+          <div style="font-size:12px;margin-top:4px;">${invField('sellerAddress', '— endereço —')}</div>
+          <div style="font-size:12px;">${invField('sellerCity', '— cidade / país —')}</div>
+          <div style="font-size:12px;">Tel: ${invField('sellerPhone', '—')}</div>
+          <div style="font-size:12px;">Bank: ${invField('sellerBank', '—')}</div>
+        </div>
+        <div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid #059669;">
+          <div style="font-size:10px;font-weight:700;color:#059669;text-transform:uppercase;margin-bottom:6px;">BUYER / IMPORTER (COMPRADOR)</div>
+          <div style="font-size:13px;">${invField('buyerName', 'Sua Empresa Ltda', 'font-weight:700;')}</div>
+          <div style="font-size:12px;margin-top:4px;">${invField('buyerAddress', '— endereço —')}</div>
+          <div style="font-size:12px;">${invField('buyerCity', '— cidade, Brasil —')}</div>
+          <div style="font-size:12px;">CNPJ: ${invField('buyerCNPJ', '00.000.000/0001-00')}</div>
+        </div>
+        <div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid #d97706;">
+          <div style="font-size:10px;font-weight:700;color:#d97706;text-transform:uppercase;margin-bottom:6px;">NOTIFY PARTY</div>
+          <div style="font-size:13px;">${invField('notifyName', 'Sua Empresa Ltda', 'font-weight:700;')}</div>
+          <div style="font-size:12px;margin-top:4px;">${invField('notifyAddress', '— endereço —')}</div>
+          <div style="font-size:12px;">${invField('notifyCity', '— cidade, Brasil —')}</div>
+          <div style="font-size:12px;">${invField('notifyContact', '—')}</div>
+        </div>
+      </div>
+
+      <!-- Tabela de Produtos -->
+      <div style="font-size:12px;font-weight:700;color:#1B4F72;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Description of Goods</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+        <thead>
+          <tr style="background:#1B4F72;color:white;">
+            <th style="padding:8px 10px;text-align:left;">Item / Code</th>
+            <th style="padding:8px 10px;text-align:left;">Description</th>
+            <th style="padding:8px 10px;text-align:left;">NCM / HS</th>
+            <th style="padding:8px 10px;text-align:right;">Qty</th>
+            <th style="padding:8px 10px;text-align:right;">Unit Price (${moedaLabel})</th>
+            <th style="padding:8px 10px;text-align:right;">Total (${moedaLabel})</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${invItems.map((it, i) => {
+            const sub = it.sub || it.subtotal || ((it.qty||0)*(it.vu||it.unitPrice||0));
+            return '<tr style="background:'+(i%2===0?'#f8f9fa':'white')+';border-bottom:1px solid #e9ecef;">' +
+              '<td style="padding:8px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+(it.code||'—')+'</td>' +
+              '<td style="padding:8px 10px;">'+(it.descEN||it.description||'—')+'</td>' +
+              '<td style="padding:8px 10px;font-family:monospace;color:#7c3aed;">'+(it.ncm||imp.ncm||'—')+'</td>' +
+              '<td style="padding:8px 10px;text-align:right;">'+(it.qty||0)+'</td>' +
+              '<td style="padding:8px 10px;text-align:right;">'+(it.vu||it.unitPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>' +
+              '<td style="padding:8px 10px;text-align:right;font-weight:700;">'+(sub||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>' +
+            '</tr>';
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f0f9ff;border-top:2px solid #1B4F72;">
+            <td colspan="5" style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">Subtotal Goods:</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:800;color:#1B4F72;">${moedaSym} ${fmtVal(itemsTotal)}</td>
+          </tr>
+          <tr style="background:#f0f9ff;">
+            <td colspan="5" style="padding:6px 10px;text-align:right;color:#374151;">Freight (${moedaLabel}):
+              <span contenteditable="true" data-inv-key="freight"
+                style="outline:none;border-bottom:1px dashed #1B4F72;cursor:text;display:inline-block;min-width:60px;text-align:right;padding:0 4px;"
+                onblur="saveInvEdit('${id}','freight',this.textContent);openInvoiceComercial('${id}')">${invEdits['freight']||'0,00'}</span>
+            </td>
+            <td style="padding:6px 10px;text-align:right;font-weight:600;">${moedaSym} <span id="invFreightDisplay">${fmtVal(freight)}</span></td>
+          </tr>
+          <tr style="background:#f0f9ff;">
+            <td colspan="5" style="padding:6px 10px;text-align:right;color:#374151;">Insurance (${moedaLabel}):
+              <span contenteditable="true" data-inv-key="insurance"
+                style="outline:none;border-bottom:1px dashed #1B4F72;cursor:text;display:inline-block;min-width:60px;text-align:right;padding:0 4px;"
+                onblur="saveInvEdit('${id}','insurance',this.textContent);openInvoiceComercial('${id}')">${invEdits['insurance']||'0,00'}</span>
+            </td>
+            <td style="padding:6px 10px;text-align:right;font-weight:600;">${moedaSym} <span id="invInsuranceDisplay">${fmtVal(insurance)}</span></td>
+          </tr>
+          <tr style="background:#1B4F72;color:white;">
+            <td colspan="5" style="padding:10px;text-align:right;font-weight:800;font-size:14px;">TOTAL INVOICE (${moedaLabel}):</td>
+            <td style="padding:10px;text-align:right;font-weight:900;font-size:16px;">${moedaSym} ${fmtVal(grandTotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Informações Gerais (campo livre editável) -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:#1B4F72;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>General Information / Remarks</div>
+        <div contenteditable="true" data-inv-key="remarks"
+          style="min-height:60px;border:1px dashed #cbd5e1;border-radius:6px;padding:10px;font-size:12px;color:#374151;line-height:1.6;outline:none;"
+          onblur="saveInvEdit('${id}','remarks',this.innerHTML)">${invEdits['remarks']||'<em style="color:#9ca3af;">Clique aqui para adicionar observações gerais, condições de pagamento, número de L/C, dados bancários, etc.</em>'}</div>
+      </div>
+
+      <!-- Assinaturas -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;padding-top:20px;border-top:2px solid #e9ecef;">
+        <div style="text-align:center;">
+          <div style="border-top:1px solid #374151;padding-top:8px;margin-top:48px;">
+            <div style="font-size:12px;font-weight:700;color:#1B4F72;">${invField('signerSeller', imp.supplierName||'SELLER', 'font-weight:700;')}</div>
+            <div style="font-size:11px;color:#6c757d;">Authorized Signature &amp; Company Stamp</div>
+            <div style="font-size:11px;color:#6c757d;margin-top:2px;">${invField('signerSellerTitle', 'Export Manager')}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Date: _______________</div>
+          </div>
+        </div>
+        <div style="text-align:center;">
+          <div style="border-top:1px solid #374151;padding-top:8px;margin-top:48px;">
+            <div style="font-size:12px;font-weight:700;color:#059669;">${invField('signerBuyer', 'Sua Empresa Ltda', 'font-weight:700;')}</div>
+            <div style="font-size:11px;color:#6c757d;">Authorized Signature &amp; Company Stamp</div>
+            <div style="font-size:11px;color:#6c757d;margin-top:2px;">${invField('signerBuyerTitle', 'Import Manager')}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:2px;">Date: _______________</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:10px;color:#9ca3af;margin-top:20px;padding-top:12px;border-top:1px solid #f1f3f5;">
+        This is a commercial invoice generated by PCPSyncrus · ${imp.code} · Printed: ${hoje}
+      </div>
+    </div>`;
+    document.getElementById('invoiceComercialBody').innerHTML = html;
+    openModal('invoiceComercialModal');
+  }
+
+  // Salvar edição de campo da Invoice no localStorage (somente este embarque)
+  function saveInvEdit(impId, key, value) {
+    const k = 'invEdits_' + impId;
+    const edits = JSON.parse(localStorage.getItem(k) || '{}');
+    edits[key] = value.trim();
+    localStorage.setItem(k, JSON.stringify(edits));
   }
 
   function imprimirLI() {
