@@ -387,19 +387,24 @@ function addCotItem() {
     // Seção dados gerais
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">';
     html += detRow('Código Processo', imp.code) + detRow('Fornecedor', imp.supplierName);
-    html += detRow('Invoice Nº', imp.invoiceNumber) + detRow('Data Invoice', new Date(imp.invoiceDate+'T12:00:00').toLocaleDateString('pt-BR'));
-    html += detRow('Incoterm', imp.incoterm) + detRow('NCM', imp.ncm);
-    html += detRow('Porto Origem', imp.portOfOrigin) + detRow('Porto Destino', imp.portOfDestination);
-    html += detRow('Peso Líquido', imp.netWeight + ' kg') + detRow('Peso Bruto', imp.grossWeight + ' kg');
-    html += detRow('Chegada Prevista', new Date(imp.expectedArrival+'T12:00:00').toLocaleDateString('pt-BR')) + detRow('Descrição', imp.description);
+    const fmtDate = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    html += detRow('Invoice Nº', imp.invoiceNumber||'—') + detRow('Data Invoice', fmtDate(imp.invoiceDate));
+    html += detRow('Incoterm', imp.incoterm||'—') + detRow('NCM', imp.ncm||'—');
+    html += detRow('Porto Origem', imp.portOfOrigin||'—') + detRow('Porto Destino', imp.portOfDestination||'—');
+    html += detRow('Peso Líquido', (imp.netWeight||0) + ' kg') + detRow('Peso Bruto', (imp.grossWeight||0) + ' kg');
+    html += detRow('Chegada Prevista', fmtDate(imp.expectedArrival)) + detRow('Descrição', imp.description||'—');
     html += '</div>';
     // Invoice
     html += '<div style="background:#e8f4fd;border-radius:8px;padding:14px;margin-bottom:16px;">';
     html += '<div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:10px;"><i class="fas fa-file-invoice-dollar" style="margin-right:6px;"></i>Valores da Invoice</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR '+(imp.invoiceValueEUR > 0 ? 'EUR':'USD')+'</div><div style="font-size:18px;font-weight:800;color:#2980B9;">'+(imp.invoiceValueEUR > 0 ? '€'+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$'+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}))+'</div></div>';
-    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">TAXA CÂMBIO</div><div style="font-size:18px;font-weight:800;color:#374151;">R$ '+imp.exchangeRate+'</div></div>';
-    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR BRL</div><div style="font-size:18px;font-weight:800;color:#1B4F72;">R$ '+imp.invoiceValueBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>';
+    const valEUR = imp.invoiceValueEUR || 0;
+    const valUSD = imp.invoiceValueUSD || 0;
+    const valBRL = imp.invoiceValueBRL || 0;
+    const exchR  = imp.exchangeRate || 0;
+    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR '+(valEUR > 0 ? 'EUR':'USD')+'</div><div style="font-size:18px;font-weight:800;color:#2980B9;">'+(valEUR > 0 ? '€'+valEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$'+valUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}))+'</div></div>';
+    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">TAXA CÂMBIO</div><div style="font-size:18px;font-weight:800;color:#374151;">R$ '+exchR+'</div></div>';
+    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR BRL</div><div style="font-size:18px;font-weight:800;color:#1B4F72;">R$ '+valBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>';
     html += '</div></div>';
     // Impostos
     html += '<div style="background:#fef2f2;border-radius:8px;padding:14px;margin-bottom:16px;">';
@@ -482,7 +487,18 @@ function addCotItem() {
 
   // ── Nova importação: cálculos inline ─────────────────────────────────────
   function updateImpMoedaLabel() {
-    // mantido por compatibilidade
+    const moeda = document.getElementById('impMoeda')?.value || 'USD';
+    const labelEl = document.getElementById('impValorLabel');
+    if (labelEl) labelEl.textContent = 'Valor Invoice (' + moeda + ')';
+    const origemLabel = document.getElementById('impOrigemLabel');
+    const destinoLabel = document.getElementById('impDestinoLabel');
+    if (moeda === 'BRL') {
+      if (origemLabel) origemLabel.textContent = 'Cidade de Origem';
+      if (destinoLabel) destinoLabel.textContent = 'Cidade de Destino';
+    } else {
+      if (origemLabel) origemLabel.textContent = 'Porto de Origem';
+      if (destinoLabel) destinoLabel.textContent = 'Porto de Destino';
+    }
     calcImpBRL();
   }
 
@@ -648,6 +664,13 @@ function addCotItem() {
   }
 
   function calcImpBRL() {
+    // Atualizar o hidden impBRL com base no valor da invoice e câmbio
+    const moeda   = document.getElementById('impMoeda')?.value || 'USD';
+    const valorFx = parseFloat(document.getElementById('impValorInvoice')?.value || '0');
+    const cambio  = parseFloat(document.getElementById('impCambio')?.value || '5.52');
+    const brl     = moeda === 'BRL' ? valorFx : valorFx * cambio;
+    const hiddenBRL = document.getElementById('impBRL');
+    if (hiddenBRL) hiddenBRL.value = brl.toFixed(2);
     calcImpTotal();
   }
 
@@ -701,10 +724,40 @@ function addCotItem() {
     if (!inv) { showToastSup('⚠️ Informe o número da Invoice!', 'error'); switchImpTab(1); return; }
     if (!fornId) { showToastSup('⚠️ Selecione o fornecedor!', 'error'); return; }
     const mod = document.querySelector('input[name="impModalidade"]:checked')?.value || 'maritimo';
+    // Capturar todos os campos do formulário
+    const invoiceDate     = document.getElementById('impDataInvoice')?.value || '';
+    const incoterm        = document.getElementById('impIncoterm')?.value || 'FOB';
+    const currency        = document.getElementById('impMoeda')?.value || 'USD';
+    const exchangeRate    = parseFloat(document.getElementById('impCambio')?.value || '5.52');
+    const portOfOrigin    = document.getElementById('impOrigem')?.value || '';
+    const portOfDestination = document.getElementById('impDestino')?.value || 'Santos';
+    const expectedArrival = document.getElementById('impChegada')?.value || '';
+    const grossWeight     = parseFloat(document.getElementById('impPesoBruto')?.value || '0');
+    const invoiceValueRaw = parseFloat(document.getElementById('impValorInvoice')?.value || '0');
+    const invoiceValueEUR = currency === 'EUR' ? invoiceValueRaw : 0;
+    const invoiceValueUSD = currency === 'USD' ? invoiceValueRaw : 0;
+    const invoiceValueBRL = invoiceValueRaw * exchangeRate;
+    // Impostos
+    const taxes = {
+      ii:       parseFloat(document.getElementById('taxII')?.value || '0'),
+      ipi:      parseFloat(document.getElementById('taxIPI')?.value || '0'),
+      pis:      parseFloat(document.getElementById('taxPIS')?.value || '0'),
+      cofins:   parseFloat(document.getElementById('taxCOFINS')?.value || '0'),
+      icms:     parseFloat(document.getElementById('taxICMS')?.value || '0'),
+      afrmm:    parseFloat(document.getElementById('taxAFRMM')?.value || '0'),
+    };
+    // Itens da importação
+    const items = getImpItemsData ? getImpItemsData() : [];
     try {
       const res = await fetch('/suprimentos/api/imports/create', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ invoiceNumber: inv, supplierId: fornId, supplierName: forn, modality: mod })
+        body: JSON.stringify({
+          invoiceNumber: inv, supplierId: fornId, supplierName: forn, modality: mod,
+          invoiceDate, incoterm, currency, exchangeRate,
+          portOfOrigin, portOfDestination, expectedArrival, grossWeight,
+          invoiceValueEUR, invoiceValueUSD, invoiceValueBRL,
+          taxes, items
+        })
       });
       const data = await res.json();
       if (data.ok) {
@@ -731,24 +784,24 @@ function addCotItem() {
         <div style="font-size:16px;font-weight:800;color:#7c3aed;"><i class="fas fa-stamp" style="margin-right:8px;"></i>RASCUNHO DE LICENÇA DE IMPORTAÇÃO</div>
         <span style="background:#fef2f2;color:#dc2626;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid #fecaca;">MINUTA — Não oficial</span>
       </div>
-      <div style="font-size:11px;color:#6c757d;">Gerado automaticamente em \${hoje} · Processo: \${imp.code}</div>
+      <div style="font-size:11px;color:#6c757d;">Gerado automaticamente em ${hoje} · Processo: ${imp.code}</div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      \${detRow('IMPORTADOR (CNPJ)', 'Sua Empresa Ltda — 00.000.000/0001-00')}
-      \${detRow('FORNECEDOR / EXPORTADOR', imp.supplierName)}
-      \${detRow('PAÍS DE ORIGEM', imp.portOfOrigin.includes('Hamburg')||imp.portOfOrigin.includes('München')?'Alemanha':imp.portOfOrigin.includes('Chicago')?'EUA':'—')}
-      \${detRow('PAÍS DE PROCEDÊNCIA', imp.portOfOrigin.includes('Hamburg')||imp.portOfOrigin.includes('München')?'Alemanha':imp.portOfOrigin.includes('Chicago')?'EUA':'—')}
-      \${detRow('PORTO/AEROPORTO DESCARGA', imp.portOfDestination)}
-      \${detRow('VIA DE TRANSPORTE', imp.incoterm.includes('CIF')?'Marítima':'A definir')}
-      \${detRow('INCOTERM', imp.incoterm)}
-      \${detRow('REGIME ADUANEIRO', 'Importação Comum')}
-      \${detRow('ENQUADRAMENTO CAMBIAL', 'SEM COBERTURA CAMBIAL — LUCROS E DIVIDENDOS')}
-      \${detRow('MODALIDADE PAGAMENTO', 'Pagamento Antecipado / L/C à vista')}
+      ${detRow('IMPORTADOR (CNPJ)', 'Sua Empresa Ltda — 00.000.000/0001-00')}
+      ${detRow('FORNECEDOR / EXPORTADOR', imp.supplierName)}
+      ${detRow('PAÍS DE ORIGEM', (imp.portOfOrigin||'').includes('Hamburg')||(imp.portOfOrigin||'').includes('München')?'Alemanha':(imp.portOfOrigin||'').includes('Chicago')?'EUA':'—')}
+      ${detRow('PAÍS DE PROCEDÊNCIA', (imp.portOfOrigin||'').includes('Hamburg')||(imp.portOfOrigin||'').includes('München')?'Alemanha':(imp.portOfOrigin||'').includes('Chicago')?'EUA':'—')}
+      ${detRow('PORTO/AEROPORTO DESCARGA', imp.portOfDestination)}
+      ${detRow('VIA DE TRANSPORTE', (imp.incoterm||'').includes('CIF')?'Marítima':'A definir')}
+      ${detRow('INCOTERM', imp.incoterm)}
+      ${detRow('REGIME ADUANEIRO', 'Importação Comum')}
+      ${detRow('ENQUADRAMENTO CAMBIAL', 'SEM COBERTURA CAMBIAL — LUCROS E DIVIDENDOS')}
+      ${detRow('MODALIDADE PAGAMENTO', 'Pagamento Antecipado / L/C à vista')}
     </div>
 
     <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Relação de Mercadorias</div>
-    \${(() => {
+    ${(() => {
       // Tentar montar itens a partir dos dados do processo (itens da invoice)
       const liItems = imp.items && imp.items.length > 0 ? imp.items : [{ productCode: imp.code, descPT: imp.description, ncm: imp.ncm, qty: imp.netWeight, totalCIF: imp.invoiceValueEUR || imp.invoiceValueUSD }];
       const moedaSym = imp.invoiceValueEUR > 0 ? '€' : 'US$';
@@ -780,10 +833,10 @@ function addCotItem() {
     })()}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      \${detRow('VALOR TOTAL CIF (USD/EUR)', imp.invoiceValueEUR > 0 ? '€ '+imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
-      \${detRow('VALOR TOTAL CIF (BRL)', 'R$ '+imp.invoiceValueBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+imp.exchangeRate+')')}
-      \${detRow('PESO LÍQUIDO', imp.netWeight+' kg')}
-      \${detRow('PESO BRUTO', imp.grossWeight+' kg')}
+      ${detRow('VALOR TOTAL CIF (USD/EUR)', (imp.invoiceValueEUR||0) > 0 ? '€ '+(imp.invoiceValueEUR||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$ '+(imp.invoiceValueUSD||0).toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+      ${detRow('VALOR TOTAL CIF (BRL)', 'R$ '+(imp.invoiceValueBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+imp.exchangeRate+')')}
+      ${detRow('PESO LÍQUIDO', imp.netWeight+' kg')}
+      ${detRow('PESO BRUTO', imp.grossWeight+' kg')}
     </div>
 
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;">
