@@ -664,6 +664,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         stockMax: r.stock_max || 0, stockCurrent: r.stock_current || 0,
         stockStatus: r.stock_status || 'normal', price: r.price || 0,
         notes: r.notes || '', description: r.description || '',
+        ncm: r.ncm || '',
+        descPT: r.desc_pt || '',
+        descEN: r.desc_en || '',
         serialControlled: r.serial_controlled === 1,
         controlType: r.control_type || '',
         supplierId: r.supplier_id_1 || r.supplier_id || '',
@@ -996,6 +999,34 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
       console.warn('[HYDRATION] ⚠️ Não foi possível carregar product_supplier_links:', (e as any).message)
       tenant.productSupplierLinks = []
     }
+    // Load imp_prod_desc (NCM, descPT, descEN per product code)
+    try {
+      const ipdRows = await db.prepare(
+        `SELECT * FROM imp_prod_desc WHERE user_id = ?${byEmpresa} ORDER BY updated_at DESC`
+      ).bind(...bindEmpresa([userId])).all()
+      if (ipdRows.results && ipdRows.results.length > 0) {
+        if (!tenant.impProdDesc) tenant.impProdDesc = {}
+        for (const r of ipdRows.results as any[]) {
+          if (!tenant.impProdDesc[r.code]) tenant.impProdDesc[r.code] = {}
+          tenant.impProdDesc[r.code][r.field] = r.value || ''
+        }
+        // Also apply to in-memory products (ncm, descPT, descEN)
+        const allowedFields = ['ncm', 'descPT', 'descEN']
+        for (const prod of (tenant.products || [])) {
+          const desc = tenant.impProdDesc[prod.code]
+          if (desc) {
+            for (const f of allowedFields) {
+              if (desc[f] !== undefined && !prod[f]) prod[f] = desc[f]
+            }
+          }
+        }
+        console.log(`[HYDRATION] ✅ ${ipdRows.results.length} entradas imp_prod_desc carregadas para ${userId}`)
+      }
+    } catch(e) {
+      console.warn('[HYDRATION] ⚠️ imp_prod_desc não disponível (tabela pode não existir):', (e as any).message)
+      if (!tenant.impProdDesc) tenant.impProdDesc = {}
+    }
+
     // Load purchase_orders
     try {
       const orders = await db.prepare(
