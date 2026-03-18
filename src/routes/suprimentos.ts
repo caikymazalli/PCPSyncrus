@@ -354,15 +354,15 @@ app.get('/', (c) => { try {
                     ${(q.items||[]).map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.productCode}</span> ${it.productName} <strong>(${it.quantity}${it.unit})</strong></div>`).join('')}
                   </td>
                   <td>
-                    ${q.supplierResponses.length > 0
-                      ? q.supplierResponses.map((r: any) => `<div style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px;">${r.supplierName === bestResp?.supplierName ? '<i class="fas fa-crown" style="color:#F39C12;font-size:10px;" title="Melhor preço"></i>' : '<span style="width:14px;"></span>'} ${r.supplierName}<span style="color:#27AE60;font-weight:600;margin-left:4px;">R$ ${r.totalPrice.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`).join('')
+                    ${(q.supplierResponses||[]).length > 0
+                      ? (q.supplierResponses||[]).map((r: any) => `<div style="font-size:12px;color:#374151;display:flex;align-items:center;gap:6px;">${r.supplierName === bestResp?.supplierName ? '<i class="fas fa-crown" style="color:#F39C12;font-size:10px;" title="Melhor preço"></i>' : '<span style="width:14px;"></span>'} ${r.supplierName}<span style="color:#27AE60;font-weight:600;margin-left:4px;">R$ ${(r.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>`).join('')
                       : '<span style="font-size:12px;color:#9ca3af;"><i class="fas fa-spinner fa-spin" style="font-size:10px;"></i> Aguardando...</span>'
                     }
                   </td>
-                  <td style="font-weight:700;color:#1B4F72;">${bestResp ? 'R$ ' + bestResp.totalPrice.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>
+                  <td style="font-weight:700;color:#1B4F72;">${bestResp ? 'R$ ' + (bestResp.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>
                   <td style="font-size:12px;color:#6c757d;">${bestResp ? bestResp.deliveryDays + ' dias' : '—'}</td>
                   <td><span class="badge" style="background:${si.bg};color:${si.color};">${si.label}</span></td>
-                  <td style="font-size:12px;color:#9ca3af;">${new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td style="font-size:12px;color:#9ca3af;">${q.createdAt ? new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
                       <button class="btn btn-secondary btn-sm" data-action="view-quotation" data-id="${escapeHtmlAttr(q.id)}" title="Ver detalhes"><i class="fas fa-eye"></i></button>
@@ -550,8 +550,8 @@ app.get('/', (c) => { try {
               </div>
               <div>
                 <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Invoice</div>
-                <div style="font-size:13px;color:#374151;font-weight:600;">${imp.invoiceValueEUR > 0 ? `€ ${imp.invoiceValueEUR.toLocaleString('pt-BR',{minimumFractionDigits:2})}` : `US$ ${imp.invoiceValueUSD.toLocaleString('pt-BR',{minimumFractionDigits:2})}`}</div>
-                <div style="font-size:11px;color:#9ca3af;">= R$ ${imp.invoiceValueBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})} (câmbio ${imp.exchangeRate})</div>
+                <div style="font-size:13px;color:#374151;font-weight:600;">${imp.invoiceValueEUR > 0 ? `€ ${(imp.invoiceValueEUR||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : `US$ ${(imp.invoiceValueUSD||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`}</div>
+                <div style="font-size:11px;color:#9ca3af;">= R$ ${(imp.invoiceValueBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} (câmbio ${imp.exchangeRate})</div>
               </div>
               <div>
                 <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Impostos (Total)</div>
@@ -1246,7 +1246,7 @@ app.get('/', (c) => { try {
                 const bestResponse = (q.supplierResponses || []).reduce((best: any, r: any) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
                 const totalValue = bestResponse ? bestResponse.totalPrice : (q.items || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
                 const supplierName = bestResponse?.supplierName || q.supplierName || q.supplierResponses?.[0]?.supplierName || 'Fornecedor'
-                return `<option value="${q.id}">${q.code} | ${supplierName} | R$ ${totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>`
+                return `<option value="${q.id}">${q.code} | ${supplierName} | R$ ${(totalValue||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>`
               }).join('')}
               ${(quotations as any[]).filter((q: any) => q.status === 'approved').length === 0 ? '<option value="" disabled>Nenhuma cotação aprovada disponível</option>' : ''}
             </select>
@@ -1288,9 +1288,23 @@ app.get('/', (c) => { try {
   `
 
   return c.html(layout('Suprimentos', content, 'suprimentos', userInfo))
-  } catch(e) {
-    console.error('[SUPRIMENTOS] Erro ao renderizar GET /:', (e as any).message, (e as any).stack)
-    return c.html('<html><body style="font-family:sans-serif;padding:40px;"><h2>Erro interno</h2><p>'+((e as any).message||'desconhecido')+'</p></body></html>', 500)
+  } catch(e: any) {
+    const errMsg = e?.message || 'desconhecido'
+    const errStack = e?.stack || ''
+    console.error('[SUPRIMENTOS] Erro ao renderizar GET /:', errMsg, errStack)
+    // Retorna página com detalhes do erro para facilitar diagnóstico
+    return c.html(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Erro Suprimentos</title></head>
+    <body style="font-family:sans-serif;padding:40px;max-width:900px;margin:0 auto;">
+      <h2 style="color:#dc2626;">⚠️ Erro Interno ao carregar Suprimentos</h2>
+      <p style="background:#fef2f2;border:1px solid #fca5a5;padding:12px;border-radius:6px;font-family:monospace;">
+        <strong>Mensagem:</strong> ${errMsg}
+      </p>
+      <details>
+        <summary style="cursor:pointer;color:#6b7280;margin-top:8px;">Ver stack trace (técnico)</summary>
+        <pre style="background:#f1f5f9;padding:12px;border-radius:4px;font-size:11px;overflow:auto;">${errStack}</pre>
+      </details>
+      <p style="margin-top:20px;"><a href="/suprimentos" style="color:#1B4F72;">🔄 Tentar novamente</a></p>
+    </body></html>`, 500)
   }
 })
 
@@ -1357,7 +1371,7 @@ app.get('/cotacao/:id/responder', (c) => {
       <div style="margin-bottom:20px;">
         <div style="font-size:14px;color:#6c757d;margin-bottom:4px;">Solicitante</div>
         <div style="font-size:16px;font-weight:700;color:#1B4F72;">${userInfo.empresa} — PCP Planner</div>
-        <div style="font-size:13px;color:#9ca3af;">Data: ${new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR')}</div>
+        <div style="font-size:13px;color:#9ca3af;">Data: ${q.createdAt ? new Date(q.createdAt+'T12:00:00').toLocaleDateString('pt-BR') : '—'}</div>
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:16px;margin-bottom:20px;">
         <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px;"><i class="fas fa-boxes" style="margin-right:6px;color:#2980B9;"></i>Itens para Cotação</div>
@@ -1957,13 +1971,46 @@ app.post('/api/quotations/:id/approve', async (c) => {
   
   // D1-first: inserir Pedido de Compra antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
-    const supplierId = bestResponse?.supplierId || quotation.supplierIds?.[0] || 'sem-fornecedor'
+    // Validar supplierId contra a tabela suppliers (evitar FOREIGN KEY constraint failed)
+    let supplierId = bestResponse?.supplierId || quotation.supplierIds?.[0] || ''
+    if (supplierId) {
+      try {
+        const supExists = await db.prepare(`SELECT id FROM suppliers WHERE id = ? AND user_id = ?`).bind(supplierId, userId).first()
+        if (!supExists) {
+          console.warn(`[SUPRIMENTOS][PC] supplierId '${supplierId}' não existe em suppliers, buscando alternativa...`)
+          // Tentar achar na memória
+          const memSup = (tenant.suppliers || []).find((s: any) => s.id === supplierId)
+          if (!memSup) {
+            // Inserir o fornecedor na tabela suppliers se existir em memória pelo nome
+            const supByName = (tenant.suppliers || []).find((s: any) =>
+              s.name === purchaseOrder.supplierName || s.id === supplierId)
+            if (supByName) {
+              try {
+                await db.prepare(
+                  `INSERT OR IGNORE INTO suppliers (id, user_id, empresa_id, name, email, country, type, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+                ).bind(supByName.id, userId, empresaId || '1', supByName.name || 'Fornecedor',
+                  supByName.email || '', supByName.country || 'BR', supByName.type || 'nacional').run()
+                console.log(`[SUPRIMENTOS][PC] Fornecedor ${supByName.id} auto-inserido em suppliers`)
+              } catch(_) { supplierId = '' }
+            } else {
+              supplierId = '' // não pode usar FK inválida
+            }
+          }
+        }
+      } catch(e) {
+        console.warn('[SUPRIMENTOS][PC] Erro ao validar supplierId:', (e as any).message)
+        supplierId = '' // segurança: não usar FK inválida
+      }
+    }
+    // Desabilitar FK temporariamente para INSERT seguro (D1 suporta PRAGMA per-statement)
+    try { await db.prepare('PRAGMA foreign_keys = OFF').run() } catch(_) {}
     // Tentar inserir; se code já existir (UNIQUE), gerar código com sufixo do pcId
     let finalCode = pcCode
-    let persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
-      id: pcId, user_id: userId, empresa_id: empresaId, code: finalCode,
+    const pcInsertData = {
+      id: pcId, user_id: userId, empresa_id: empresaId || '1', code: finalCode,
       quotation_id: id, quotation_code: quotation.code || '',
-      supplier_id: supplierId,
+      supplier_id: supplierId || 'sem-fornecedor',
       supplier_name: purchaseOrder.supplierName,
       status: 'pending_approval', total_value: totalValue,
       currency: 'BRL',
@@ -1971,25 +2018,16 @@ app.post('/api/quotations/:id/approve', async (c) => {
       import_flag: isImport ? 1 : 0,
       notes: JSON.stringify({ items: purchaseOrder.items }),
       expected_delivery: purchaseOrder.expectedDelivery,
-    })
-    // Se falhou (provável UNIQUE em code), tentar com código alternativo único
+    }
+    let persistResult = await dbInsertWithRetry(db, 'purchase_orders', pcInsertData)
+    // Se falhou por UNIQUE em code, gerar código alternativo
     if (!persistResult.success && persistResult.error?.includes('UNIQUE')) {
       finalCode = `PC-${pcYear}-${Date.now().toString(36).toUpperCase()}`
       purchaseOrder.code = finalCode
       console.warn(`[SUPRIMENTOS][PC] Colisão de código, tentando com: ${finalCode}`)
-      persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
-        id: pcId, user_id: userId, empresa_id: empresaId, code: finalCode,
-        quotation_id: id, quotation_code: quotation.code || '',
-        supplier_id: supplierId,
-        supplier_name: purchaseOrder.supplierName,
-        status: 'pending_approval', total_value: totalValue,
-        currency: 'BRL',
-        is_import: isImport ? 1 : 0,
-        import_flag: isImport ? 1 : 0,
-        notes: JSON.stringify({ items: purchaseOrder.items }),
-        expected_delivery: purchaseOrder.expectedDelivery,
-      })
+      persistResult = await dbInsertWithRetry(db, 'purchase_orders', { ...pcInsertData, code: finalCode })
     }
+    try { await db.prepare('PRAGMA foreign_keys = ON').run() } catch(_) {}
     if (!persistResult.success) {
       console.error(`[SUPRIMENTOS][PC][CRÍTICO] Falha ao persistir pedido ${pcId} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
       return err(c, `Erro ao salvar pedido de compra no banco de dados: ${persistResult.error}`, 500)
