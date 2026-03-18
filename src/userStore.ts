@@ -709,6 +709,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         serialControlled: r.serial_controlled === 1,
         controlType: r.control_type || 'serie',
         stockStatus: r.stock_status || 'normal',
+        ncm: r.ncm || '',
+        descPT: r.desc_pt || '',
+        descEN: r.desc_en || '',
         createdAt: r.created_at || new Date().toISOString(),
       }))
     }
@@ -1010,9 +1013,10 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
           if (!tenant.impProdDesc[r.code]) tenant.impProdDesc[r.code] = {}
           tenant.impProdDesc[r.code][r.field] = r.value || ''
         }
-        // Also apply to in-memory products (ncm, descPT, descEN)
+        // Aplicar em products E em stockItems (ncm, descPT, descEN)
         const allowedFields = ['ncm', 'descPT', 'descEN']
-        for (const prod of (tenant.products || [])) {
+        const allTenantItems = [...(tenant.products || []), ...(tenant.stockItems || [])]
+        for (const prod of allTenantItems) {
           const desc = tenant.impProdDesc[prod.code]
           if (desc) {
             for (const f of allowedFields) {
