@@ -114,6 +114,10 @@ app.get('/', (c) => {
       '<td style="padding:8px 12px;text-align:center;white-space:nowrap;">' +
         '<a href="/engenharia" class="btn btn-secondary btn-sm" style="padding:4px 7px;" title="Ver BOM"><i class="fas fa-list-ul"></i></a>' +
         (p.serialControlled ? '<button class="btn btn-sm" style="padding:4px 7px;margin-left:2px;background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="goToSerialRelease(' + JSON.stringify(p.code) + ')" title="Série/Lote"><i class="fas fa-barcode"></i></button>' : '') +
+        '<button class="btn btn-sm" style="padding:4px 7px;margin-left:2px;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;"' +
+        ' onclick="openEditProd(\'' + p.id + '\',\'' + escHtml(p.name) + '\',\'' + escHtml(p.code) + '\',\'' + escHtml(p.unit||'un') + '\',' +
+        (p.stockMin||0) + ',' + (p.stockCurrent||0) + ',\'' + p.stockStatus + '\',' + (p.serialControlled?'true':'false') + ',\'' + escHtml(p.controlType||'') + '\'," +
+        (p.price||0) + ',\'' + escHtml(p.description||'') + '\',\'' + escHtml(p.notes||'') + '\',' + (p.stockMax||0) + ',' + (p.criticalPercentage||50) + ',\'' + escHtml(p.type||'external') + '\',\'' + escHtml(p.supplierId||p.supplier_id_1||'') + '\')" title="Editar produto"><i class="fas fa-edit"></i></button>' +
         '<button class="btn btn-danger btn-sm" style="padding:4px 7px;margin-left:2px;" onclick="deleteProduto(\'' + p.id + '\')" title="Excluir"><i class="fas fa-trash"></i></button>' +
       '</td>' +
     '</tr>'
@@ -440,11 +444,75 @@ app.get('/', (c) => {
               </div>
             </div>
           </div>
+          <!-- Campos adicionais: Est. Máximo, Preço, Notas -->
+          <div class="form-group">
+            <label class="form-label">Estoque Máximo</label>
+            <input class="form-control" id="ep_stockMax" type="number" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">% Crítico (externo)</label>
+            <input class="form-control" id="ep_critpct_ext" type="number" min="1" max="100" value="50">
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-dollar-sign" style="margin-right:5px;color:#27AE60;"></i>Preço (R$)</label>
+            <input class="form-control" id="ep_price" type="number" min="0" step="0.01" value="0" placeholder="0.00">
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Notas / Descrição</label>
+            <input class="form-control" id="ep_notes" type="text" placeholder="Observações sobre o produto...">
+          </div>
         </div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
         <button onclick="closeModal('editProdModal')" class="btn btn-secondary">Cancelar</button>
         <button onclick="salvarEdicaoProduto()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Modal: Editar Linha do Rascunho de Importação -->
+  <div class="modal-overlay" id="editDraftRowModal" style="display:none;">
+    <div class="modal" style="max-width:560px;">
+      <input type="hidden" id="edr_idx">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-edit" style="margin-right:8px;"></i>Editar Linha do Rascunho</h3>
+        <button onclick="closeEditDraftRow()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="edr_code" type="text" placeholder="Ex: PROD-001"></div>
+          <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" id="edr_name" type="text" placeholder="Nome do produto"></div>
+          <div class="form-group"><label class="form-label">Unidade</label>
+            <select class="form-control" id="edr_unit">
+              <option value="un">un</option><option value="kg">kg</option><option value="m">m</option>
+              <option value="l">l</option><option value="pc">pc</option><option value="m2">m²</option><option value="lt">lt</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Tipo</label>
+            <select class="form-control" id="edr_type">
+              <option value="external">Externo</option>
+              <option value="internal">Interno (fabricado)</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Est. Mínimo</label><input class="form-control" id="edr_stockMin" type="number" min="0" value="0"></div>
+          <div class="form-group"><label class="form-label">Est. Máximo</label><input class="form-control" id="edr_stockMax" type="number" min="0" value="0"></div>
+          <div class="form-group"><label class="form-label">Est. Atual</label><input class="form-control" id="edr_stockCurrent" type="number" min="0" value="0"></div>
+          <div class="form-group"><label class="form-label">% Crítico</label><input class="form-control" id="edr_critpct" type="number" min="1" max="100" value="50"></div>
+          <div class="form-group"><label class="form-label">Controle Serial/Lote</label>
+            <select class="form-control" id="edr_serial">
+              <option value="none">Não controla</option>
+              <option value="serie">Número de Série</option>
+              <option value="lote">Número de Lote</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Preço (R$)</label><input class="form-control" id="edr_price" type="number" min="0" step="0.01" value="0" placeholder="0.00"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Notas / Descrição</label><input class="form-control" id="edr_notes" type="text" placeholder="Observações..."></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeEditDraftRow()" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveEditDraftRow()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Linha</button>
       </div>
     </div>
   </div>
@@ -505,6 +573,7 @@ app.get('/', (c) => {
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button onclick="importSaveDraft()" class="btn btn-secondary" style="font-size:12px;"><i class="fas fa-save"></i> Salvar Rascunho</button>
               <button onclick="importLoadDraft()" class="btn btn-secondary" style="font-size:12px;"><i class="fas fa-folder-open"></i> Carregar Rascunho</button>
+              <button onclick="importDownloadDraft()" class="btn btn-secondary" style="font-size:12px;"><i class="fas fa-file-csv"></i> Baixar Rascunho CSV</button>
               <button onclick="importClearDraft()" class="btn btn-secondary" style="font-size:12px;color:#dc2626;"><i class="fas fa-trash"></i> Limpar</button>
               <button onclick="importCommit()" class="btn btn-primary" id="importCommitBtn"><i class="fas fa-check"></i> Importar Agora</button>
             </div>
@@ -828,13 +897,26 @@ app.get('/', (c) => {
   }
 
   // ── Abrir modal Editar Produto ───────────────────────────────────────────
-  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType) {
+  function openEditProd(id, name, code, unit, stockMin, stockCurrent, stockStatus, serialControlled, controlType, price, description, notes, stockMax, criticalPercentage, type, supplierId) {
     var elId = document.getElementById('ep_id');           if (elId) elId.value = id;
     var elNm = document.getElementById('ep_name');         if (elNm) elNm.value = name;
     var elCd = document.getElementById('ep_code');         if (elCd) elCd.value = code;
     var elUn = document.getElementById('ep_unit');         if (elUn) elUn.value = unit;
     var elMn = document.getElementById('ep_stockMin');     if (elMn) elMn.value = stockMin;
     var elCr = document.getElementById('ep_stockCurrent'); if (elCr) elCr.value = stockCurrent;
+    // Campos adicionais
+    var elMx = document.getElementById('ep_stockMax');     if (elMx) elMx.value = stockMax || 0;
+    var elPr = document.getElementById('ep_price');        if (elPr) elPr.value = price || 0;
+    var elNt = document.getElementById('ep_notes');        if (elNt) elNt.value = notes || description || '';
+    var elCp = document.getElementById('ep_critpct_ext'); if (elCp) elCp.value = criticalPercentage || 50;
+    var elCpInt = document.getElementById('ep_critpct');  if (elCpInt) elCpInt.value = criticalPercentage || 50;
+    // Tipo de produto
+    var typeVal = type || 'external';
+    var typeRadio = document.querySelector('input[name="editProdType"][value="' + typeVal + '"]');
+    if (typeRadio) { typeRadio.checked = true; onProdTypeChange('edit', typeVal); }
+    // Fornecedor
+    var elSup = document.getElementById('ep_supplier');   if (elSup) elSup.value = supplierId || '';
+    // Serial
     var serialVal = (serialControlled === 'true' || serialControlled === true) ? (controlType || 'serie') : 'none';
     var radio = document.querySelector('input[name="editProdSerial"][value="' + serialVal + '"]');
     if (radio) radio.checked = true;
@@ -959,6 +1041,18 @@ app.get('/', (c) => {
     var serialControlled = serialVal !== 'none';
     var controlType      = serialControlled ? serialVal : '';
     var stockStatus      = calcStatus(stockCurrent, stockMin);
+    // Novos campos
+    var stockMaxEl       = document.getElementById('ep_stockMax');
+    var priceEl          = document.getElementById('ep_price');
+    var notesEl          = document.getElementById('ep_notes');
+    var critpctExtEl     = document.getElementById('ep_critpct_ext');
+    var critpctIntEl     = document.getElementById('ep_critpct');
+    var supplierEl       = document.getElementById('ep_supplier');
+    var stockMax         = parseInt(stockMaxEl ? stockMaxEl.value : '0') || 0;
+    var price            = parseFloat(priceEl ? priceEl.value : '0') || 0;
+    var notes            = notesEl ? notesEl.value.trim() : '';
+    var criticalPercentage = parseInt(type === 'internal' ? (critpctIntEl ? critpctIntEl.value : '50') : (critpctExtEl ? critpctExtEl.value : '50')) || 50;
+    var supplierId       = supplierEl ? supplierEl.value : '';
 
     if (!name) { showToast('Informe o nome do produto!', 'error'); return; }
 
@@ -968,9 +1062,12 @@ app.get('/', (c) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name, code: code, unit: unit, type: type,
-          stockMin: stockMin, stockCurrent: stockCurrent,
+          stockMin: stockMin, stockCurrent: stockCurrent, stockMax: stockMax,
           stockStatus: stockStatus,
-          serialControlled: serialControlled, controlType: controlType
+          serialControlled: serialControlled, controlType: controlType,
+          price: price, notes: notes, description: notes,
+          criticalPercentage: criticalPercentage,
+          supplierId: supplierId
         })
       });
       var data = await res.json();
@@ -1046,6 +1143,88 @@ app.get('/', (c) => {
     var blob = new Blob([hdr+'\\n'+ex+'\\n'],{type:'text/csv;charset=utf-8;'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href=url; a.download='modelo_produtos.csv'; a.click();
+  }
+
+  function importDownloadDraft() {
+    if (!_importRows || _importRows.length === 0) { showToast('Nenhuma linha no rascunho para baixar.', 'error'); return; }
+    function csvEsc(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+    var hdr = 'code,name,unit,type,stockMin,stockMax,stockCurrent,criticalPercentage,serial,price,notes';
+    var rows = _importRows.map(function(r) {
+      return [
+        csvEsc(r['code']||r['codigo']||''),
+        csvEsc(r['name']||r['nome']||''),
+        csvEsc(r['unit']||r['unidade']||'un'),
+        csvEsc(r['type']||r['tipo']||'external'),
+        r['stockMin']||r['stockmin']||r['estoqueminimo']||'0',
+        r['stockMax']||r['stockmax']||r['estoquemaximo']||'0',
+        r['stockCurrent']||r['stockcurrent']||r['estoqueatal']||'0',
+        r['criticalPercentage']||r['criticalpercentage']||r['percentualcritico']||'50',
+        csvEsc(r['serial']||r['controltype']||'none'),
+        r['price']||r['preco']||'0',
+        csvEsc(r['notes']||r['descricao']||r['description']||'')
+      ].join(',');
+    });
+    var blob = new Blob([hdr+'\n'+rows.join('\n')+'\n'], {type:'text/csv;charset=utf-8;'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href=url; a.download='rascunho_produtos.csv'; a.click();
+    showToast('Rascunho exportado como CSV!', 'success');
+  }
+
+  function importEditDraftRow(idx) {
+    var row = _importRows[idx];
+    if (!row) return;
+    document.getElementById('edr_idx').value = idx;
+    document.getElementById('edr_code').value  = row['code']||row['codigo']||'';
+    document.getElementById('edr_name').value  = row['name']||row['nome']||'';
+    document.getElementById('edr_unit').value  = row['unit']||row['unidade']||'un';
+    document.getElementById('edr_type').value  = row['type']||row['tipo']||'external';
+    document.getElementById('edr_stockMin').value     = row['stockMin']||row['stockmin']||row['estoqueminimo']||'0';
+    document.getElementById('edr_stockMax').value     = row['stockMax']||row['stockmax']||row['estoquemaximo']||'0';
+    document.getElementById('edr_stockCurrent').value = row['stockCurrent']||row['stockcurrent']||row['estoqueatal']||'0';
+    document.getElementById('edr_critpct').value      = row['criticalPercentage']||row['criticalpercentage']||row['percentualcritico']||'50';
+    document.getElementById('edr_serial').value = row['serial']||row['controltype']||'none';
+    document.getElementById('edr_price').value  = row['price']||row['preco']||'0';
+    document.getElementById('edr_notes').value  = row['notes']||row['descricao']||row['description']||'';
+    var modal = document.getElementById('editDraftRowModal');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeEditDraftRow() {
+    var modal = document.getElementById('editDraftRowModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function saveEditDraftRow() {
+    var idxEl = document.getElementById('edr_idx');
+    var idx = parseInt(idxEl ? idxEl.value : '-1');
+    if (idx < 0 || idx >= _importRows.length) { showToast('Índice de linha inválido.', 'error'); return; }
+    var code = document.getElementById('edr_code').value.trim();
+    var name = document.getElementById('edr_name').value.trim();
+    if (!code || !name) { showToast('Código e Nome são obrigatórios!', 'error'); return; }
+    var unit        = document.getElementById('edr_unit').value;
+    var type        = document.getElementById('edr_type').value;
+    var stockMin    = document.getElementById('edr_stockMin').value||'0';
+    var stockMax    = document.getElementById('edr_stockMax').value||'0';
+    var stockCurrent= document.getElementById('edr_stockCurrent').value||'0';
+    var critpct     = document.getElementById('edr_critpct').value||'50';
+    var serial      = document.getElementById('edr_serial').value;
+    var price       = document.getElementById('edr_price').value||'0';
+    var notes       = document.getElementById('edr_notes').value;
+    // Update row object preserving all existing keys
+    var row = _importRows[idx];
+    row['code'] = code; row['codigo'] = code; row['nome'] = name; row['name'] = name;
+    row['unit'] = unit; row['unidade'] = unit;
+    row['type'] = type; row['tipo'] = type;
+    row['stockMin'] = stockMin; row['stockmin'] = stockMin; row['estoqueminimo'] = stockMin;
+    row['stockMax'] = stockMax; row['stockmax'] = stockMax; row['estoquemaximo'] = stockMax;
+    row['stockCurrent'] = stockCurrent; row['stockcurrent'] = stockCurrent; row['estoqueatal'] = stockCurrent;
+    row['criticalPercentage'] = critpct; row['criticalpercentage'] = critpct;
+    row['serial'] = serial; row['controlType'] = serial; row['controltype'] = serial;
+    row['price'] = price; row['preco'] = price;
+    row['notes'] = notes; row['descricao'] = notes; row['description'] = notes;
+    closeEditDraftRow();
+    importRenderDraft();
+    showToast('Linha ' + (idx+1) + ' atualizada!', 'success');
   }
 
   function importDetectDelimiter(line) {
@@ -1162,7 +1341,7 @@ app.get('/', (c) => {
         '<td style="padding:6px 10px;text-align:right;">'+escHtml(row['price']||'0')+'</td>' +
         '<td style="padding:6px 10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escHtml(row['notes']||'')+'">'+escHtml(row['notes']||'')+'</td>' +
         '<td style="padding:6px 10px;text-align:center;">'+statusHtml+'</td>' +
-        '<td style="padding:6px 10px;text-align:center;"><button data-action="import-remove-row" data-idx="'+idx+'" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;" title="Remover linha"><i class="fas fa-times"></i></button></td>' +
+        '<td style="padding:6px 10px;text-align:center;white-space:nowrap;"><button onclick="importEditDraftRow('+idx+')" style="background:#e0f2fe;border:1px solid #bae6fd;color:#0369a1;cursor:pointer;font-size:11px;padding:2px 7px;border-radius:5px;margin-right:3px;" title="Editar linha"><i class="fas fa-edit"></i></button><button data-action="import-remove-row" data-idx="'+idx+'" style="background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;cursor:pointer;font-size:11px;padding:2px 7px;border-radius:5px;" title="Remover linha"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
     });
     tbody.innerHTML = html;
