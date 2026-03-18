@@ -1914,13 +1914,15 @@ app.post('/api/quotations/:id/approve', async (c) => {
 
   // Gerar Pedido de Compra automaticamente
   const pcId = genId('pc')
-  // Use D1 MAX(code) or timestamp to avoid UNIQUE collision after deploy/reload
-  let pcSeq = tenant.purchaseOrders.length + 1
+  // Gerar código único de PC consultando o maior número já existente no D1
+  const pcYear = new Date().getFullYear()
+  let pcSeq = (tenant.purchaseOrders || []).length + 1
   if (db && userId !== 'demo-tenant') {
     try {
+      // Buscar o maior número de PC do ano corrente para evitar colisão UNIQUE
       const maxRow = await db.prepare(
-        `SELECT code FROM purchase_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`
-      ).bind(userId).first() as any
+        `SELECT code FROM purchase_orders WHERE user_id = ? AND code LIKE ? ORDER BY code DESC LIMIT 1`
+      ).bind(userId, `PC-${pcYear}-%`).first() as any
       if (maxRow?.code) {
         const parts = String(maxRow.code).split('-')
         const lastNum = parseInt(parts[parts.length - 1] || '0', 10)
@@ -1928,7 +1930,8 @@ app.post('/api/quotations/:id/approve', async (c) => {
       }
     } catch(_) { /* fallback to memory count */ }
   }
-  const pcCode = `PC-${new Date().getFullYear()}-${String(pcSeq).padStart(4,'0')}`
+  // Gerar código; se ainda colidir, adicionar sufixo do pcId
+  const pcCode = `PC-${pcYear}-${String(pcSeq).padStart(4,'0')}`
   
   const purchaseOrder = {
     id: pcId,
@@ -1948,8 +1951,10 @@ app.post('/api/quotations/:id/approve', async (c) => {
   // D1-first: inserir Pedido de Compra antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
     const supplierId = bestResponse?.supplierId || quotation.supplierIds?.[0] || 'sem-fornecedor'
-    const persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
-      id: pcId, user_id: userId, empresa_id: empresaId, code: pcCode,
+    // Tentar inserir; se code já existir (UNIQUE), gerar código com sufixo do pcId
+    let finalCode = pcCode
+    let persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
+      id: pcId, user_id: userId, empresa_id: empresaId, code: finalCode,
       quotation_id: id, quotation_code: quotation.code || '',
       supplier_id: supplierId,
       supplier_name: purchaseOrder.supplierName,
@@ -1960,17 +1965,39 @@ app.post('/api/quotations/:id/approve', async (c) => {
       notes: JSON.stringify({ items: purchaseOrder.items }),
       expected_delivery: purchaseOrder.expectedDelivery,
     })
+    // Se falhou (provável UNIQUE em code), tentar com código alternativo único
+    if (!persistResult.success && persistResult.error?.includes('UNIQUE')) {
+      finalCode = `PC-${pcYear}-${Date.now().toString(36).toUpperCase()}`
+      purchaseOrder.code = finalCode
+      console.warn(`[SUPRIMENTOS][PC] Colisão de código, tentando com: ${finalCode}`)
+      persistResult = await dbInsertWithRetry(db, 'purchase_orders', {
+        id: pcId, user_id: userId, empresa_id: empresaId, code: finalCode,
+        quotation_id: id, quotation_code: quotation.code || '',
+        supplier_id: supplierId,
+        supplier_name: purchaseOrder.supplierName,
+        status: 'pending_approval', total_value: totalValue,
+        currency: 'BRL',
+        is_import: isImport ? 1 : 0,
+        import_flag: isImport ? 1 : 0,
+        notes: JSON.stringify({ items: purchaseOrder.items }),
+        expected_delivery: purchaseOrder.expectedDelivery,
+      })
+    }
     if (!persistResult.success) {
       console.error(`[SUPRIMENTOS][PC][CRÍTICO] Falha ao persistir pedido ${pcId} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
-      return err(c, 'Erro ao salvar pedido de compra no banco de dados', 500)
+      return err(c, `Erro ao salvar pedido de compra no banco de dados: ${persistResult.error}`, 500)
     }
-    console.log(`[SUPRIMENTOS][PC] Pedido ${pcId} persistido em D1 com sucesso`)
+    console.log(`[SUPRIMENTOS][PC] Pedido ${pcId} (${finalCode}) persistido em D1 com sucesso`)
   }
 
   // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
   tenant.purchaseOrders.push(purchaseOrder)
   
-  return ok(c, { quotation, purchaseOrder, pcCode })
+  // Garantir que purchaseOrder.code reflita o código final usado
+  if (!purchaseOrder.code || purchaseOrder.code !== (typeof finalCode !== 'undefined' ? finalCode : pcCode)) {
+    purchaseOrder.code = typeof finalCode !== 'undefined' ? finalCode : pcCode
+  }
+  return ok(c, { quotation, purchaseOrder, pcCode: purchaseOrder.code })
 })
 
 // ── API: POST /suprimentos/api/quotations/:id/reject ───────────────────────────
