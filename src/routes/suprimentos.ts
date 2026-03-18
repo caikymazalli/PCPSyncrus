@@ -885,6 +885,7 @@ app.get('/', (c) => { try {
       <div style="padding:24px;max-height:75vh;overflow-y:auto;" id="importDetailBody"></div>
       <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
         <button onclick="closeModal('importDetailModal')" class="btn btn-secondary">Fechar</button>
+          <button onclick="openInvoiceComercial(window._currentImpDetailId)" class="btn btn-primary" style="background:#1B4F72;border-color:#1B4F72;"><i class="fas fa-file-invoice" style="margin-right:6px;"></i>Gerar Invoice Comercial</button>
       </div>
     </div>
   </div>
@@ -1157,6 +1158,23 @@ app.get('/', (c) => { try {
         <div style="display:flex;gap:10px;">
           <button onclick="closeModal('rascunhoLIModal')" class="btn btn-secondary">Fechar</button>
           <button onclick="showToastSup('✅ Rascunho de LI enviado ao despachante!', 'success')" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Enviar ao Despachante</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Invoice Comercial -->
+  <div class="modal-overlay" id="invoiceComercialModal">
+    <div class="modal" style="max-width:900px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-file-invoice" style="margin-right:8px;"></i>Invoice Comercial — <span id="invoiceImpCodigo"></span></h3>
+        <button onclick="closeModal('invoiceComercialModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;max-height:78vh;overflow-y:auto;" id="invoiceComercialBody"></div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <button class="btn btn-secondary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeModal('invoiceComercialModal')" class="btn btn-secondary">Fechar</button>
         </div>
       </div>
     </div>
@@ -2424,8 +2442,18 @@ app.post('/api/imports/create', async (c) => {
     ncm: body.ncm || '',
     createdAt: new Date().toISOString(),
     items: impItems,
-    taxes,
-    numerario: {},
+    taxes: {
+      ii: taxes.ii || 0, ipi: taxes.ipi || 0, pis: taxes.pis || 0,
+      cofins: taxes.cofins || 0, icms: taxes.icms || 0,
+      afrmm: taxes.afrmm || 0, siscomex: taxes.siscomex || 0,
+    },
+    numerario: {
+      frete: (body.numerario?.frete) || 0,
+      seguro: (body.numerario?.seguro) || 0,
+      desp: (body.numerario?.desp) || 0,
+      porto: (body.numerario?.porto) || 0,
+      arm: (body.numerario?.arm) || 0,
+    },
     timeline: [],
   }
   if (db && userId !== 'demo-tenant') {
@@ -2452,7 +2480,8 @@ app.post('/api/imports/create', async (c) => {
       tax_cofins: taxes.cofins || 0,
       tax_icms: taxes.icms || 0,
       tax_afrmm: taxes.afrmm || 0,
-      notes: JSON.stringify({ items: impItems, taxes, numerario: {} }),
+      tax_siscomex: taxes.siscomex || 0,
+      notes: JSON.stringify({ items: impItems, taxes, numerario: body.numerario || {} }),
       supplier_id: imp.supplierId, supplier_name: imp.supplierName, modality: imp.modality, status: 'waiting_ship',
     })
     if (!persistResult.success) {
