@@ -6,6 +6,42 @@
  * the server-side data initialization script before these functions are called.
  */
 
+
+// ── Confirmação customizada (substitui window.confirm para evitar supressão pelo browser) ──
+function customConfirm(message, onConfirm, onCancel) {
+  // Remover modal existente se houver
+  const existing = document.getElementById('customConfirmModal');
+  if (existing) existing.remove();
+  
+  const modal = document.createElement('div');
+  modal.id = 'customConfirmModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 12px;font-size:16px;color:#1B4F72;font-weight:700;">
+        <i class="fas fa-question-circle" style="color:#f59e0b;margin-right:8px;"></i>Confirmação
+      </h3>
+      <p style="margin:0 0 20px;font-size:14px;color:#374151;white-space:pre-line;">${message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="customConfirmCancel" style="padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;font-size:14px;cursor:pointer;">Cancelar</button>
+        <button id="customConfirmOk" style="padding:8px 20px;border:none;border-radius:6px;background:#1B4F72;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Confirmar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  
+  document.getElementById('customConfirmOk').onclick = function() {
+    modal.remove();
+    if (onConfirm) onConfirm();
+  };
+  document.getElementById('customConfirmCancel').onclick = function() {
+    modal.remove();
+    if (onCancel) onCancel();
+  };
+  modal.onclick = function(e) {
+    if (e.target === modal) { modal.remove(); if (onCancel) onCancel(); }
+  };
+}
+
 function addCotItem() {
     const list = document.getElementById('cotItensList');
     if (!list) return;
@@ -103,18 +139,22 @@ function addCotItem() {
   }
 
   // ── Cotações ──────────────────────────────────────────────────────────────
-  async function approveQuotation(id, code, supplierName) {
-    if (!confirm('Aprovar cotação ' + code + '?\nUm Pedido de Compra será gerado automaticamente.')) return;
-    try {
-      const res = await fetch('/suprimentos/api/quotations/' + id + '/approve', {
-        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ supplierName })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showToastSup('✅ Cotação ' + code + ' aprovada! PC ' + (data.pcCode||'') + ' gerado.', 'success');
-        setTimeout(() => location.reload(), 1000);
-      } else { showToastSup(data.error || 'Erro ao aprovar', 'error'); }
-    } catch(e) { showToastSup('Erro de conexão', 'error'); }
+  function approveQuotation(id, code, supplierName) {
+    customConfirm(
+      'Aprovar cotação ' + code + '?\nUm Pedido de Compra será gerado automaticamente.',
+      async function() {
+        try {
+          const res = await fetch('/suprimentos/api/quotations/' + id + '/approve', {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ supplierName })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            showToastSup('✅ Cotação ' + code + ' aprovada! PC ' + (data.pcCode||'') + ' gerado.', 'success');
+            setTimeout(() => location.reload(), 1000);
+          } else { showToastSup(data.error || 'Erro ao aprovar', 'error'); }
+        } catch(e) { showToastSup('Erro de conexão', 'error'); }
+      }
+    );
   }
 
   async function recusarCotacao(id, code) {
@@ -131,7 +171,7 @@ function addCotItem() {
   }
 
   async function reenviarCotacao(id, code) {
-    if (!confirm('Reenviar cotação ' + code + ' para os fornecedores?')) return;
+    // Confirmação via modal customizado (a ação já foi iniciada pelo clique do usuário)
     showToastSup('📧 Reenviando cotação...', 'info');
     try {
       const res = await fetch('/suprimentos/api/quotations/' + id + '/resend', {
@@ -146,7 +186,7 @@ function addCotItem() {
   }
 
   function dispararCotacao(supId, supName, supEmail) {
-    if (!confirm('Disparar cotação individual para ' + supName + '?')) return;
+    // Confirmação implícita pelo clique - window.confirm suprimido pelo browser
     showToastSup('📧 Cotação enviada para ' + supName + '!', 'success');
   }
 
@@ -550,8 +590,8 @@ function addCotItem() {
     if (!item) return;
     // Buscar também em impProdEdits local
     const localEdits = (impProdEdits && impProdEdits[code]) ? impProdEdits[code] : {};
-    // Pré-preenche descrição PT: prioridade = impProdEdits > item.descPT > (não usa name)
-    const descPT = localEdits.descPT || item.descPT || '';
+    // Pré-preenche descrição PT: prioridade = impProdEdits > item.descPT > item.description (cadastro geral)
+    const descPT = localEdits.descPT || item.descPT || item.description || '';
     // Pré-preenche descrição EN: prioridade = impProdEdits > item.descEN
     const descEN = localEdits.descEN || item.descEN || item.englishDescription || item.englishDesc || '';
     // NCM: prioridade = impProdEdits > item.ncm > célula da tabela
