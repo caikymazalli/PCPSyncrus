@@ -89,7 +89,7 @@ function safeStringifyQuotations(quotations: any[]): string {
 }
 
 // ── Rota principal do módulo Suprimentos ──────────────────────────────────────
-app.get('/', (c) => {
+app.get('/', (c) => { try {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const mockData = tenant  // per-session data
@@ -224,9 +224,9 @@ app.get('/', (c) => {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f8f9fa;">
         <div>
           <div style="font-size:12px;font-weight:700;color:#1B4F72;">${q.code}</div>
-          <div style="font-size:11px;color:#6c757d;">${q.items.length} item(ns) · ${q.supplierResponses.length > 0 ? 'R$ ' + (q.supplierResponses[0]?.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'Sem respostas'}</div>
+          <div style="font-size:11px;color:#6c757d;">${(q.items||[]).length} item(ns) · ${(q.supplierResponses||[]).length > 0 ? 'R$ ' + (q.supplierResponses[0]?.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'Sem respostas'}</div>
         </div>
-        <button class="btn btn-success btn-sm" data-action="approve-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" data-supplier="${escapeHtmlAttr(q.supplierResponses[0]?.supplierName||'fornecedor')}">
+        <button class="btn btn-success btn-sm" data-action="approve-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" data-supplier="${escapeHtmlAttr((q.supplierResponses||[])[0]?.supplierName||'fornecedor')}">
           <i class="fas fa-check"></i> Aprovar
         </button>
       </div>`).join('')}
@@ -351,7 +351,7 @@ app.get('/', (c) => {
                 <tr>
                   <td style="font-weight:700;color:#1B4F72;">${q.code}</td>
                   <td>
-                    ${q.items.map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.productCode}</span> ${it.productName} <strong>(${it.quantity}${it.unit})</strong></div>`).join('')}
+                    ${(q.items||[]).map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.productCode}</span> ${it.productName} <strong>(${it.quantity}${it.unit})</strong></div>`).join('')}
                   </td>
                   <td>
                     ${q.supplierResponses.length > 0
@@ -367,7 +367,7 @@ app.get('/', (c) => {
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
                       <button class="btn btn-secondary btn-sm" data-action="view-quotation" data-id="${escapeHtmlAttr(q.id)}" title="Ver detalhes"><i class="fas fa-eye"></i></button>
                       ${q.status === 'pending_approval' ? `
-                      <button class="btn btn-success btn-sm" data-action="approve-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" data-supplier="${escapeHtmlAttr(q.supplierResponses[0]?.supplierName||'fornecedor')}" title="Aprovar"><i class="fas fa-check"></i></button>
+                      <button class="btn btn-success btn-sm" data-action="approve-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" data-supplier="${escapeHtmlAttr((q.supplierResponses||[])[0]?.supplierName||'fornecedor')}" title="Aprovar"><i class="fas fa-check"></i></button>
                       <button class="btn btn-danger btn-sm" data-action="reject-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" title="Recusar"><i class="fas fa-times"></i></button>` : ''}
                       ${q.status === 'sent' || q.status === 'awaiting_responses' ? `
                       <button class="btn btn-secondary btn-sm" data-action="resend-quotation" data-id="${escapeHtmlAttr(q.id)}" data-code="${escapeHtmlAttr(q.code)}" title="Reenviar"><i class="fas fa-redo"></i></button>` : ''}
@@ -399,8 +399,8 @@ app.get('/', (c) => {
                 <tr>
                   <td style="font-weight:700;color:#1B4F72;">${pc.code}</td>
                   <td style="font-size:12px;font-weight:600;color:#374151;">${pc.supplierName}</td>
-                  <td>${pc.items.map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 4px;border-radius:3px;">${it.productCode}</span> ${it.productName}</div>`).join('')}</td>
-                  <td style="font-weight:700;color:#1B4F72;">${pc.currency} ${pc.totalValue.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                  <td>${(pc.items||[]).map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 4px;border-radius:3px;">${it.productCode}</span> ${it.productName}</div>`).join('')}</td>
+                  <td style="font-weight:700;color:#1B4F72;">${pc.currency} ${(pc.totalValue||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
                   <td><span class="badge" style="background:${cc.bg};color:${cc.c};">${pc.currency}</span></td>
                   <td>${pc.isImport ? '<span class="badge badge-info"><i class="fas fa-ship" style="font-size:9px;"></i> Sim</span>' : '<span class="badge badge-secondary">Não</span>'}</td>
                   <td style="font-size:12px;color:#6c757d;">${(pc.dataEntrega || pc.expectedDelivery) ? new Date((pc.dataEntrega || pc.expectedDelivery)+'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
@@ -1288,6 +1288,10 @@ app.get('/', (c) => {
   `
 
   return c.html(layout('Suprimentos', content, 'suprimentos', userInfo))
+  } catch(e) {
+    console.error('[SUPRIMENTOS] Erro ao renderizar GET /:', (e as any).message, (e as any).stack)
+    return c.html('<html><body style="font-family:sans-serif;padding:40px;"><h2>Erro interno</h2><p>'+((e as any).message||'desconhecido')+'</p></body></html>', 500)
+  }
 })
 
 // ── Interface pública para fornecedor responder cotação (redireciona para URL com código) ──
