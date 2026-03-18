@@ -598,6 +598,25 @@ function addCotItem() {
     calcImpTotal();
   }
 
+  // Coleta todos os itens do formulário de importação em um array de objetos
+  function getImpItemsData() {
+    const items = [];
+    for (let i = 1; i <= impItemCount; i++) {
+      const itemEl = document.getElementById('impItem' + i);
+      if (!itemEl) continue; // item foi removido
+      const code    = document.getElementById('impItemProd'   + i)?.value || '';
+      const descEN  = document.getElementById('impItemDescEN' + i)?.value?.trim() || '';
+      const descPT  = document.getElementById('impItemDescPT' + i)?.value?.trim() || '';
+      const qty     = parseFloat(document.getElementById('impItemQtd'   + i)?.value || '0');
+      const vu      = parseFloat(document.getElementById('impItemVU'    + i)?.value || '0');
+      const ncm     = document.getElementById('impItemNCM'   + i)?.value?.trim() || '';
+      const obs     = document.getElementById('impItemObs'   + i)?.value?.trim() || '';
+      const sub     = qty * vu;
+      items.push({ code, descEN, descPT, qty, vu, sub, ncm, obs });
+    }
+    return items;
+  }
+
   function onImpItemChange(idx) {
     const sel = document.getElementById('impItemProd'+idx);
     const code = sel.value;
@@ -747,7 +766,7 @@ function addCotItem() {
       afrmm:    parseFloat(document.getElementById('taxAFRMM')?.value || '0'),
     };
     // Itens da importação
-    const items = getImpItemsData ? getImpItemsData() : [];
+    const items = getImpItemsData();
     try {
       const res = await fetch('/suprimentos/api/imports/create', {
         method: 'POST', headers: {'Content-Type':'application/json'},
