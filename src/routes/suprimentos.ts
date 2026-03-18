@@ -220,7 +220,7 @@ app.get('/', (c) => { try {
       <button onclick="document.getElementById('pendingApprovalPopup').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;">×</button>
     </div>
     <div style="padding:10px 16px;">
-      ${pendingApproval.map((q: any) => `
+      ${(pendingApproval||[]).map((q: any) => `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f8f9fa;">
         <div>
           <div style="font-size:12px;font-weight:700;color:#1B4F72;">${q.code}</div>
@@ -255,7 +255,7 @@ app.get('/', (c) => { try {
       <button onclick="document.getElementById('criticalQuotPopup').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;">×</button>
     </div>
     <div style="padding:10px 16px;">
-      ${criticalItems.slice(0,3).map((i: any) => `<div style="font-size:12px;color:#374151;padding:3px 0;border-bottom:1px solid #f8f9fa;">${i.name} — <span style="color:#dc2626;font-weight:600;">Estoque: ${i.quantity??i.stockCurrent??0} / Mín: ${i.minQuantity??i.stockMin??0}</span></div>`).join('')}
+      ${(criticalItems||[]).slice(0,3).map((i: any) => `<div style="font-size:12px;color:#374151;padding:3px 0;border-bottom:1px solid #f8f9fa;">${i.name} — <span style="color:#dc2626;font-weight:600;">Estoque: ${i.quantity??i.stockCurrent??0} / Mín: ${i.minQuantity??i.stockMin??0}</span></div>`).join('')}
       ${criticalItems.length > 3 ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px;">+${criticalItems.length-3} mais...</div>` : ''}
     </div>
     <div style="padding:10px 16px;display:flex;gap:8px;">
@@ -342,7 +342,7 @@ app.get('/', (c) => { try {
               <th>Código</th><th>Itens</th><th>Fornecedor(es) / Resposta</th><th>Melhor Valor</th><th>Prazo</th><th>Status</th><th>Data</th><th>Ações</th>
             </tr></thead>
             <tbody>
-              ${quotations.map((q: any) => {
+              ${(quotations||[]).map((q: any) => {
                 const si = statusInfo[q.status] || statusInfo.sent
                 const bestResp = q.supplierResponses.length > 0
                   ? q.supplierResponses.reduce((best: any, r: any) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
@@ -391,7 +391,7 @@ app.get('/', (c) => { try {
               <th>Código PC</th><th>Fornecedor</th><th>Itens</th><th>Valor</th><th>Moeda</th><th>Import.</th><th>Entrega Prev.</th><th>Status</th><th>Ações</th>
             </tr></thead>
             <tbody>
-              ${purchaseOrders.map((pc: any) => {
+              ${(purchaseOrders||[]).map((pc: any) => {
                 const si = pcStatusInfo[pc.status] || pcStatusInfo.pending
                 const currColors: Record<string,{c:string,bg:string}> = { EUR:{c:'#7c3aed',bg:'#ede9fe'}, USD:{c:'#2980B9',bg:'#e8f4fd'}, BRL:{c:'#16a34a',bg:'#f0fdf4'} }
                 const cc = currColors[pc.currency] || currColors.BRL
@@ -454,7 +454,7 @@ app.get('/', (c) => { try {
               <table>
                 <thead><tr><th>Item</th><th>Código</th><th>Estoque Atual</th><th>Estoque Mín.</th><th>Qtd Sugerida</th><th>Prazo Forn.</th></tr></thead>
                 <tbody>
-                  ${items.map((i: any) => {
+                  ${(items||[]).map((i: any) => {
                     const curr = i.quantity ?? i.stockCurrent ?? 0
                     const min = i.minQuantity ?? i.stockMin ?? 0
                     const sugg = Math.max(0, min - curr) + Math.round(min * 0.2)
@@ -507,7 +507,7 @@ app.get('/', (c) => { try {
           <div style="font-size:15px;font-weight:600;color:#374151;">Nenhuma importação cadastrada</div>
           <div style="font-size:13px;color:#9ca3af;margin-top:4px;">Clique em "Nova Importação" para iniciar um processo</div>
         </div>` :
-        importsData.map((imp: any) => {
+        (importsData||[]).map((imp: any) => {
           const si = impStatusInfo[imp.status] || impStatusInfo.draft
           const taxes = imp.taxes || {}
           const num = imp.numerario || {}
@@ -573,7 +573,7 @@ app.get('/', (c) => { try {
             <!-- Timeline compacta -->
             <div style="padding:0 20px 16px;">
               <div style="display:flex;gap:0;overflow-x:auto;">
-                ${imp.timeline.map((t: any, idx: number) => {
+                ${(imp.timeline||[]).map((t: any, idx: number) => {
                   const isPast = t.user !== null
                   return `
                   <div style="display:flex;align-items:center;min-width:0;">
@@ -584,7 +584,7 @@ app.get('/', (c) => { try {
                       <div style="font-size:10px;font-weight:600;color:${isPast?'#1B4F72':'#9ca3af'};text-align:center;line-height:1.3;">${t.event}</div>
                       <div style="font-size:10px;color:#9ca3af;text-align:center;">${new Date(t.date+'T12:00:00').toLocaleDateString('pt-BR')}</div>
                     </div>
-                    ${idx < imp.timeline.length - 1 ? `<div style="height:2px;background:${isPast?'#1B4F72':'#e9ecef'};width:24px;min-width:24px;margin:0 4px;margin-top:-18px;"></div>` : ''}
+                    ${idx < (imp.timeline||[]).length - 1 ? `<div style="height:2px;background:${isPast?'#1B4F72':'#e9ecef'};width:24px;min-width:24px;margin:0 4px;margin-top:-18px;"></div>` : ''}
                   </div>`
                 }).join('')}
               </div>
@@ -761,7 +761,7 @@ app.get('/', (c) => { try {
           <div style="padding:14px 20px;border-bottom:1px solid #ede9fe;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;">
             <div>Processo / Produto</div><div>NCM</div><div>Regime</div><div>Status LI</div><div>Ações</div>
           </div>
-          ${importsData.map((imp: any) => `
+          ${(importsData||[]).map((imp: any) => `
           <div style="padding:12px 20px;border-bottom:1px solid #ede9fe;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;align-items:center;background:white;">
             <div>
               <div style="font-size:13px;font-weight:700;color:#374151;">${imp.code}</div>
@@ -814,7 +814,7 @@ app.get('/', (c) => { try {
             <div class="cot-item" style="display:grid;grid-template-columns:2fr 80px 60px auto;gap:8px;margin-bottom:8px;align-items:center;">
               <select class="form-control" style="font-size:12px;">
                 <option value="">Selecionar item...</option>
-                ${[...stockItems, ...products].map((i: any) => `<option value="${i.code}">${i.name} (${i.code})</option>`).join('')}
+                ${[...(stockItems||[]), ...(products||[])].map((i: any) => `<option value="${i.code}">${i.name} (${i.code})</option>`).join('')}
               </select>
               <input class="form-control" type="number" placeholder="Qtd" min="1">
               <input class="form-control" type="text" placeholder="Un" value="un">
@@ -831,7 +831,7 @@ app.get('/', (c) => { try {
             <div class="cot-sup" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
               <select class="form-control" style="font-size:12px;flex:1;">
                 <option value="">Selecionar fornecedor...</option>
-                ${suppliers.map((s: any) => `<option value="${s.id}">${s.name} (${s.type}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
+                ${(suppliers||[]).map((s: any) => `<option value="${s.id}">${s.name} (${s.type}) — Prazo: ${s.deliveryLeadDays}d</option>`).join('')}
               </select>
               <button class="btn btn-danger btn-sm" onclick="this.closest('.cot-sup').remove()"><i class="fas fa-trash"></i></button>
             </div>
@@ -926,7 +926,7 @@ app.get('/', (c) => { try {
               <label class="form-label">Fornecedor *</label>
               <select class="form-control" id="impFornecedor">
                 <option value="">Selecionar fornecedor importado...</option>
-                ${suppliers.filter((s: any) => s.type === 'importado').map((s: any) => `<option value="${s.id}">${s.name} (${s.country})</option>`).join('')}
+                ${(suppliers||[]).filter((s: any) => s.type === 'importado').map((s: any) => `<option value="${s.id}">${s.name} (${s.country})</option>`).join('')}
               </select>
             </div>
             <div class="form-group">
@@ -1242,13 +1242,13 @@ app.get('/', (c) => { try {
             <label class="form-label">Cotação de Referência *</label>
             <select class="form-control" id="formQuotationRef" required onchange="carregarItensQuotacao()">
               <option value="">— Selecione uma cotação aprovada —</option>
-              ${(quotations as any[]).filter((q: any) => q.status === 'approved').sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((q: any) => {
+              ${(quotations||[]).filter((q: any) => q.status === 'approved').sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((q: any) => {
                 const bestResponse = (q.supplierResponses || []).reduce((best: any, r: any) => (!best || r.totalPrice < best.totalPrice) ? r : best, null)
                 const totalValue = bestResponse ? bestResponse.totalPrice : (q.items || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
                 const supplierName = bestResponse?.supplierName || q.supplierName || q.supplierResponses?.[0]?.supplierName || 'Fornecedor'
                 return `<option value="${q.id}">${q.code} | ${supplierName} | R$ ${(totalValue||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>`
               }).join('')}
-              ${(quotations as any[]).filter((q: any) => q.status === 'approved').length === 0 ? '<option value="" disabled>Nenhuma cotação aprovada disponível</option>' : ''}
+              ${(quotations||[]).filter((q: any) => q.status === 'approved').length === 0 ? '<option value="" disabled>Nenhuma cotação aprovada disponível</option>' : ''}
             </select>
           </div>
           <div id="quotationItemsContainer" style="display:none;grid-column:span 2;">
@@ -2402,6 +2402,10 @@ app.post('/api/imports/create', async (c) => {
     supplierId: body.supplierId || '', supplierName: body.supplierName || '',
     modality: body.modality || 'maritimo', status: 'waiting_ship',
     createdAt: new Date().toISOString(),
+    items: [],
+    taxes: {},
+    numerario: {},
+    timeline: [],
   }
   if (db && userId !== 'demo-tenant') {
     const persistResult = await dbInsertWithRetry(db, 'imports', {
