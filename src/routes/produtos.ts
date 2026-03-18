@@ -1164,7 +1164,7 @@ app.get('/', (c) => {
         csvEsc(r['notes']||r['descricao']||r['description']||'')
       ].join(',');
     });
-    var blob = new Blob([hdr+'\n'+rows.join('\n')+'\n'], {type:'text/csv;charset=utf-8;'});
+    var blob = new Blob([hdr+'\\n'+rows.join('\\n')+'\\n'], {type:'text/csv;charset=utf-8;'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href=url; a.download='rascunho_produtos.csv'; a.click();
     showToast('Rascunho exportado como CSV!', 'success');
