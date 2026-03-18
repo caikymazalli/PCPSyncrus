@@ -116,7 +116,7 @@ app.get('/', (c) => {
         (p.serialControlled ? '<button class="btn btn-sm" style="padding:4px 7px;margin-left:2px;background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="goToSerialRelease(' + JSON.stringify(p.code) + ')" title="Série/Lote"><i class="fas fa-barcode"></i></button>' : '') +
         '<button class="btn btn-sm" style="padding:4px 7px;margin-left:2px;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;"' +
         ' onclick="openEditProd(\'' + p.id + '\',\'' + escHtml(p.name) + '\',\'' + escHtml(p.code) + '\',\'' + escHtml(p.unit||'un') + '\',' +
-        (p.stockMin||0) + ',' + (p.stockCurrent||0) + ',\'' + p.stockStatus + '\',' + (p.serialControlled?'true':'false') + ',\'' + escHtml(p.controlType||'') + '\'," +
+        (p.stockMin||0) + ',' + (p.stockCurrent||0) + ',\'' + p.stockStatus + '\',' + (p.serialControlled?'true':'false') + ',\'' + escHtml(p.controlType||'') + '\',' +
         (p.price||0) + ',\'' + escHtml(p.description||'') + '\',\'' + escHtml(p.notes||'') + '\',' + (p.stockMax||0) + ',' + (p.criticalPercentage||50) + ',\'' + escHtml(p.type||'external') + '\',\'' + escHtml(p.supplierId||p.supplier_id_1||'') + '\')" title="Editar produto"><i class="fas fa-edit"></i></button>' +
         '<button class="btn btn-danger btn-sm" style="padding:4px 7px;margin-left:2px;" onclick="deleteProduto(\'' + p.id + '\')" title="Excluir"><i class="fas fa-trash"></i></button>' +
       '</td>' +
