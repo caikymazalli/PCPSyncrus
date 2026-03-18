@@ -16,4 +16,3 @@ CREATE TABLE IF NOT EXISTS imp_prod_desc (
 
 -- Índice para consultas rápidas por user_id + code
 CREATE INDEX IF NOT EXISTS idx_imp_prod_desc_user_code ON imp_prod_desc(user_id, code);
-
