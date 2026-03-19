@@ -403,40 +403,79 @@ function addCotItem() {
     const valUSD = imp.invoiceValueUSD || 0;
     const valBRL = imp.invoiceValueBRL || 0;
     const exchR  = imp.exchangeRate || 0;
-    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR '+(valEUR > 0 ? 'EUR':'USD')+'</div><div style="font-size:18px;font-weight:800;color:#2980B9;">'+(valEUR > 0 ? '€'+valEUR.toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$'+valUSD.toLocaleString('pt-BR',{minimumFractionDigits:2}))+'</div></div>';
+    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR '+(valEUR > 0 ? 'EUR':'USD')+'</div><div style="font-size:18px;font-weight:800;color:#2980B9;">'+(valEUR > 0 ? '€'+(valEUR||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'US$'+(valUSD||0).toLocaleString('pt-BR',{minimumFractionDigits:2}))+'</div></div>';
     html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">TAXA CÂMBIO</div><div style="font-size:18px;font-weight:800;color:#374151;">R$ '+exchR+'</div></div>';
-    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR BRL</div><div style="font-size:18px;font-weight:800;color:#1B4F72;">R$ '+valBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>';
+    html += '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR BRL</div><div style="font-size:18px;font-weight:800;color:#1B4F72;">R$ '+(valBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>';
     html += '</div></div>';
+    // Itens da Invoice
+    const impItems = imp.items || [];
+    // Sempre exibe a seção de itens (mesmo vazia, com aviso)
+    if (true) {
+      html += '<div style="background:#f0fdf4;border-radius:8px;padding:14px;margin-bottom:16px;">';
+      html += '<div style="font-size:13px;font-weight:700;color:#16a34a;margin-bottom:10px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Itens da Invoice ('+impItems.length+')</div>';
+      html += '<div style="overflow-x:auto;">';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+      html += '<thead><tr style="background:#dcfce7;">';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Código</th>';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Descrição PT (LI)</th>';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Descrição EN</th>';
+      html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Qtd</th>';
+      html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Val. Unit.</th>';
+      html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Subtotal</th>';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">NCM</th>';
+      html += '</tr></thead><tbody>';
+      if (impItems.length === 0) {
+        html += '<tr><td colspan="7" style="padding:16px;text-align:center;color:#9ca3af;font-style:italic;">Nenhum item cadastrado. Edite o processo para adicionar itens.</td></tr>';
+      }
+      impItems.forEach(it => {
+        const sub = (it.sub || it.subtotal || ((it.qty||0) * (it.vu||it.unitPrice||0)) || 0);
+        html += '<tr style="border-bottom:1px solid #bbf7d0;">';
+        html += '<td style="padding:5px 8px;font-family:monospace;color:#166534;font-weight:700;">'+(it.code||'—')+'</td>';
+        html += '<td style="padding:5px 8px;color:#374151;">'+(it.descPT||it.description||'— preencher —')+'</td>';
+        html += '<td style="padding:5px 8px;color:#6b7280;">'+(it.descEN||it.englishDescription||'—')+'</td>';
+        html += '<td style="padding:5px 8px;text-align:right;color:#374151;font-weight:600;">'+(it.qty||0)+'</td>';
+        html += '<td style="padding:5px 8px;text-align:right;color:#374151;">'+(it.vu||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>';
+        html += '<td style="padding:5px 8px;text-align:right;color:#1B4F72;font-weight:700;">'+(sub||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>';
+        html += '<td style="padding:5px 8px;font-family:monospace;font-size:11px;color:#6b7280;">'+(it.ncm||'—')+'</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></div>';
+    }
     // Impostos
     html += '<div style="background:#fef2f2;border-radius:8px;padding:14px;margin-bottom:16px;">';
     html += '<div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:10px;"><i class="fas fa-percent" style="margin-right:6px;"></i>Alíquotas e Impostos</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">II</div><div style="font-size:16px;font-weight:800;color:#dc2626;">' + taxes.ii + '%</div></div>';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">IPI</div><div style="font-size:16px;font-weight:800;color:#dc2626;">' + taxes.ipi + '%</div></div>';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">PIS</div><div style="font-size:16px;font-weight:800;color:#d97706;">' + taxes.pis + '%</div></div>';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">COFINS</div><div style="font-size:16px;font-weight:800;color:#d97706;">' + taxes.cofins + '%</div></div>';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">ICMS</div><div style="font-size:16px;font-weight:800;color:#7c3aed;">' + taxes.icms + '%</div></div>';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">AFRMM</div><div style="font-size:16px;font-weight:800;color:#374151;">R$ ' + taxes.afrmm + '</div></div>';
-    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">SISCOMEX</div><div style="font-size:16px;font-weight:800;color:#374151;">R$ ' + taxes.siscomex + '</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">II</div><div style="font-size:16px;font-weight:800;color:#dc2626;">' + (taxes.ii||0) + '%</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">IPI</div><div style="font-size:16px;font-weight:800;color:#dc2626;">' + (taxes.ipi||0) + '%</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">PIS</div><div style="font-size:16px;font-weight:800;color:#d97706;">' + (taxes.pis||0) + '%</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">COFINS</div><div style="font-size:16px;font-weight:800;color:#d97706;">' + (taxes.cofins||0) + '%</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">ICMS</div><div style="font-size:16px;font-weight:800;color:#7c3aed;">' + (taxes.icms||0) + '%</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">AFRMM</div><div style="font-size:16px;font-weight:800;color:#374151;">R$ ' + (taxes.afrmm||0) + '</div></div>';
+    html += '<div style="background:white;border-radius:6px;padding:8px;text-align:center;"><div style="font-size:10px;color:#9ca3af;">SISCOMEX</div><div style="font-size:16px;font-weight:800;color:#374151;">R$ ' + (taxes.siscomex||0) + '</div></div>';
     html += '<div style="background:#fef2f2;border-radius:6px;padding:8px;text-align:center;border:2px solid #dc2626;"><div style="font-size:10px;color:#9ca3af;">TOTAL IMPOSTOS</div><div style="font-size:16px;font-weight:800;color:#dc2626;">R$ ' + (taxes.taxBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</div></div>';
     html += '</div></div>';
-    // Numerário
+    // Numerário — usando os campos corretos (frete, seguro, desp, porto, arm)
     html += '<div style="background:#f5f3ff;border-radius:8px;padding:14px;">';
     html += '<div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:10px;"><i class="fas fa-calculator" style="margin-right:6px;"></i>Pré-via de Numerário (Custo Desembaraçado)</div>';
     html += '<div style="display:flex;flex-direction:column;gap:6px;">';
-    const numItems = [
-      ['Invoice (BRL)', num.invoiceBRL], ['Frete', num.freightBRL], ['Seguro', num.insuranceBRL],
-      ['Impostos', num.taxesBRL], ['Despachante', num.brokerageBRL], ['Taxas Porto', num.portFeesBRL], ['Armazenagem', num.storageBRL]
+    const numRows = [
+      ['Invoice (BRL)', valBRL],
+      ['Frete', num.frete||num.freightBRL||0],
+      ['Seguro', num.seguro||num.insuranceBRL||0],
+      ['Despachante', num.desp||num.brokerageBRL||0],
+      ['Taxas Porto', num.porto||num.portFeesBRL||0],
+      ['Armazenagem', num.arm||num.storageBRL||0],
     ];
-    for (const [label, val] of numItems) {
-      if (!val) continue;
+    numRows.forEach(([label, val]) => {
+      if (!val) return;
       html += '<div style="display:flex;justify-content:space-between;padding:6px 8px;background:white;border-radius:6px;">' +
         '<span style="font-size:13px;color:#374151;">'+label+'</span>' +
-        '<span style="font-size:13px;font-weight:600;color:#374151;">R$ '+val.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span></div>';
-    }
+        '<span style="font-size:13px;font-weight:600;color:#374151;">R$ '+(val||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span></div>';
+    });
+    const totalLanded = num.totalLandedCostBRL || (valBRL + (num.frete||0) + (num.seguro||0) + (num.desp||0) + (num.porto||0) + (num.arm||0));
     html += '<div style="display:flex;justify-content:space-between;padding:10px 8px;background:#7c3aed;border-radius:6px;margin-top:4px;">' +
       '<span style="font-size:13px;font-weight:700;color:white;">CUSTO TOTAL DESEMBARAÇADO</span>' +
-      '<span style="font-size:15px;font-weight:800;color:white;">R$ '+(num.totalLandedCostBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span></div>';
+      '<span style="font-size:15px;font-weight:800;color:white;">R$ '+(totalLanded||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span></div>';
     html += '<div style="display:flex;justify-content:flex-end;padding:6px 8px;">' +
       '<span style="font-size:12px;color:#7c3aed;font-weight:600;">Custo Unitário: R$ '+(num.unitCostBRL||0).toFixed(2)+' / unidade</span></div>';
     html += '</div></div>';
@@ -444,6 +483,7 @@ function addCotItem() {
     openModal('importDetailModal');
   }
 
+  
   function openNumerario(id) {
     const imp = window.importsData.find(x => x.id === id);
     if (!imp) return;
@@ -753,6 +793,7 @@ function addCotItem() {
     const portOfDestination = document.getElementById('impDestino')?.value || 'Santos';
     const expectedArrival = document.getElementById('impChegada')?.value || '';
     const grossWeight     = parseFloat(document.getElementById('impPesoBruto')?.value || '0');
+    const netWeight       = parseFloat(document.getElementById('impPesoLiquido')?.value || '0') || grossWeight;
     const invoiceValueRaw = parseFloat(document.getElementById('impValorInvoice')?.value || '0');
     const invoiceValueEUR = currency === 'EUR' ? invoiceValueRaw : 0;
     const invoiceValueUSD = currency === 'USD' ? invoiceValueRaw : 0;
@@ -783,7 +824,7 @@ function addCotItem() {
         body: JSON.stringify({
           invoiceNumber: inv, supplierId: fornId, supplierName: forn, modality: mod,
           invoiceDate, incoterm, currency, exchangeRate,
-          portOfOrigin, portOfDestination, expectedArrival, grossWeight,
+          portOfOrigin, portOfDestination, expectedArrival, grossWeight, netWeight,
           invoiceValueEUR, invoiceValueUSD, invoiceValueBRL,
           taxes, numerario, items
         })
@@ -832,7 +873,15 @@ function addCotItem() {
     const liItems = imp.items && imp.items.length > 0
       ? imp.items
       : [{ code: imp.code, descPT: imp.description||'—', ncm: imp.ncm||'—', qty: imp.netWeight||1, vu: imp.invoiceValueEUR||imp.invoiceValueUSD||0, sub: imp.invoiceValueEUR||imp.invoiceValueUSD||0 }];
-    const totalCIF = (imp.invoiceValueEUR||0) > 0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
+    // CIF = FOB (valor invoice) + Frete + Seguro (em moeda original)
+    const _fobVal = (imp.invoiceValueEUR||0) > 0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
+    const _exchR  = imp.exchangeRate || 1;
+    // Frete e seguro em moeda estrangeira: se foram informados em BRL, converter
+    const _freteBRL  = (imp.numerario && imp.numerario.frete)  || 0;
+    const _seguroBRL = (imp.numerario && imp.numerario.seguro) || 0;
+    const _freteFX   = _exchR > 0 ? _freteBRL  / _exchR : 0;
+    const _seguroFX  = _exchR > 0 ? _seguroBRL / _exchR : 0;
+    const totalCIF = _fobVal + _freteFX + _seguroFX;
 
     let html = `
     <div style="background:#f5f3ff;border-radius:8px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
@@ -877,15 +926,23 @@ function addCotItem() {
           '<td style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">'+moedaSym+' '+(valT>0?valT.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>' +
         '</tr>';
       }).join('')}</tbody>
-      <tfoot><tr style="background:#f5f3ff;">
-        <td colspan="4" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL CIF:</td>
-        <td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">${moedaSym} ${(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-      </tr></tfoot>
+      <tfoot>
+        ${_freteFX > 0 ? '<tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">FOB (Invoice):</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:#6b7280;">'+moedaSym+' '+_fobVal.toLocaleString("pt-BR",{minimumFractionDigits:2})+'</td></tr>' : ''}
+        ${_freteFX > 0 ? '<tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">+ Frete:</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:#6b7280;">'+moedaSym+' '+_freteFX.toLocaleString("pt-BR",{minimumFractionDigits:2})+'</td></tr>' : ''}
+        ${_seguroFX > 0 ? '<tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">+ Seguro:</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:#6b7280;">'+moedaSym+' '+_seguroFX.toLocaleString("pt-BR",{minimumFractionDigits:2})+'</td></tr>' : ''}
+        <tr style="background:#f5f3ff;">
+          <td colspan="4" style="padding:8px 10px;font-weight:700;color:#7c3aed;text-align:right;">TOTAL CIF:</td>
+          <td style="padding:8px 10px;font-weight:800;color:#7c3aed;text-align:right;">${moedaSym} ${(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+        </tr>
+      </tfoot>
     </table>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      ${detRow('VALOR TOTAL CIF ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2}))}
-      ${detRow('VALOR TOTAL CIF (BRL)', 'R$ '+(imp.invoiceValueBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+(imp.exchangeRate||0)+')')}
+      ${detRow('FOB INVOICE ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+_fobVal.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+      ${_freteFX > 0 ? detRow('+ FRETE ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+_freteFX.toLocaleString('pt-BR',{minimumFractionDigits:2})) : ''}
+      ${_seguroFX > 0 ? detRow('+ SEGURO ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+_seguroFX.toLocaleString('pt-BR',{minimumFractionDigits:2})) : ''}
+      ${detRow('<strong>TOTAL CIF ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')</strong>', '<strong>'+moedaSym+' '+(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong>')}
+      ${detRow('TOTAL CIF (BRL)', 'R$ '+((totalCIF * (imp.exchangeRate||1))||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' (câmbio R$ '+(imp.exchangeRate||0)+')')}
       ${detRow('PESO LÍQUIDO', (imp.netWeight||0)+' kg')}
       ${detRow('PESO BRUTO', (imp.grossWeight||0)+' kg')}
     </div>
@@ -907,13 +964,138 @@ function addCotItem() {
     localStorage.setItem(k, JSON.stringify(edits));
   }
 
+
+  // ── Versionamento de Invoice ─────────────────────────────────────────
+  function getInvVersionKey(impId) { return 'invVersions_' + impId; }
+
+  function getInvVersions(impId) {
+    try { return JSON.parse(localStorage.getItem(getInvVersionKey(impId)) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveInvVersion(impId) {
+    const imp = window.importsData.find(x => x.id === impId);
+    if (!imp) return null;
+    const editsKey = 'invEdits_' + impId;
+    const currentEdits = JSON.parse(localStorage.getItem(editsKey) || '{}');
+    const versions = getInvVersions(impId);
+    const nextNum  = versions.length + 1;
+    const versionLabel = 'v' + String(nextNum).padStart(2, '0');
+    const ts = new Date();
+    const dateStr = ts.toLocaleString('pt-BR');
+    const versionData = {
+      version: nextNum,
+      label: versionLabel,
+      date: dateStr,
+      timestamp: ts.toISOString(),
+      edits: JSON.parse(JSON.stringify(currentEdits)),
+      impSnapshot: {
+        invoiceNumber: imp.invoiceNumber, invoiceDate: imp.invoiceDate,
+        supplierName: imp.supplierName,   incoterm: imp.incoterm,
+        currency: imp.currency,           exchangeRate: imp.exchangeRate,
+        invoiceValueEUR: imp.invoiceValueEUR, invoiceValueUSD: imp.invoiceValueUSD,
+        invoiceValueBRL: imp.invoiceValueBRL,
+        items: imp.items || [],
+      }
+    };
+    versions.push(versionData);
+    localStorage.setItem(getInvVersionKey(impId), JSON.stringify(versions));
+    return versionData;
+  }
+
+  function confirmarInvoice(impId) {
+    const imp = window.importsData.find(x => x.id === impId);
+    if (!imp) return;
+    const saved = saveInvVersion(impId);
+    if (!saved) return;
+    const versions = getInvVersions(impId);
+    showToastSup('✅ Invoice confirmada como ' + saved.label + ' — ' + saved.date, 'success');
+    // Atualizar o título do modal com a versão
+    const titleEl = document.getElementById('invoiceImpCodigo');
+    if (titleEl) titleEl.textContent = imp.code + ' · ' + saved.label;
+    // Atualizar badge de versão
+    const badgeEl = document.getElementById('invVersionBadge');
+    if (badgeEl) {
+      badgeEl.textContent = saved.label + ' (' + versions.length + ' vers.)';
+      badgeEl.style.display = 'inline-block';
+    }
+    // Renderizar histórico de versões
+    renderInvVersionHistory(impId);
+  }
+
+    function renderInvVersionHistory(impId) {
+    const container = document.getElementById('invVersionHistoryContainer');
+    if (!container) return;
+    const versions = getInvVersions(impId);
+    if (versions.length === 0) { container.style.display = 'none'; return; }
+    container.style.display = 'block';
+    const rows = versions.slice().reverse().map(function(v) {
+      const inv = v.impSnapshot || {};
+      const moeda = (inv.invoiceValueEUR||0) > 0 ? 'EUR' : 'USD';
+      const val = (inv.invoiceValueEUR||0) > 0 ? (inv.invoiceValueEUR||0) : (inv.invoiceValueUSD||0);
+      const btnOnClick = 'restoreInvVersion(' + JSON.stringify(impId) + ',' + v.version + ')';
+      return '<tr style="border-bottom:1px solid #e5e7eb;">' +
+        '<td style="padding:6px 10px;font-weight:700;color:#1B4F72;">' + v.label + '</td>' +
+        '<td style="padding:6px 10px;color:#374151;">' + v.date + '</td>' +
+        '<td style="padding:6px 10px;color:#374151;">' + (inv.invoiceNumber||'—') + '</td>' +
+        '<td style="padding:6px 10px;color:#374151;">' + moeda + ' ' + (val||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</td>' +
+        '<td style="padding:6px 10px;text-align:center;">' +
+          '<button onclick="' + btnOnClick + '" style="font-size:10px;padding:3px 8px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;color:#374151;">' +
+          '<i class="fas fa-undo"></i> Restaurar</button>' +
+        '</td></tr>';
+    }).join('');
+    container.innerHTML =
+      '<div style="padding:10px 0 6px;font-size:12px;font-weight:700;color:#1B4F72;">' +
+        '<i class="fas fa-history" style="margin-right:5px;"></i>Histórico de Versões</div>' +
+      '<div style="overflow-x:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
+          '<thead><tr style="background:#f8f9fa;">' +
+            '<th style="padding:6px 10px;text-align:left;color:#6b7280;">Versão</th>' +
+            '<th style="padding:6px 10px;text-align:left;color:#6b7280;">Data/Hora</th>' +
+            '<th style="padding:6px 10px;text-align:left;color:#6b7280;">Nº Invoice</th>' +
+            '<th style="padding:6px 10px;text-align:left;color:#6b7280;">Valor</th>' +
+            '<th style="padding:6px 10px;text-align:center;color:#6b7280;">Ação</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  function restoreInvVersion(impId, versionNum) {
+    const versions = getInvVersions(impId);
+    const v = versions.find(x => x.version === versionNum);
+    if (!v) return;
+    if (!confirm('Restaurar versão ' + v.label + ' (' + v.date + ')? As edições atuais serão substituídas.')) return;
+    const editsKey = 'invEdits_' + impId;
+    localStorage.setItem(editsKey, JSON.stringify(v.edits || {}));
+    showToastSup('↩️ Versão ' + v.label + ' restaurada!', 'info');
+    // Reabrir a invoice para refletir as edições restauradas
+    closeModal('invoiceComercialModal');
+    setTimeout(() => openInvoiceComercial(impId), 200);
+  }
+
   // ── Invoice Comercial ────────────────────────────────────────────────────
   function openInvoiceComercial(id) {
+    window._currentInvId = id; // necessário para botão Confirmar
     const imp = window.importsData.find(x => x.id === id);
     if (!imp) return;
     const invEditsKey = 'invEdits_' + id;
     const invEdits = JSON.parse(localStorage.getItem(invEditsKey) || '{}');
-    document.getElementById('invoiceImpCodigo').textContent = imp.code;
+    // Mostrar versão atual no título
+    const versions = getInvVersions(id);
+    const currentVersion = versions.length > 0 ? versions[versions.length-1] : null;
+    const vLabel = currentVersion ? currentVersion.label : '';
+    document.getElementById('invoiceImpCodigo').textContent = imp.code + (vLabel ? ' · ' + vLabel : '');
+    // Atualizar badge
+    const badgeEl = document.getElementById('invVersionBadge');
+    if (badgeEl) {
+      if (versions.length > 0) {
+        badgeEl.textContent = (currentVersion ? currentVersion.label : '') + ' (' + versions.length + ' vers.)';
+        badgeEl.style.display = 'inline-block';
+      } else {
+        badgeEl.style.display = 'none';
+      }
+    }
     const moedaSym = (imp.invoiceValueEUR||0) > 0 ? '€' : 'US$';
     const moedaLabel = (imp.invoiceValueEUR||0) > 0 ? 'EUR' : 'USD';
     const fmtVal = v => (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
@@ -1070,6 +1252,8 @@ function addCotItem() {
     </div>`;
     document.getElementById('invoiceComercialBody').innerHTML = html;
     openModal('invoiceComercialModal');
+    // Renderizar histórico de versões (se existir)
+    setTimeout(() => renderInvVersionHistory(id), 50);
   }
 
   // Salvar edição de campo da Invoice no localStorage (somente este embarque)
