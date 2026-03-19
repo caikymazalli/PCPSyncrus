@@ -988,6 +988,14 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
     }
     // Load imports (processos de importação) do D1
     try {
+      // Auto-migration: garantir colunas adicionadas por 0045 (idempotente)
+      try {
+        await db.batch([
+          db.prepare("ALTER TABLE imports ADD COLUMN code TEXT DEFAULT ''"),
+          db.prepare("ALTER TABLE imports ADD COLUMN supplier_name TEXT DEFAULT ''"),
+          db.prepare("ALTER TABLE imports ADD COLUMN modality TEXT DEFAULT 'maritimo'"),
+        ])
+      } catch (_) { /* colunas já existem */ }
       const imps = await db.prepare(`SELECT * FROM imports WHERE user_id = ?${byEmpresa} ORDER BY created_at DESC`)
         .bind(...bindEmpresa([userId])).all()
       if (imps.results && imps.results.length > 0) {
