@@ -509,6 +509,24 @@ function addCotItem() {
     const imp = window.importsData.find(x => x.id === id);
     if (!imp) return;
     const num = imp.numerario || {};
+    // ── Calcular TODOS os valores ANTES de montar o HTML ──
+    const _nInvoice  = num.invoiceBRL   || imp.invoiceValueBRL || 0;
+    const _nFrete    = num.freightBRL   || num.frete   || 0;
+    const _nSeguro   = num.insuranceBRL || num.seguro  || 0;
+    const _nDesp     = num.brokerageBRL || num.desp    || 0;
+    const _nPorto    = num.portFeesBRL  || num.porto   || 0;
+    const _nArm      = num.storageBRL   || num.arm     || 0;
+    const _nTaxBRL   = num.taxesBRL || (function(){
+      const v  = _nInvoice;
+      const tx = imp.taxes || {};
+      return v * ((tx.ii||0)+(tx.ipi||0)+(tx.pis||0)+(tx.cofins||0)+(tx.icms||0)) / 100
+             + (tx.afrmm||0) + (tx.siscomex||0);
+    })();
+    const _nTotal    = num.totalLandedCostBRL
+                     || (_nInvoice + _nFrete + _nSeguro + _nDesp + _nPorto + _nArm + _nTaxBRL)
+                     || 0;
+    const _nQty      = (imp.items||[]).reduce((a,it)=>a+(it.qty||0),0) || imp.netWeight || 1;
+    const _nUnitCost = num.unitCostBRL || (_nTotal / _nQty) || 0;
     document.getElementById('numerarioTitle').innerHTML = '<i class="fas fa-calculator" style="margin-right:8px;"></i>Pré-via de Numerário — ' + imp.code;
     let html = '<div style="background:#1B4F72;color:white;border-radius:8px;padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">' +
       '<div><div style="font-size:12px;opacity:0.8;">PROCESSO</div><div style="font-size:18px;font-weight:800;">' + imp.code + '</div>' +
@@ -518,23 +536,6 @@ function addCotItem() {
     html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
     html += '<thead><tr style="background:#f8f9fa;"><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Componente</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Valor (BRL)</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">% do Total</th></tr></thead>';
     html += '<tbody>';
-    // Normalizar campos: suporte tanto ao formato curto (frete,seguro,desp,porto,arm)
-    // quanto ao formato longo (freightBRL, insuranceBRL, etc.)
-    const _nInvoice  = num.invoiceBRL  || imp.invoiceValueBRL || 0;
-    const _nFrete    = num.freightBRL  || num.frete  || 0;
-    const _nSeguro   = num.insuranceBRL|| num.seguro || 0;
-    const _nDesp     = num.brokerageBRL|| num.desp   || 0;
-    const _nPorto    = num.portFeesBRL || num.porto  || 0;
-    const _nArm      = num.storageBRL  || num.arm    || 0;
-    // Recalcular taxes para numerario
-    const _nTaxBRL = num.taxesBRL || (function(){
-      const v = _nInvoice || imp.invoiceValueBRL || 0;
-      const tx = imp.taxes || {};
-      return v * ((tx.ii||0)+(tx.ipi||0)+(tx.pis||0)+(tx.cofins||0)+(tx.icms||0)) / 100 + (tx.afrmm||0) + (tx.siscomex||0);
-    })();
-    const _nTotal    = num.totalLandedCostBRL || (_nInvoice + _nFrete + _nSeguro + _nDesp + _nPorto + _nArm + _nTaxBRL) || 0;
-    const _nQty      = (imp.items||[]).reduce((a,it)=>a+(it.qty||0),0) || imp.netWeight || 1;
-    const _nUnitCost = num.unitCostBRL || (_nTotal / _nQty);
     const rows = [
       { label: 'Valor da Invoice', val: _nInvoice, color: '#1B4F72' },
       { label: 'Frete Internacional', val: _nFrete, color: '#374151' },
@@ -544,7 +545,7 @@ function addCotItem() {
       { label: 'Taxas Portuárias', val: _nPorto, color: '#374151' },
       { label: 'Armazenagem', val: _nArm, color: '#374151' },
     ];
-    const total = num.totalLandedCostBRL || 1;
+    const total = _nTotal || 1; // usa o valor calculado acima
     for (const row of rows) {
       if (!row.val) continue;
       const pct = ((row.val / total) * 100).toFixed(1);
@@ -2047,3 +2048,4 @@ function addCotItem() {
     closeModal('importDetailModal');
     openModal('packingListModal');
   }
+
