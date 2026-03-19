@@ -255,12 +255,20 @@ function openModal(modalId) {
     return
   }
   const modal = document.getElementById(modalId)
-  if (modal) {
-    modal.classList.add('open')
-    console.log('[MODAL] Aberto:', modalId)
-  } else {
+  if (!modal) {
     console.warn('[MODAL] Elemento não encontrado:', modalId)
+    return
   }
+  // Forçar exibição via inline style (sobrescreve qualquer CSS conflitante)
+  modal.style.display = 'flex'
+  modal.style.alignItems = 'center'
+  modal.style.justifyContent = 'center'
+  modal.style.position = 'fixed'
+  modal.style.inset = '0'
+  modal.style.background = 'rgba(0,0,0,0.5)'
+  modal.style.zIndex = '9999'
+  modal.classList.add('open')
+  console.log('[MODAL] Aberto:', modalId)
 }
 
 function closeModal(modalId) {
@@ -269,12 +277,14 @@ function closeModal(modalId) {
     return
   }
   const modal = document.getElementById(modalId)
-  if (modal) {
-    modal.classList.remove('open')
-    console.log('[MODAL] Fechado:', modalId)
-  } else {
-    console.warn('[MODAL] Elemento não encontrado:', modalId)
+  if (!modal) {
+    console.warn('[MODAL] Elemento não encontrado para fechar:', modalId)
+    return
   }
+  modal.style.display = 'none'
+  modal.style.zIndex = ''
+  modal.classList.remove('open')
+  console.log('[MODAL] Fechado:', modalId)
 }
 
 async function salvarNovoPedidoCompra() {
