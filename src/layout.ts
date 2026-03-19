@@ -407,4 +407,3 @@ function closeModal(id) {
 </body>
 </html>`;
 }
-
