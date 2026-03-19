@@ -383,9 +383,26 @@ function switchTab(tabId, groupId) {
   document.getElementById(tabId).classList.add('active');
 }
 
-// Modal
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+// Modal — usa inline style para garantir exibição independente do CSS
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = 'flex';
+  el.style.alignItems = 'center';
+  el.style.justifyContent = 'center';
+  el.style.position = 'fixed';
+  el.style.inset = '0';
+  el.style.background = 'rgba(0,0,0,0.5)';
+  el.style.zIndex = '9999';
+  el.classList.add('open');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = 'none';
+  el.style.zIndex = '';
+  el.classList.remove('open');
+}
 </script>
 </body>
 </html>`;
