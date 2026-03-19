@@ -256,3 +256,4 @@ export function loginPage(errorMsg?: string): string {
 </body>
 </html>`
 }
+
