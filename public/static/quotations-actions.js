@@ -225,7 +225,7 @@ function addCotItem() {
     document.getElementById('quotDetailTitle').innerHTML = '<i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>' + escHtml(q.code);
     let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">' +
       detRow('Código', escHtml(q.code)) + detRow('Status', '<span class="badge" style="background:'+escHtml(si.bg)+';color:'+escHtml(si.color)+';">'+escHtml(si.label)+'</span>') +
-      detRow('Criado por', escHtml(q.createdBy || '—')) + detRow('Data', new Date((q.createdAt||new Date().toISOString())+'T12:00:00').toLocaleDateString('pt-BR')) +
+      detRow('Criado por', escHtml(q.createdBy || '—')) + detRow('Data', (function(s){ try { return new Date(s).toLocaleDateString('pt-BR'); } catch{ return '—'; } })(q.createdAt||'')) +
       (q.approvedBy ? detRow('Aprovado por', escHtml(q.approvedBy)) + detRow('Aprovação', new Date((q.approvedAt||'')+'T12:00:00').toLocaleDateString('pt-BR')) : '') +
       (q.rejectionReason ? detRow('Motivo Negação', escHtml(q.rejectionReason)) : '') +
       (q.negotiationObs ? detRow('Obs. Negociação', escHtml(q.negotiationObs)) : '') +
@@ -235,26 +235,58 @@ function addCotItem() {
     for (const it of (q.items||[])) html += '<tr><td>'+escHtml(it.productName||'')+'</td><td><strong>'+(it.quantity||0)+'</strong></td><td>'+escHtml(it.unit||'un')+'</td></tr>';
     html += '</tbody></table></div>';
     if ((q.supplierResponses||[]).length > 0) {
-      const best = q.supplierResponses.reduce(function(b, r) { return (!b || r.totalPrice < b.totalPrice) ? r : b; }, null);
-      html += '<div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Respostas dos Fornecedores</div>';
-      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-      for (const r of q.supplierResponses) {
-        const isBest = r.supplierName === best.supplierName;
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:12px;border-left:3px solid '+(isBest?'#27AE60':'#d1d5db')+';">' +
-          '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">' +
-          '<div style="font-size:13px;font-weight:700;color:#374151;">' + escHtml(r.supplierName) + '</div>' +
-          (isBest ? '<span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-crown" style="font-size:9px;"></i> Melhor Preço</span>' : '') +
-          '</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">' +
-          '<div><div style="font-size:10px;color:#9ca3af;">PREÇO UNIT.</div><div style="font-size:14px;font-weight:800;color:#27AE60;">R$ '+(r.unitPrice||0).toFixed(2)+'</div></div>' +
-          '<div><div style="font-size:10px;color:#9ca3af;">TOTAL</div><div style="font-size:14px;font-weight:800;color:#1B4F72;">R$ '+(r.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>' +
-          '<div><div style="font-size:10px;color:#9ca3af;">PRAZO</div><div style="font-size:14px;font-weight:800;color:#2980B9;">'+(r.deliveryDays||0)+'d</div></div>' +
-          '</div>' + (r.notes ? '<div style="font-size:12px;color:#6c757d;margin-top:6px;">'+escHtml(r.notes)+'</div>' : '') +
-          '</div>';
+      const sortedResps = q.supplierResponses.slice().sort(function(a,b){ return (a.totalPrice||0)-(b.totalPrice||0); });
+      const best = sortedResps[0];
+      const invited = (q.supplierIds||[]).length || sortedResps.length;
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+        '<div style="font-size:13px;font-weight:700;color:#1B4F72;">Respostas dos Fornecedores</div>' +
+        '<span style="font-size:11px;background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:12px;font-weight:600;">' +
+        sortedResps.length + ' de ' + invited + ' responderam</span></div>';
+      html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+      for (var ri = 0; ri < sortedResps.length; ri++) {
+        var r = sortedResps[ri];
+        var isBest = (r.supplierName === best.supplierName && r.totalPrice === best.totalPrice);
+        var rank = ri + 1;
+        // Calcular unitPrice: campo top-level, senão derivar do primeiro item
+        var displayUnitPrice = (r.unitPrice && r.unitPrice > 0) ? r.unitPrice
+          : ((r.items && r.items[0] && r.items[0].unitPrice) ? r.items[0].unitPrice : 0);
+        html += '<div style="background:#f8f9fa;border-radius:10px;padding:14px;border-left:4px solid '+(isBest?'#16a34a':'#6b7280')+';position:relative;">';
+        // Rank badge
+        html += '<div style="position:absolute;top:10px;right:10px;display:flex;align-items:center;gap:6px;">';
+        if (isBest) html += '<span style="background:#f0fdf4;color:#16a34a;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;"><i class="fas fa-crown" style="font-size:9px;margin-right:3px;"></i>Melhor Preço</span>';
+        html += '<span style="background:#e5e7eb;color:#374151;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">#'+rank+'</span>';
+        html += '</div>';
+        // Supplier name
+        html += '<div style="font-size:14px;font-weight:800;color:#1B4F72;margin-bottom:10px;padding-right:120px;">'+escHtml(r.supplierName)+'</div>';
+        // Main KPIs
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">';
+        html += '<div style="background:white;border-radius:6px;padding:8px;"><div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Preço Unit.</div><div style="font-size:15px;font-weight:800;color:#16a34a;">R$ '+displayUnitPrice.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>';
+        html += '<div style="background:white;border-radius:6px;padding:8px;"><div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Total</div><div style="font-size:15px;font-weight:800;color:#1B4F72;">R$ '+(r.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div></div>';
+        html += '<div style="background:white;border-radius:6px;padding:8px;"><div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Prazo</div><div style="font-size:15px;font-weight:800;color:#2563eb;">'+(r.deliveryDays||0)+'d</div></div>';
+        html += '</div>';
+        // Per-item breakdown (if multiple items)
+        if (r.items && r.items.length > 1) {
+          html += '<details style="margin-top:6px;"><summary style="font-size:11px;color:#6b7280;cursor:pointer;font-weight:600;">Ver detalhamento por item ('+r.items.length+' itens)</summary>';
+          html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;">';
+          html += '<thead><tr style="background:#e5e7eb;"><th style="padding:5px 8px;text-align:left;">Produto</th><th style="padding:5px 8px;text-align:right;">Qtd</th><th style="padding:5px 8px;text-align:right;">Unit. (R$)</th><th style="padding:5px 8px;text-align:right;">Subtotal</th></tr></thead><tbody>';
+          for (var ii = 0; ii < r.items.length; ii++) {
+            var it = r.items[ii];
+            html += '<tr style="border-bottom:1px solid #f1f3f5;"><td style="padding:5px 8px;">'+escHtml(it.productName||it.productCode||'')+'</td><td style="padding:5px 8px;text-align:right;">'+(it.quantity||0)+'</td><td style="padding:5px 8px;text-align:right;color:#16a34a;font-weight:700;">'+(it.unitPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td><td style="padding:5px 8px;text-align:right;font-weight:700;">'+(it.totalPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td></tr>';
+          }
+          html += '</tbody></table></details>';
+        }
+        // Payment terms & notes
+        if (r.paymentTerms || r.notes) {
+          html += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">';
+          if (r.paymentTerms) html += '<span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:8px;">'+escHtml(r.paymentTerms)+'</span>';
+          if (r.notes) html += '<span style="font-size:11px;color:#6b7280;font-style:italic;">'+escHtml(r.notes)+'</span>';
+          html += '</div>';
+        }
+        html += '</div>';
       }
       html += '</div>';
     } else {
-      html += '<div style="background:#fffbeb;border-radius:8px;padding:16px;text-align:center;"><i class="fas fa-clock" style="font-size:24px;color:#F39C12;margin-bottom:6px;"></i><div style="font-size:13px;color:#d97706;">Aguardando resposta dos fornecedores...</div></div>';
+      html += '<div style="background:#fffbeb;border-radius:8px;padding:16px;text-align:center;"><i class="fas fa-clock" style="font-size:24px;color:#F39C12;margin-bottom:6px;"></i><div style="font-size:13px;color:#d97706;font-weight:600;">Aguardando resposta dos fornecedores...</div><div style="font-size:11px;color:#9ca3af;margin-top:4px;">Os fornecedores convidados ainda não enviaram propostas</div></div>';
     }
     document.getElementById('quotDetailBody').innerHTML = html;
 
