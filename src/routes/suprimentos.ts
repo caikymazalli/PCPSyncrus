@@ -2614,8 +2614,9 @@ app.post('/api/imports/create', async (c) => {
     timeline: [],
   }
   if (db && userId !== 'demo-tenant') {
-    const persistResult = await dbInsertWithRetry(db, 'imports', {
-      id, user_id: userId, empresa_id: empresaId, code,
+    // Payload completo (requer migration 0045 aplicada)
+    const fullPayload: Record<string,any> = {
+      id, user_id: userId, empresa_id: empresaId || '1', code,
       invoice_number: imp.invoiceNumber,
       invoice_date: imp.invoiceDate || null,
       incoterm: imp.incoterm,
@@ -2639,10 +2640,39 @@ app.post('/api/imports/create', async (c) => {
       tax_afrmm: taxes.afrmm || 0,
       tax_siscomex: taxes.siscomex || 0,
       notes: JSON.stringify({ items: impItems, taxes, numerario: body.numerario || {} }),
-      supplier_id: imp.supplierId, supplier_name: imp.supplierName, modality: imp.modality, status: 'waiting_ship',
-    })
+      supplier_id: imp.supplierId, supplier_name: imp.supplierName,
+      modality: imp.modality, status: 'waiting_ship',
+    }
+    let persistResult = await dbInsertWithRetry(db, 'imports', fullPayload)
     if (!persistResult.success) {
-      console.warn(`[IMPORT] Falha ao persistir importação ${id} em D1: ${persistResult.error}`)
+      // Fallback: colunas garantidas pelo schema original (0001 + 0002)
+      // Remove code/supplier_name/modality que podem não existir em D1 ainda
+      console.warn(`[IMPORT] INSERT completo falhou (${persistResult.error}), tentando payload mínimo...`)
+      const minPayload: Record<string,any> = {
+        id, user_id: userId, empresa_id: empresaId || '1',
+        invoice_number: imp.invoiceNumber,
+        invoice_date: imp.invoiceDate || null,
+        incoterm: imp.incoterm, currency: imp.currency,
+        exchange_rate: imp.exchangeRate,
+        value_eur: imp.invoiceValueEUR, value_usd: imp.invoiceValueUSD, value_brl: imp.invoiceValueBRL,
+        port_origin: imp.portOfOrigin, port_dest: imp.portOfDestination,
+        expected_arrival: imp.expectedArrival || null,
+        weight_gross: imp.grossWeight, weight_net: imp.netWeight,
+        description: imp.description, ncm: imp.ncm, supplier_id: imp.supplierId,
+        tax_ii: taxes.ii||0, tax_ipi: taxes.ipi||0, tax_pis: taxes.pis||0,
+        tax_cofins: taxes.cofins||0, tax_icms: taxes.icms||0,
+        tax_afrmm: taxes.afrmm||0, tax_siscomex: taxes.siscomex||0,
+        notes: JSON.stringify({ items: impItems, taxes, numerario: body.numerario||{}, code: imp.code, supplier_name: imp.supplierName, modality: imp.modality }),
+        status: 'waiting_ship',
+      }
+      persistResult = await dbInsertWithRetry(db, 'imports', minPayload)
+      if (!persistResult.success) {
+        console.error(`[IMPORT] ❌ FALHA CRÍTICA: Não foi possível persistir importação ${id} em D1.`, persistResult.error)
+      } else {
+        console.log(`[IMPORT] ✅ Importação ${id} (${code}) persistida via payload mínimo (migration 0045 pendente)`)
+      }
+    } else {
+      console.log(`[IMPORT] ✅ Importação ${id} (${code}) persistida com sucesso no D1`)
     }
   }
   if (!tenant.imports) (tenant as any).imports = []
