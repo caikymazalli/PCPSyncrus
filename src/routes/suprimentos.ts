@@ -700,7 +700,14 @@ app.get('/', (c) => { try {
                       <tr class="imp-prod-row" data-code="${item.code}" style="border-bottom:1px solid #f1f3f5;" onmouseenter="this.style.background='#f0f9ff'" onmouseleave="this.style.background='white'">
                         <td style="padding:8px 12px;font-family:monospace;font-size:11px;background:#e8f4fd;color:#1B4F72;font-weight:700;white-space:nowrap;">${item.code}</td>
                         <td style="padding:8px 12px;font-weight:600;color:#374151;max-width:180px;">
-                          <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(item.name)}">${item.name}</div>
+                          <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color:#1B4F72;text-decoration:underline dotted;" 
+                            title="Clique para editar dados físicos (peso/CBM)"
+                            onclick="openProdPhysicalModal('${item.code}','${escapeHtmlAttr(item.name)}')">
+                            ${item.name}
+                            ${(item.grossWeight || 0) > 0
+                              ? `<i class="fas fa-weight" style="font-size:9px;color:#059669;margin-left:4px;" title="Dados físicos cadastrados: ${item.grossWeight||0}kg bruto / ${item.netWeight||0}kg líq / ${item.cbm||0}m³"></i>`
+                              : `<i class="fas fa-weight" style="font-size:9px;color:#d97706;margin-left:4px;" title="Dados físicos não cadastrados — clique para preencher"></i>`}
+                          </div>
                           <div style="font-size:10px;color:#9ca3af;">${item.unit}</div>
                         </td>
                         <td style="padding:6px 10px;min-width:160px;" ondblclick="startInlineEdit(this,'impDescPT','${item.code}','descPT')">
@@ -883,11 +890,92 @@ app.get('/', (c) => { try {
         <button onclick="closeModal('importDetailModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:24px;max-height:75vh;overflow-y:auto;" id="importDetailBody"></div>
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
-        <button onclick="closeModal('importDetailModal')" class="btn btn-secondary">Fechar</button>
-          <button onclick="openInvoiceComercial(window._currentImpDetailId)" class="btn btn-primary" style="background:#1B4F72;border-color:#1B4F72;"><i class="fas fa-file-invoice" style="margin-right:6px;"></i>Gerar Invoice Comercial</button>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <button onclick="openEditImportModal(window._currentImpDetailId)" class="btn btn-secondary" style="margin-right:6px;">
+            <i class="fas fa-edit" style="margin-right:6px;"></i>Editar Processo
+          </button>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="closeModal('importDetailModal')" class="btn btn-secondary">Fechar</button>
+          <button onclick="openPackingList(window._currentImpDetailId)" class="btn btn-secondary" style="background:#7c3aed;border-color:#7c3aed;color:white;">
+            <i class="fas fa-boxes" style="margin-right:6px;"></i>Packing List
+          </button>
+          <button onclick="openInvoiceComercial(window._currentImpDetailId)" class="btn btn-primary" style="background:#1B4F72;border-color:#1B4F72;">
+            <i class="fas fa-file-invoice" style="margin-right:6px;"></i>Invoice Comercial
+          </button>
+        </div>
       </div>
     </div>
+  <!-- Modal: Editar Processo de Importação -->
+  <div class="modal-overlay" id="editImportModal">
+    <div class="modal" style="max-width:820px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-edit" style="margin-right:8px;"></i>Editar Processo — <span id="editImpCodigo"></span></h3>
+        <button onclick="closeModal('editImportModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;max-height:75vh;overflow-y:auto;" id="editImportBody"></div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;">
+        <button onclick="closeModal('editImportModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarEdicaoImport()" class="btn btn-primary" style="background:#059669;border-color:#059669;">
+          <i class="fas fa-save" style="margin-right:6px;"></i>Salvar Alterações
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Packing List -->
+  <div class="modal-overlay" id="packingListModal">
+    <div class="modal" style="max-width:860px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#7c3aed;"><i class="fas fa-boxes" style="margin-right:8px;"></i>Packing List — <span id="packingListImpCodigo"></span></h3>
+        <button onclick="closeModal('packingListModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;max-height:78vh;overflow-y:auto;" id="packingListBody"></div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;">
+        <button class="btn btn-secondary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+        <button onclick="closeModal('packingListModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Dados Físicos do Produto (peso/CBM) -->
+  <div class="modal-overlay" id="prodPhysicalModal">
+    <div class="modal" style="max-width:480px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#1B4F72;"><i class="fas fa-weight" style="margin-right:8px;"></i>Dados Físicos — <span id="prodPhysicalName"></span></h3>
+        <button onclick="closeModal('prodPhysicalModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <input type="hidden" id="prodPhysicalCode">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Peso Bruto Unitário (kg)</label>
+            <input type="number" id="prodPhysGrossPeso" class="form-control" placeholder="Ex: 12.5" step="0.01" min="0">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Peso Líquido Unitário (kg)</label>
+            <input type="number" id="prodPhysNetPeso" class="form-control" placeholder="Ex: 10.8" step="0.01" min="0">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Cubagem Unitária (CBM — m³)</label>
+          <input type="number" id="prodPhysCBM" class="form-control" placeholder="Ex: 0.085" step="0.0001" min="0">
+        </div>
+        <div style="background:#f0fdf4;border-radius:8px;padding:10px;font-size:11px;color:#166534;">
+          <i class="fas fa-info-circle" style="margin-right:5px;"></i>
+          Esses dados são unitários e serão usados para calcular pesos e cubagem total no Packing List, com base na quantidade do embarque.
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;">
+        <button onclick="closeModal('prodPhysicalModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarDadosFisicos()" class="btn btn-primary" style="background:#059669;border-color:#059669;">
+          <i class="fas fa-save" style="margin-right:6px;"></i>Salvar Dados Físicos
+        </button>
+      </div>
+    </div>
+  </div>
+
   </div>
 
   <!-- Modal: Pré-via de Numerário -->
@@ -2521,6 +2609,7 @@ app.put('/api/imports/:id', async (c) => {
 
   // Campos que podem ser atualizados
   const updatableFields: Record<string, any> = {}
+  if (body.invoiceNumber !== undefined)    { imp.invoiceNumber = body.invoiceNumber; updatableFields.invoice_number = body.invoiceNumber }
   if (body.status !== undefined)           { imp.status = body.status; updatableFields.status = body.status }
   if (body.invoiceDate !== undefined)       { imp.invoiceDate = body.invoiceDate; updatableFields.invoice_date = body.invoiceDate || null }
   if (body.incoterm !== undefined)          { imp.incoterm = body.incoterm; updatableFields.incoterm = body.incoterm }
@@ -2639,6 +2728,76 @@ app.post('/api/product-imp-field', async (c) => {
 })
 
 // ── API: POST /suprimentos/api/product-supplier-links/create ─────────────────
+// ── Salvar dados físicos do produto (peso bruto/líquido e CBM) ──────────────
+app.post('/api/product-phys-data', async (c) => {
+  const tenant   = getCtxTenant(c)
+  const db       = getCtxDB(c)
+  const userId   = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const body = await c.req.json<any>().catch(() => null)
+  if (!body || !body.code) return err(c, 'code obrigatório', 400)
+
+  const { code, grossWeight, netWeight, cbm } = body
+  const gross = parseFloat(grossWeight) || 0
+  const net   = parseFloat(netWeight)   || 0
+  const cbmV  = parseFloat(cbm)         || 0
+
+  // Atualizar em memória (products e stockItems do tenant)
+  const product   = (tenant.products   || []).find((p: any) => p.code === code)
+  const stockItem = (tenant.stockItems || []).find((s: any) => s.code === code)
+  const item = product || stockItem
+  if (item) {
+    item.grossWeight = gross
+    item.netWeight   = net
+    item.cbm         = cbmV
+  }
+
+  // Persistir no D1
+  if (db && userId !== 'demo-tenant') {
+    const byEmpresa = empresaId ? ' AND empresa_id = ?' : ''
+    const bindArgs  = empresaId ? [gross, net, cbmV, userId, empresaId, code] : [gross, net, cbmV, userId, code]
+    // Tentar products primeiro
+    if (product) {
+      try {
+        await db.prepare(
+          `UPDATE products SET gross_weight = ?, net_weight = ?, cbm = ? WHERE user_id = ?${byEmpresa} AND code = ?`
+        ).bind(...bindArgs).run()
+        console.log(`[PHYS] products gross/net/cbm atualizado para ${code}`)
+      } catch (e) {
+        console.error('[PHYS] Erro ao atualizar products:', (e as any).message)
+      }
+    }
+    // Tentar stock_items (pode coexistir)
+    if (stockItem) {
+      try {
+        await db.prepare(
+          `UPDATE stock_items SET gross_weight = ?, net_weight = ?, cbm = ? WHERE user_id = ?${byEmpresa} AND code = ?`
+        ).bind(...bindArgs).run()
+        console.log(`[PHYS] stock_items gross/net/cbm atualizado para ${code}`)
+      } catch (e) {
+        console.error('[PHYS] Erro ao atualizar stock_items:', (e as any).message)
+      }
+    }
+    // Se não encontrou em memória mas pode existir no DB, tenta ambas as tabelas por segurança
+    if (!product && !stockItem) {
+      try {
+        await db.prepare(
+          `UPDATE products SET gross_weight = ?, net_weight = ?, cbm = ? WHERE user_id = ?${byEmpresa} AND code = ?`
+        ).bind(...bindArgs).run()
+        await db.prepare(
+          `UPDATE stock_items SET gross_weight = ?, net_weight = ?, cbm = ? WHERE user_id = ?${byEmpresa} AND code = ?`
+        ).bind(...bindArgs).run()
+      } catch (e) {
+        console.error('[PHYS] Erro ao atualizar DB (fallback):', (e as any).message)
+      }
+    }
+  }
+
+  markTenantModified(userId)
+  return ok(c, { code, grossWeight: gross, netWeight: net, cbm: cbmV, message: 'Dados físicos salvos' })
+})
+
+
 app.post('/api/product-supplier-links/create', async (c) => {
   const db        = getCtxDB(c)
   const userId    = getCtxUserId(c)
