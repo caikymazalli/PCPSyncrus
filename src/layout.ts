@@ -42,7 +42,7 @@ export function layout(title: string, content: string, activePage: string = '', 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — PCP Planner</title>
+  <title>${title} — Syncrus</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -170,12 +170,12 @@ export function layout(title: string, content: string, activePage: string = '', 
           style="width:38px;height:38px;border-radius:10px;object-fit:contain;background:rgba(255,255,255,0.1);display:none;"
           onload="this.style.display='block';document.getElementById('sidebarLogoIcon').style.display='none';"
           onerror="this.style.display='none';document.getElementById('sidebarLogoIcon').style.display='flex';">
-        <div id="sidebarLogoIcon" style="width:38px;height:38px;background:linear-gradient(135deg,#2980B9,#1B4F72);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <div id="sidebarLogoIcon" style="width:38px;height:38px;background:linear-gradient(135deg,#0464C8,#043D7B);border-radius:10px;display:flex;align-items:center;justify-content:center;">
           <i class="fas fa-industry" style="color:white;font-size:18px;"></i>
         </div>
       </div>
       <div>
-        <div style="font-size:16px;font-weight:800;color:white;">PCP Planner</div>
+        <div style="font-size:16px;font-weight:800;color:white;">Syncrus</div>
         <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">${displayEmpresa}</div>
       </div>
     </div>
