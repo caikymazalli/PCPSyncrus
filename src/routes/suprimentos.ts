@@ -182,16 +182,32 @@ app.get('/', (c) => { try {
       unit: item.unit || 'un',
       unitPrice: item.unitPrice || 0,
     })),
-    supplierResponses: (q.supplierResponses || []).map((resp: any) => ({
-      id: resp.id || '',
-      supplierName: resp.supplierName || '',
-      totalPrice: resp.totalPrice || 0,
-      deliveryDays: resp.deliveryDays || 0,
-      paymentTerms: resp.paymentTerms || '',
-      notes: resp.notes || '',
-      respondedAt: resp.respondedAt || '',
-    })),
+    supplierResponses: (q.supplierResponses || []).map((resp: any) => {
+      // Calcular unitPrice: campo top-level se existir, senão do primeiro item
+      const derivedUnitPrice = resp.unitPrice || (resp.items && resp.items[0] ? resp.items[0].unitPrice || 0 : 0)
+      return {
+        id: resp.id || '',
+        supplierName: resp.supplierName || '',
+        totalPrice: resp.totalPrice || 0,
+        unitPrice: derivedUnitPrice,
+        deliveryDays: resp.deliveryDays || 0,
+        paymentTerms: resp.paymentTerms || '',
+        notes: resp.notes || '',
+        respondedAt: resp.respondedAt || '',
+        items: (resp.items || []).map((it: any) => ({
+          productCode: it.productCode || '',
+          productName: it.productName || '',
+          quantity: it.quantity || 0,
+          unit: it.unit || 'un',
+          unitPrice: it.unitPrice || 0,
+          totalPrice: it.totalPrice || 0,
+        })),
+      }
+    }),
+    createdBy: q.createdBy || '',
     createdAt: q.createdAt || '',
+    deadline: q.deadline || '',
+    supplierIds: q.supplierIds || [],
   }))
 
   const content = `
@@ -1974,6 +1990,8 @@ app.post('/api/quotations/:id/respond', async (c) => {
           id: respId,
           supplierName: body.supplierName,
           totalPrice: body.totalPrice,
+          // Derivar unitPrice do primeiro item (suporte multi-item e single-item)
+          unitPrice: (body.items && body.items[0]) ? (body.items[0].unitPrice || 0) : 0,
           deliveryDays: body.deliveryDays || 0,
           paymentTerms: body.paymentTerms || '',
           notes: body.notes || '',
