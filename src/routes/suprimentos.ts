@@ -535,6 +535,24 @@ app.get('/', (c) => { try {
           const si = impStatusInfo[imp.status] || impStatusInfo.draft
           const taxes = imp.taxes || {}
           const num = imp.numerario || {}
+          // Calcular valores derivados para exibição no card (on-the-fly)
+          const _invBRL      = imp.invoiceValueBRL || 0
+          const _taxBRL      = (taxes.taxBRL !== undefined && taxes.taxBRL > 0)
+            ? taxes.taxBRL
+            : (_invBRL * ((taxes.ii||0)+(taxes.ipi||0)+(taxes.pis||0)+(taxes.cofins||0)+(taxes.icms||0)) / 100
+               + (taxes.afrmm||0) + (taxes.siscomex||0))
+          const _nFr         = num.frete  || num.freightBRL  || 0
+          const _nSg         = num.seguro || num.insuranceBRL || 0
+          const _nDp         = num.desp   || num.brokerageBRL || 0
+          const _nPt         = num.porto  || num.portFeesBRL  || 0
+          const _nAr         = num.arm    || num.storageBRL   || 0
+          const _totalLanded = (num.totalLandedCostBRL > 0)
+            ? num.totalLandedCostBRL
+            : (_invBRL + _nFr + _nSg + _nDp + _nPt + _nAr + _taxBRL)
+          const _nItems      = (imp.items||[]).reduce((a: number, it: any) => a + (it.qty||0), 0)
+          const _unitCost    = (num.unitCostBRL > 0)
+            ? num.unitCostBRL
+            : (_totalLanded / (_nItems || imp.netWeight || 1))
           return `
           <div class="card" style="overflow:hidden;border-left:4px solid ${si.color};">
             <!-- Cabeçalho -->
@@ -612,13 +630,13 @@ app.get('/', (c) => { try {
               </div>
               <div>
                 <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Impostos (Total)</div>
-                <div style="font-size:13px;font-weight:800;color:#dc2626;">R$ ${(taxes.taxBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+                <div style="font-size:13px;font-weight:800;color:#dc2626;">R$ ${_taxBRL.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
                 <div style="font-size:11px;color:#9ca3af;">II:${taxes.ii||0}% | IPI:${taxes.ipi||0}% | ICMS:${taxes.icms||0}%</div>
               </div>
               <div>
                 <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Custo Desembaraçado</div>
-                <div style="font-size:15px;font-weight:800;color:#1B4F72;">R$ ${(num.totalLandedCostBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-                <div style="font-size:11px;color:#9ca3af;">Custo unit.: R$ ${(num.unitCostBRL||0).toFixed(2)}</div>
+                <div style="font-size:15px;font-weight:800;color:#1B4F72;">R$ ${_totalLanded.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+                <div style="font-size:11px;color:#9ca3af;">Custo unit.: R$ ${_unitCost.toFixed(2)}</div>
               </div>
               <div>
                 <div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Rota</div>
@@ -2614,6 +2632,18 @@ app.post('/api/imports/create', async (c) => {
     timeline: [],
   }
   if (db && userId !== 'demo-tenant') {
+    // ── Auto-migration: garantir colunas code/supplier_name/modality ──────
+    // Executado silenciosamente antes do INSERT; ignora erro se já existirem
+    try {
+      await db.batch([
+        db.prepare("ALTER TABLE imports ADD COLUMN code TEXT DEFAULT ''"),
+        db.prepare("ALTER TABLE imports ADD COLUMN supplier_name TEXT DEFAULT ''"),
+        db.prepare("ALTER TABLE imports ADD COLUMN modality TEXT DEFAULT 'maritimo'"),
+      ])
+      console.log('[IMPORT] Auto-migration 0045 aplicada: colunas code/supplier_name/modality adicionadas')
+    } catch (_amErr) {
+      // Colunas já existem — ignorar
+    }
     // Payload completo (requer migration 0045 aplicada)
     const fullPayload: Record<string,any> = {
       id, user_id: userId, empresa_id: empresaId || '1', code,
