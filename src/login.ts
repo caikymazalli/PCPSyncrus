@@ -15,63 +15,117 @@ export function loginPage(errorMsg?: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login — PCP Planner</title>
+  <title>Login — Syncrus</title>
+  <link rel="icon" type="image/png" href="/static/syncrus-icon.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin:0; padding:0; }
     .form-control { width: 100%; padding: 12px 16px; border: 1.5px solid #d1d5db; border-radius: 10px; font-size: 14px; outline: none; transition: border 0.2s; box-sizing: border-box; }
-    .form-control:focus { border-color: #1B4F72; box-shadow: 0 0 0 3px rgba(27,79,114,0.1); }
-    .btn-primary { background: #1B4F72; color: white; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; width: 100%; transition: background 0.2s; }
-    .btn-primary:hover { background: #154360; }
+    .form-control:focus { border-color: #043D7B; box-shadow: 0 0 0 3px rgba(4,61,123,0.1); }
+    .btn-primary { background: #043D7B; color: white; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; width: 100%; transition: background 0.2s; }
+    .btn-primary:hover { background: #032d5e; }
     .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
-    .grid-bg { background-color: #0f2d4a; background-image: linear-gradient(rgba(41,128,185,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(41,128,185,0.1) 1px, transparent 1px); background-size: 40px 40px; }
+    .grid-bg {
+      background-color: #021f42;
+      background-image:
+        linear-gradient(rgba(4,100,200,0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(4,100,200,0.12) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    @media (max-width: 768px) {
+      .login-grid { grid-template-columns: 1fr !important; }
+      .left-panel { display: none !important; }
+    }
   </style>
 </head>
 <body>
-  <div style="min-height:100vh;display:grid;grid-template-columns:1fr 1fr;">
-    <!-- Left panel - branding -->
-    <div class="grid-bg" style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px;position:relative;overflow:hidden;">
+  <div class="login-grid" style="min-height:100vh;display:grid;grid-template-columns:1fr 1fr;">
+
+    <!-- ============================================================ -->
+    <!-- LEFT PANEL — Syncrus branding                                -->
+    <!-- ============================================================ -->
+    <div class="left-panel grid-bg" style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px;position:relative;overflow:hidden;">
+
       <!-- Decorative circles -->
-      <div style="position:absolute;width:400px;height:400px;border-radius:50%;border:1px solid rgba(41,128,185,0.2);top:-100px;left:-100px;"></div>
-      <div style="position:absolute;width:300px;height:300px;border-radius:50%;border:1px solid rgba(41,128,185,0.15);top:-50px;left:-50px;"></div>
-      <div style="position:absolute;width:500px;height:500px;border-radius:50%;border:1px solid rgba(41,128,185,0.1);bottom:-200px;right:-200px;"></div>
-      
-      <div style="position:relative;z-index:1;text-align:center;max-width:400px;">
-        <!-- Logo -->
-        <div style="width:80px;height:80px;background:linear-gradient(135deg,#2980B9,#1B4F72);border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;box-shadow:0 20px 40px rgba(0,0,0,0.3);">
-          <i class="fas fa-industry" style="color:white;font-size:36px;"></i>
+      <div style="position:absolute;width:480px;height:480px;border-radius:50%;border:1px solid rgba(4,100,200,0.18);top:-120px;left:-120px;pointer-events:none;"></div>
+      <div style="position:absolute;width:320px;height:320px;border-radius:50%;border:1px solid rgba(4,100,200,0.13);top:-60px;left:-60px;pointer-events:none;"></div>
+      <div style="position:absolute;width:560px;height:560px;border-radius:50%;border:1px solid rgba(4,100,200,0.09);bottom:-220px;right:-220px;pointer-events:none;"></div>
+
+      <div style="position:relative;z-index:1;text-align:center;max-width:420px;">
+
+        <!-- Syncrus Logo (white version) -->
+        <div style="margin:0 auto 32px;text-align:center;">
+          <img
+            src="/static/syncrus-logo-white.png"
+            alt="Syncrus"
+            style="max-width:220px;width:100%;height:auto;filter:drop-shadow(0 8px 24px rgba(0,0,0,0.35));"
+            onerror="this.style.display='none';document.getElementById('syncrusFallbackLogo').style.display='flex';"
+          >
+          <!-- Fallback if image fails -->
+          <div id="syncrusFallbackLogo" style="display:none;flex-direction:column;align-items:center;gap:12px;">
+            <div style="width:80px;height:80px;background:linear-gradient(135deg,#0464C8,#043D7B);border-radius:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 16px 40px rgba(0,0,0,0.4);">
+              <span style="font-size:42px;font-weight:900;color:white;letter-spacing:-2px;">S</span>
+            </div>
+            <span style="font-size:28px;font-weight:900;color:white;letter-spacing:4px;">SYNCRUS</span>
+          </div>
         </div>
-        <h1 style="font-size:36px;font-weight:900;color:white;margin:0 0 12px;letter-spacing:-1px;">PCP Planner</h1>
-        <p style="font-size:16px;color:rgba(255,255,255,0.6);margin:0 0 48px;line-height:1.6;">Plataforma SaaS para Programação e Controle da Produção Industrial</p>
-        
+
+        <h1 style="font-size:18px;font-weight:700;color:rgba(255,255,255,0.80);margin:0 0 10px;letter-spacing:0px;">
+          Sistema de Gestão Industrial
+        </h1>
+        <p style="font-size:15px;color:rgba(255,255,255,0.52);margin:0 0 48px;line-height:1.65;">
+          Plataforma SaaS para Programação e Controle da Produção Industrial
+        </p>
+
         <!-- Feature highlights -->
-        <div style="display:flex;flex-direction:column;gap:16px;text-align:left;">
+        <div style="display:flex;flex-direction:column;gap:14px;text-align:left;">
           ${[
-            { icon: 'fa-clipboard-list', title: 'Gestão de Ordens', desc: 'Planejamento e controle completo de ordens de produção' },
-            { icon: 'fa-chart-line', title: 'MRP Inteligente', desc: 'Planejamento de necessidades de materiais em tempo real' },
-            { icon: 'fa-cogs', title: 'Recursos & Máquinas', desc: 'Controle de capacidade e disponibilidade de recursos' },
-            { icon: 'fa-shield-alt', title: 'Multi-tenant Seguro', desc: 'Dados isolados por empresa com criptografia end-to-end' },
+            { icon: 'fa-clipboard-list', title: 'Gestão de Ordens',    desc: 'Planejamento e controle completo de ordens de produção' },
+            { icon: 'fa-chart-line',     title: 'MRP Inteligente',      desc: 'Planejamento de necessidades de materiais em tempo real' },
+            { icon: 'fa-cogs',           title: 'Recursos & Máquinas',  desc: 'Controle de capacidade e disponibilidade de recursos' },
+            { icon: 'fa-shield-alt',     title: 'Multi-tenant Seguro',  desc: 'Dados isolados por empresa com criptografia end-to-end' },
           ].map(f => `
-          <div style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.06);border-radius:12px;padding:14px 18px;border:1px solid rgba(255,255,255,0.08);">
-            <div style="width:36px;height:36px;border-radius:10px;background:rgba(41,128,185,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <i class="fas ${f.icon}" style="color:#5dade2;font-size:15px;"></i>
+          <div style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.05);border-radius:12px;padding:14px 18px;border:1px solid rgba(255,255,255,0.07);">
+            <div style="width:36px;height:36px;border-radius:10px;background:rgba(4,100,200,0.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fas ${f.icon}" style="color:#5da8f0;font-size:15px;"></i>
             </div>
             <div>
               <div style="font-size:13px;font-weight:700;color:white;">${f.title}</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px;">${f.desc}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.42);margin-top:1px;">${f.desc}</div>
             </div>
           </div>`).join('')}
+        </div>
+
+        <!-- Footer tag -->
+        <div style="margin-top:48px;font-size:11px;color:rgba(255,255,255,0.25);letter-spacing:1px;">
+          © 2025 Syncrus · Todos os direitos reservados
         </div>
       </div>
     </div>
 
-    <!-- Right panel - login form -->
+    <!-- ============================================================ -->
+    <!-- RIGHT PANEL — login form                                     -->
+    <!-- ============================================================ -->
     <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px;background:white;">
       <div style="width:100%;max-width:400px;">
-        <div style="margin-bottom:36px;">
-          <h2 style="font-size:28px;font-weight:800;color:#1A1A2E;margin:0 0 8px;">Bem-vindo de volta!</h2>
-          <p style="font-size:14px;color:#6c757d;margin:0;">Faça login para acessar o PCP Planner</p>
+
+        <!-- Syncrus mini-logo no formulário -->
+        <div style="margin-bottom:36px;text-align:center;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px;">
+            <img
+              src="/static/syncrus-icon.png"
+              alt="Syncrus"
+              style="width:44px;height:44px;border-radius:12px;object-fit:contain;box-shadow:0 4px 14px rgba(4,61,123,0.20);"
+              onerror="this.onerror=null;this.style.display='none';document.getElementById('syncrusIconFallback').style.display='flex';"
+            >
+            <div id="syncrusIconFallback" style="display:none;width:44px;height:44px;background:linear-gradient(135deg,#0464C8,#043D7B);border-radius:12px;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(4,61,123,0.20);">
+              <span style="font-size:22px;font-weight:900;color:white;">S</span>
+            </div>
+            <span style="font-size:22px;font-weight:900;color:#043D7B;letter-spacing:2px;">SYNCRUS</span>
+          </div>
+          <h2 style="font-size:24px;font-weight:800;color:#1A1A2E;margin:0 0 8px;">Bem-vindo de volta!</h2>
+          <p style="font-size:14px;color:#6c757d;margin:0;">Faça login para acessar o sistema</p>
         </div>
 
         ${errHtml}
@@ -88,7 +142,7 @@ export function loginPage(errorMsg?: string): string {
           <div style="margin-bottom:28px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <label style="font-size:13px;font-weight:600;color:#374151;">Senha</label>
-              <a href="/forgot-password" style="font-size:12px;color:#2980B9;text-decoration:none;">Esqueceu a senha?</a>
+              <a href="/forgot-password" style="font-size:12px;color:#043D7B;text-decoration:none;">Esqueceu a senha?</a>
             </div>
             <div style="position:relative;">
               <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:14px;"></i>
@@ -100,13 +154,16 @@ export function loginPage(errorMsg?: string): string {
           </div>
 
           <button type="submit" class="btn-primary" id="loginBtn">
-            <i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Entrar no PCP Planner
+            <i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Entrar
           </button>
         </form>
 
         <div style="margin-top:24px;padding-top:24px;border-top:1px solid #f1f3f5;text-align:center;">
           <p style="font-size:13px;color:#6c757d;margin:0 0 12px;">Ainda não tem conta?</p>
-          <button onclick="window.location.href='/cadastro'" style="width:100%;padding:10px;border:2px solid #1B4F72;border-radius:10px;background:transparent;color:#1B4F72;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;" onmouseenter="this.style.background='#1B4F72';this.style.color='white'" onmouseleave="this.style.background='transparent';this.style.color='#1B4F72'">
+          <button onclick="window.location.href='/cadastro'"
+            style="width:100%;padding:10px;border:2px solid #043D7B;border-radius:10px;background:transparent;color:#043D7B;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;"
+            onmouseenter="this.style.background='#043D7B';this.style.color='white'"
+            onmouseleave="this.style.background='transparent';this.style.color='#043D7B'">
             <i class="fas fa-rocket" style="margin-right:8px;"></i>Criar conta gratuita — 14 dias de trial
           </button>
         </div>
@@ -117,11 +174,11 @@ export function loginPage(errorMsg?: string): string {
           <div style="display:flex;flex-direction:column;gap:6px;">
             ${[
               { name: 'Administrador', email: 'carlos@empresa.com', role: 'admin' },
-              { name: 'Gestor PCP', email: 'ana@empresa.com', role: 'gestor_pcp' },
-              { name: 'Operador', email: 'joao@empresa.com', role: 'operador' },
+              { name: 'Gestor PCP',    email: 'ana@empresa.com',    role: 'gestor_pcp' },
+              { name: 'Operador',      email: 'joao@empresa.com',   role: 'operador' },
             ].map(u => `
             <button onclick="fillCredentials('${u.email}', 'demo123')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:white;border:1px solid #e9ecef;border-radius:8px;cursor:pointer;text-align:left;width:100%;">
-              <div style="width:28px;height:28px;border-radius:50%;background:#1B4F72;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${u.name[0]}</div>
+              <div style="width:28px;height:28px;border-radius:50%;background:#043D7B;color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${u.name[0]}</div>
               <div style="flex:1;">
                 <div style="font-size:12px;font-weight:600;color:#374151;">${u.name}</div>
                 <div style="font-size:11px;color:#9ca3af;">${u.email}</div>
@@ -130,8 +187,10 @@ export function loginPage(errorMsg?: string): string {
             </button>`).join('')}
           </div>
         </div>
+
       </div>
     </div>
+
   </div>
 
   <script>
