@@ -383,6 +383,23 @@ function addCotItem() {
     window._currentImpDetailId = id; // guarda para botão Gerar Invoice
     const taxes = imp.taxes || {};
     const num = imp.numerario || {};
+    // Calcular taxBRL dinamicamente se não persistido
+    const _valBRL_t = imp.invoiceValueBRL || 0;
+    const _taxBRL_calc = _valBRL_t > 0
+      ? _valBRL_t * ((taxes.ii||0) + (taxes.ipi||0) + (taxes.pis||0) + (taxes.cofins||0) + (taxes.icms||0)) / 100
+        + (taxes.afrmm||0) + (taxes.siscomex||0)
+      : 0;
+    if (!taxes.taxBRL && _taxBRL_calc > 0) taxes.taxBRL = _taxBRL_calc;
+    // Calcular totalLandedCostBRL e unitCostBRL dinamicamente se não persistidos
+    const _freightVal = num.frete || num.freightBRL || 0;
+    const _seguroVal  = num.seguro || num.insuranceBRL || 0;
+    const _despVal    = num.desp   || num.brokerageBRL || 0;
+    const _portoVal   = num.porto  || num.portFeesBRL  || 0;
+    const _armVal     = num.arm    || num.storageBRL   || 0;
+    const _totalLanded_calc = _valBRL_t + _freightVal + _seguroVal + _despVal + _portoVal + _armVal + (taxes.taxBRL||0);
+    if (!num.totalLandedCostBRL && _totalLanded_calc > 0) num.totalLandedCostBRL = _totalLanded_calc;
+    const _totalQty = (imp.items||[]).reduce((a,it) => a + (it.qty||0), 0) || imp.netWeight || 1;
+    if (!num.unitCostBRL && num.totalLandedCostBRL) num.unitCostBRL = num.totalLandedCostBRL / _totalQty;
     document.getElementById('importDetailTitle').innerHTML = '<i class="fas fa-ship" style="margin-right:8px;"></i>' + imp.code + ' — ' + imp.supplierName;
     let html = '';
     // Seção dados gerais
@@ -496,19 +513,36 @@ function addCotItem() {
     let html = '<div style="background:#1B4F72;color:white;border-radius:8px;padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">' +
       '<div><div style="font-size:12px;opacity:0.8;">PROCESSO</div><div style="font-size:18px;font-weight:800;">' + imp.code + '</div>' +
       '<div style="font-size:12px;opacity:0.7;">' + imp.supplierName + ' · ' + imp.invoiceNumber + '</div></div>' +
-      '<div style="text-align:right;"><div style="font-size:11px;opacity:0.7;">CUSTO TOTAL DESEMBARAÇADO</div><div style="font-size:24px;font-weight:800;">R$ ' + (num.totalLandedCostBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</div></div>' +
+      '<div style="text-align:right;"><div style="font-size:11px;opacity:0.7;">CUSTO TOTAL DESEMBARAÇADO</div><div style="font-size:24px;font-weight:800;">R$ ' + (_nTotal||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</div></div>' +
       '</div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
     html += '<thead><tr style="background:#f8f9fa;"><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Componente</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">Valor (BRL)</th><th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#6c757d;text-transform:uppercase;">% do Total</th></tr></thead>';
     html += '<tbody>';
+    // Normalizar campos: suporte tanto ao formato curto (frete,seguro,desp,porto,arm)
+    // quanto ao formato longo (freightBRL, insuranceBRL, etc.)
+    const _nInvoice  = num.invoiceBRL  || imp.invoiceValueBRL || 0;
+    const _nFrete    = num.freightBRL  || num.frete  || 0;
+    const _nSeguro   = num.insuranceBRL|| num.seguro || 0;
+    const _nDesp     = num.brokerageBRL|| num.desp   || 0;
+    const _nPorto    = num.portFeesBRL || num.porto  || 0;
+    const _nArm      = num.storageBRL  || num.arm    || 0;
+    // Recalcular taxes para numerario
+    const _nTaxBRL = num.taxesBRL || (function(){
+      const v = _nInvoice || imp.invoiceValueBRL || 0;
+      const tx = imp.taxes || {};
+      return v * ((tx.ii||0)+(tx.ipi||0)+(tx.pis||0)+(tx.cofins||0)+(tx.icms||0)) / 100 + (tx.afrmm||0) + (tx.siscomex||0);
+    })();
+    const _nTotal    = num.totalLandedCostBRL || (_nInvoice + _nFrete + _nSeguro + _nDesp + _nPorto + _nArm + _nTaxBRL) || 0;
+    const _nQty      = (imp.items||[]).reduce((a,it)=>a+(it.qty||0),0) || imp.netWeight || 1;
+    const _nUnitCost = num.unitCostBRL || (_nTotal / _nQty);
     const rows = [
-      { label: 'Valor da Invoice', val: num.invoiceBRL, color: '#1B4F72' },
-      { label: 'Frete Internacional', val: num.freightBRL, color: '#374151' },
-      { label: 'Seguro', val: num.insuranceBRL, color: '#374151' },
-      { label: 'Impostos (II + IPI + PIS/COFINS + ICMS + AFRMM + SISCOMEX)', val: num.taxesBRL, color: '#dc2626' },
-      { label: 'Honorários do Despachante', val: num.brokerageBRL, color: '#374151' },
-      { label: 'Taxas Portuárias', val: num.portFeesBRL, color: '#374151' },
-      { label: 'Armazenagem', val: num.storageBRL, color: '#374151' },
+      { label: 'Valor da Invoice', val: _nInvoice, color: '#1B4F72' },
+      { label: 'Frete Internacional', val: _nFrete, color: '#374151' },
+      { label: 'Seguro', val: _nSeguro, color: '#374151' },
+      { label: 'Impostos (II + IPI + PIS/COFINS + ICMS + AFRMM + SISCOMEX)', val: _nTaxBRL > 0 ? _nTaxBRL : null, color: '#dc2626' },
+      { label: 'Honorários do Despachante', val: _nDesp, color: '#374151' },
+      { label: 'Taxas Portuárias', val: _nPorto, color: '#374151' },
+      { label: 'Armazenagem', val: _nArm, color: '#374151' },
     ];
     const total = num.totalLandedCostBRL || 1;
     for (const row of rows) {
@@ -520,11 +554,11 @@ function addCotItem() {
         '<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><div style="height:6px;background:#e9ecef;border-radius:3px;width:60px;overflow:hidden;"><div style="height:100%;background:' + row.color + ';width:' + pct + '%;"></div></div>' +
         '<span style="font-size:12px;color:#6c757d;min-width:36px;">' + pct + '%</span></div></td></tr>';
     }
-    html += '<tr style="background:#1B4F72;"><td colspan="3" style="padding:12px;"><div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:700;color:white;">CUSTO TOTAL DESEMBARAÇADO</span><span style="font-size:16px;font-weight:800;color:white;">R$ ' + (num.totalLandedCostBRL||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</span></div></td></tr>';
+    html += '<tr style="background:#1B4F72;"><td colspan="3" style="padding:12px;"><div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:700;color:white;">CUSTO TOTAL DESEMBARAÇADO</span><span style="font-size:16px;font-weight:800;color:white;">R$ ' + (_nTotal||0).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</span></div></td></tr>';
     html += '</tbody></table>';
     html += '<div style="background:#f5f3ff;border-radius:8px;padding:12px;margin-top:14px;display:flex;justify-content:space-between;align-items:center;">' +
       '<div><div style="font-size:12px;color:#7c3aed;font-weight:700;">CUSTO UNITÁRIO DESEMBARAÇADO</div><div style="font-size:11px;color:#9ca3af;margin-top:2px;">Base para formação de preço de custo</div></div>' +
-      '<div style="font-size:22px;font-weight:800;color:#7c3aed;">R$ ' + (num.unitCostBRL||0).toFixed(2) + '</div>' +
+      '<div style="font-size:22px;font-weight:800;color:#7c3aed;">R$ ' + (_nUnitCost||0).toFixed(2) + '</div>' +
       '</div>';
     document.getElementById('numerarioBody').innerHTML = html;
     openModal('numerarioModal');
@@ -885,12 +919,12 @@ function addCotItem() {
       : [{ code: imp.code, descPT: imp.description||'—', ncm: imp.ncm||'—', qty: imp.netWeight||1, vu: imp.invoiceValueEUR||imp.invoiceValueUSD||0, sub: imp.invoiceValueEUR||imp.invoiceValueUSD||0 }];
     // CIF = FOB (valor invoice) + Frete + Seguro (em moeda original)
     // FOB = soma dos subtotais dos itens OU invoiceValueEUR/USD (o que for maior/válido)
+    const _exchR  = imp.exchangeRate || 1;
     const _itemsFOB = (imp.items||[]).reduce((acc, it) => acc + (it.sub || it.subtotal || ((it.qty||0)*(it.vu||it.unitPrice||0))), 0);
     const _invoiceFOB = (imp.invoiceValueEUR||0) > 0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
     // Fallback: se não há valor de invoice em moeda estrangeira nem itens, tentar calcular via BRL/câmbio
-    const _fobValFromBRL = (imp.invoiceValueBRL||0) > 0 && (_exchR||1) > 0 ? (imp.invoiceValueBRL||0) / (_exchR||1) : 0;
+    const _fobValFromBRL = (imp.invoiceValueBRL||0) > 0 && _exchR > 0 ? (imp.invoiceValueBRL||0) / _exchR : 0;
     const _fobVal = _invoiceFOB > 0 ? _invoiceFOB : (_itemsFOB > 0 ? _itemsFOB : _fobValFromBRL);
-    const _exchR  = imp.exchangeRate || 1;
     // Frete e seguro em moeda estrangeira: se foram informados em BRL, converter
     const _freteBRL  = (imp.numerario && imp.numerario.frete)  || 0;
     const _seguroBRL = (imp.numerario && imp.numerario.seguro) || 0;
