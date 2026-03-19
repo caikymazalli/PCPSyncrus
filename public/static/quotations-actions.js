@@ -2080,4 +2080,3 @@ function addCotItem() {
     closeModal('importDetailModal');
     openModal('packingListModal');
   }
-
