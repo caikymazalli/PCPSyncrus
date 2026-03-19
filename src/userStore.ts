@@ -675,6 +675,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         supplier_id_3: r.supplier_id_3 || '',
         supplier_id_4: r.supplier_id_4 || '',
         criticalPercentage: r.critical_percentage || 50,
+        grossWeight: r.gross_weight || 0,
+        netWeight:   r.net_weight   || 0,
+        cbm:         r.cbm          || 0,
         createdAt: r.created_at || new Date().toISOString(),
       }))
       console.log(`[HYDRATION] ✅ ${tenant.products.length} produtos carregados com multi-fornecedores`)
@@ -712,6 +715,9 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
         ncm: r.ncm || '',
         descPT: r.desc_pt || '',
         descEN: r.desc_en || '',
+        grossWeight: r.gross_weight || 0,
+        netWeight:   r.net_weight   || 0,
+        cbm:         r.cbm          || 0,
         createdAt: r.created_at || new Date().toISOString(),
       }))
     }
