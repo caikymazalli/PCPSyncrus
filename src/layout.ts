@@ -18,7 +18,7 @@ export function layout(title: string, content: string, activePage: string = '', 
     .split(' ')
     .map((w: string) => w[0])
     .join('')
-    .slice(0, 2)
+    .slice(0, 2)a
     .toUpperCase()
   const displayRole = (() => {
     const r = userInfo?.role || 'admin'
