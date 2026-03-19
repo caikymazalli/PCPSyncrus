@@ -1001,6 +1001,10 @@ app.get('/', (c) => { try {
             <div class="form-group">
               <label class="form-label">Peso Bruto Total (kg)</label>
               <input class="form-control" id="impPesoBruto" type="number" placeholder="0">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:12px;font-weight:700;color:#6c757d;">Peso Líquido (kg)</label>
+                  <input class="form-control" id="impPesoLiquido" type="number" placeholder="0">
             </div>
           </div>
           <div style="text-align:right;margin-top:12px;">
@@ -1171,10 +1175,18 @@ app.get('/', (c) => { try {
         <button onclick="closeModal('invoiceComercialModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
       <div style="padding:24px;max-height:78vh;overflow-y:auto;" id="invoiceComercialBody"></div>
+      <!-- Histórico de versões (injetado dinamicamente) -->
+      <div id="invVersionHistoryContainer" style="display:none;padding:0 24px 8px;border-top:1px solid #f1f3f5;background:#fafafa;"></div>
       <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
-        <button class="btn btn-secondary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-secondary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+          <span id="invVersionBadge" style="display:none;background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #bfdbfe;"><i class="fas fa-tag" style="margin-right:4px;"></i></span>
+        </div>
         <div style="display:flex;gap:10px;">
           <button onclick="closeModal('invoiceComercialModal')" class="btn btn-secondary">Fechar</button>
+          <button onclick="confirmarInvoice(window._currentInvId)" class="btn btn-primary" style="background:#059669;border-color:#059669;">
+            <i class="fas fa-check-circle" style="margin-right:6px;"></i>Confirmar Invoice
+          </button>
         </div>
       </div>
     </div>
@@ -2492,6 +2504,55 @@ app.post('/api/imports/create', async (c) => {
   tenant.imports.push(imp)
   markTenantModified(userId)
   return ok(c, { imp, code })
+})
+
+
+// ── API: PUT /api/imports/:id — Atualizar campos de processo de importação ────
+app.put('/api/imports/:id', async (c) => {
+  const tenant = getCtxTenant(c)
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const impId = c.req.param('id')
+  const body = await c.req.json<any>()
+  if (!impId) return err(c, 'ID obrigatório', 400)
+  const imp = (tenant.imports || []).find((i: any) => i.id === impId)
+  if (!imp) return err(c, 'Processo não encontrado', 404)
+
+  // Campos que podem ser atualizados
+  const updatableFields: Record<string, any> = {}
+  if (body.status !== undefined)           { imp.status = body.status; updatableFields.status = body.status }
+  if (body.invoiceDate !== undefined)       { imp.invoiceDate = body.invoiceDate; updatableFields.invoice_date = body.invoiceDate || null }
+  if (body.incoterm !== undefined)          { imp.incoterm = body.incoterm; updatableFields.incoterm = body.incoterm }
+  if (body.currency !== undefined)          { imp.currency = body.currency; updatableFields.currency = body.currency }
+  if (body.exchangeRate !== undefined)      { imp.exchangeRate = body.exchangeRate; updatableFields.exchange_rate = body.exchangeRate }
+  if (body.portOfOrigin !== undefined)      { imp.portOfOrigin = body.portOfOrigin; updatableFields.port_origin = body.portOfOrigin }
+  if (body.portOfDestination !== undefined) { imp.portOfDestination = body.portOfDestination; updatableFields.port_dest = body.portOfDestination }
+  if (body.expectedArrival !== undefined)   { imp.expectedArrival = body.expectedArrival; updatableFields.expected_arrival = body.expectedArrival || null }
+  if (body.grossWeight !== undefined)       { imp.grossWeight = body.grossWeight; updatableFields.weight_gross = body.grossWeight }
+  if (body.netWeight !== undefined)         { imp.netWeight = body.netWeight; updatableFields.weight_net = body.netWeight }
+  if (body.invoiceValueEUR !== undefined)   { imp.invoiceValueEUR = body.invoiceValueEUR; updatableFields.value_eur = body.invoiceValueEUR }
+  if (body.invoiceValueUSD !== undefined)   { imp.invoiceValueUSD = body.invoiceValueUSD; updatableFields.value_usd = body.invoiceValueUSD }
+  if (body.invoiceValueBRL !== undefined)   { imp.invoiceValueBRL = body.invoiceValueBRL; updatableFields.value_brl = body.invoiceValueBRL }
+  if (body.ncm !== undefined)               { imp.ncm = body.ncm; updatableFields.ncm = body.ncm }
+  if (body.description !== undefined)       { imp.description = body.description; updatableFields.description = body.description }
+
+  // Atualizar taxes e numerário nas notes
+  if (body.taxes !== undefined)     imp.taxes = { ...imp.taxes, ...body.taxes }
+  if (body.numerario !== undefined) imp.numerario = { ...imp.numerario, ...body.numerario }
+  if (body.items !== undefined)     imp.items = body.items
+
+  // Persistir no D1
+  if (db && userId !== 'demo-tenant') {
+    if (Object.keys(updatableFields).length > 0) {
+      await dbUpdate(db, 'imports', impId, userId, updatableFields)
+    }
+    // Sempre atualizar notes com taxes, numerario e items atuais
+    const notesJson = JSON.stringify({ items: imp.items || [], taxes: imp.taxes || {}, numerario: imp.numerario || {} })
+    await dbUpdate(db, 'imports', impId, userId, { notes: notesJson })
+  }
+  markTenantModified(userId)
+  return ok(c, { imp, message: 'Processo atualizado com sucesso' })
 })
 
 // ── Salvar campo editado inline na tabela de Produtos Importados ──────────
