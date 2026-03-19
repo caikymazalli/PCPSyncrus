@@ -576,4 +576,3 @@ document.addEventListener('click', function (e) {
     dispararCotacao(btn.dataset.supplierId || '', btn.dataset.supplierName || '', btn.dataset.supplierEmail || '')
   }
 })
-
