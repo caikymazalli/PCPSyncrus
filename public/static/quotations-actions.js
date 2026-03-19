@@ -1806,14 +1806,27 @@ function addCotItem() {
   }
 
   function openProdPhysicalModal(code, name) {
-    document.getElementById('prodPhysicalCode').value = code;
-    document.getElementById('prodPhysicalName').textContent = name;
+    console.log('[PHYS] Abrindo modal para:', code, name);
+    const codeEl = document.getElementById('prodPhysicalCode');
+    const nameEl = document.getElementById('prodPhysicalName');
+    const grossEl = document.getElementById('prodPhysGrossPeso');
+    const netEl   = document.getElementById('prodPhysNetPeso');
+    const cbmEl   = document.getElementById('prodPhysCBM');
+    if (!codeEl || !nameEl || !grossEl || !netEl || !cbmEl) {
+      console.error('[PHYS] Elementos do modal não encontrados!', { codeEl, nameEl, grossEl, netEl, cbmEl });
+      alert('Erro: modal de dados físicos não encontrado. Recarregue a página.');
+      return;
+    }
+    codeEl.value = code;
+    nameEl.textContent = name;
     const data = getProdPhysData(code) || {};
-    document.getElementById('prodPhysGrossPeso').value = data.grossWeight || '';
-    document.getElementById('prodPhysNetPeso').value   = data.netWeight   || '';
-    document.getElementById('prodPhysCBM').value       = data.cbm         || '';
+    grossEl.value = data.grossWeight || '';
+    netEl.value   = data.netWeight   || '';
+    cbmEl.value   = data.cbm         || '';
     openModal('prodPhysicalModal');
+    console.log('[PHYS] Modal aberto com sucesso');
   }
+  window.openProdPhysicalModal = openProdPhysicalModal;
 
   async function salvarDadosFisicos() {
     const code = document.getElementById('prodPhysicalCode')?.value;
