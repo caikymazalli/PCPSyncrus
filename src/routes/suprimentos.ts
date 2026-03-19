@@ -702,7 +702,7 @@ app.get('/', (c) => { try {
                         <td style="padding:8px 12px;font-weight:600;color:#374151;max-width:180px;">
                           <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color:#1B4F72;text-decoration:underline dotted;" 
                             title="Clique para editar dados físicos (peso/CBM)"
-                            onclick="openProdPhysicalModal('${item.code}','${escapeHtmlAttr(item.name)}')">
+                            data-phys-code="${item.code}" data-phys-name="${escapeHtmlAttr(item.name)}" onclick="openProdPhysicalModal(this.dataset.physCode, this.dataset.physName)">
                             ${item.name}
                             ${(item.grossWeight || 0) > 0
                               ? `<i class="fas fa-weight" style="font-size:9px;color:#059669;margin-left:4px;" title="Dados físicos cadastrados: ${item.grossWeight||0}kg bruto / ${item.netWeight||0}kg líq / ${item.cbm||0}m³"></i>`
@@ -974,8 +974,6 @@ app.get('/', (c) => { try {
         </button>
       </div>
     </div>
-  </div>
-
   </div>
 
   <!-- Modal: Pré-via de Numerário -->
