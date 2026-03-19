@@ -1000,11 +1000,13 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
             let numerario: any = {}
             try { const n = JSON.parse(r.notes || '{}'); items = n.items || []; taxes = n.taxes || {}; numerario = n.numerario || {} } catch {}
             newImps.push({
-              id: r.id, code: r.code || r.id,
+              id: r.id,
+              // code/supplier_name/modality podem estar nas notes se migration 0045 ainda não foi aplicada
+              code: r.code || (() => { try { return JSON.parse(r.notes||'{}').code || r.id } catch{ return r.id } })(),
               invoiceNumber: r.invoice_number || '',
               supplierId: r.supplier_id || '',
-              supplierName: r.supplier_name || '',
-              modality: r.modality || r.modalidade || 'maritimo',
+              supplierName: r.supplier_name || (() => { try { return JSON.parse(r.notes||'{}').supplier_name || '' } catch{ return '' } })(),
+              modality: r.modality || r.modalidade || (() => { try { return JSON.parse(r.notes||'{}').modality || 'maritimo' } catch{ return 'maritimo' } })(),
               status: r.status || 'waiting_ship',
               invoiceDate: r.invoice_date || '',
               incoterm: r.incoterm || 'FOB',
