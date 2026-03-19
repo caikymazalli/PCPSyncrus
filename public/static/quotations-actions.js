@@ -416,24 +416,28 @@ function addCotItem() {
       html += '<div style="overflow-x:auto;">';
       html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
       html += '<thead><tr style="background:#dcfce7;">';
-      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Código</th>';
-      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Descrição PT (LI)</th>';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Item</th>';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Produto</th>';
       html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Descrição EN</th>';
       html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Qtd</th>';
+      html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">Observações</th>';
       html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Val. Unit.</th>';
-      html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Subtotal</th>';
+      html += '<th style="padding:6px 8px;text-align:right;color:#166534;font-weight:700;">Total</th>';
       html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">NCM</th>';
       html += '</tr></thead><tbody>';
       if (impItems.length === 0) {
-        html += '<tr><td colspan="7" style="padding:16px;text-align:center;"><div style="color:#f59e0b;font-weight:600;margin-bottom:8px;">⚠ Nenhum item cadastrado neste processo.</div><div style="font-size:12px;color:#6b7280;">Use o botão <strong>Editar Processo</strong> abaixo para informar valor da invoice, itens e demais dados.</div></td></tr>';
+        html += '<tr><td colspan="8" style="padding:16px;text-align:center;"><div style="color:#f59e0b;font-weight:600;margin-bottom:8px;">⚠ Nenhum item cadastrado neste processo.</div><div style="font-size:12px;color:#6b7280;">Use o botão <strong>Editar Processo</strong> abaixo para informar valor da invoice, itens e demais dados.</div></td></tr>';
       }
       impItems.forEach(it => {
         const sub = (it.sub || it.subtotal || ((it.qty||0) * (it.vu||it.unitPrice||0)) || 0);
+        // Resolver nome do produto: salvo no item ou buscar no catálogo
+        const prodName = it.name || (window.allItemsData ? (window.allItemsData.find(function(p){ return p.code===it.code; })||{}).name : '') || it.code || '—';
         html += '<tr style="border-bottom:1px solid #bbf7d0;">';
         html += '<td style="padding:5px 8px;font-family:monospace;color:#166534;font-weight:700;">'+(it.code||'—')+'</td>';
-        html += '<td style="padding:5px 8px;color:#374151;">'+(it.descPT||it.description||'— preencher —')+'</td>';
-        html += '<td style="padding:5px 8px;color:#6b7280;">'+(it.descEN||it.englishDescription||'—')+'</td>';
+        html += '<td style="padding:5px 8px;color:#1B4F72;font-weight:600;">'+prodName+'</td>';
+        html += '<td style="padding:5px 8px;color:#374151;font-size:11px;">'+(it.descEN||it.englishDescription||it.description||'—')+'</td>';
         html += '<td style="padding:5px 8px;text-align:right;color:#374151;font-weight:600;">'+(it.qty||0)+'</td>';
+        html += '<td style="padding:5px 8px;color:#6b7280;font-size:11px;">'+(it.obs||'—')+'</td>';
         html += '<td style="padding:5px 8px;text-align:right;color:#374151;">'+(it.vu||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>';
         html += '<td style="padding:5px 8px;text-align:right;color:#1B4F72;font-weight:700;">'+(sub||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>';
         html += '<td style="padding:5px 8px;font-family:monospace;font-size:11px;color:#6b7280;">'+(it.ncm||'—')+'</td>';
@@ -653,7 +657,10 @@ function addCotItem() {
       const ncm     = document.getElementById('impItemNCM'   + i)?.value?.trim() || '';
       const obs     = document.getElementById('impItemObs'   + i)?.value?.trim() || '';
       const sub     = qty * vu;
-      items.push({ code, descEN, descPT, qty, vu, sub, ncm, obs });
+      // Buscar nome do produto no catálogo
+      const prodItem = window.allItemsData ? window.allItemsData.find(function(p){ return p.code === code; }) : null;
+      const name    = prodItem ? (prodItem.name || prodItem.productName || code) : code;
+      items.push({ code, name, descEN, descPT, qty, vu, sub, ncm, obs });
     }
     return items;
   }
@@ -1178,7 +1185,8 @@ function addCotItem() {
         <thead>
           <tr style="background:#1B4F72;color:white;">
             <th style="padding:8px 10px;text-align:left;">Item / Code</th>
-            <th style="padding:8px 10px;text-align:left;">Description</th>
+            <th style="padding:8px 10px;text-align:left;">Product</th>
+            <th style="padding:8px 10px;text-align:left;">Description (EN)</th>
             <th style="padding:8px 10px;text-align:left;">NCM / HS</th>
             <th style="padding:8px 10px;text-align:right;">Qty</th>
             <th style="padding:8px 10px;text-align:right;">Unit Price (${moedaLabel})</th>
@@ -1188,9 +1196,11 @@ function addCotItem() {
         <tbody>
           ${invItems.map((it, i) => {
             const sub = it.sub || it.subtotal || ((it.qty||0)*(it.vu||it.unitPrice||0));
+            const invProdName = it.name || (window.allItemsData ? (window.allItemsData.find(function(p){ return p.code===it.code; })||{}).name : '') || it.code || '—';
             return '<tr style="background:'+(i%2===0?'#f8f9fa':'white')+';border-bottom:1px solid #e9ecef;">' +
               '<td style="padding:8px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1B4F72;">'+(it.code||'—')+'</td>' +
-              '<td style="padding:8px 10px;">'+(it.descEN||it.description||'—')+'</td>' +
+              '<td style="padding:8px 10px;font-weight:600;color:#1B4F72;">'+invProdName+'</td>' +
+              '<td style="padding:8px 10px;font-size:11px;color:#374151;">'+(it.descEN||it.description||'—')+'</td>' +
               '<td style="padding:8px 10px;font-family:monospace;color:#7c3aed;">'+(it.ncm||imp.ncm||'—')+'</td>' +
               '<td style="padding:8px 10px;text-align:right;">'+(it.qty||0)+'</td>' +
               '<td style="padding:8px 10px;text-align:right;">'+(it.vu||it.unitPrice||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>' +
@@ -1200,11 +1210,11 @@ function addCotItem() {
         </tbody>
         <tfoot>
           <tr style="background:#f0f9ff;border-top:2px solid #1B4F72;">
-            <td colspan="5" style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">Subtotal Goods:</td>
+            <td colspan="6" style="padding:8px 10px;text-align:right;font-weight:700;color:#1B4F72;">Subtotal Goods:</td>
             <td style="padding:8px 10px;text-align:right;font-weight:800;color:#1B4F72;">${moedaSym} ${fmtVal(itemsTotal)}</td>
           </tr>
           <tr style="background:#f0f9ff;">
-            <td colspan="5" style="padding:6px 10px;text-align:right;color:#374151;">Freight (${moedaLabel}):
+            <td colspan="6" style="padding:6px 10px;text-align:right;color:#374151;">Freight (${moedaLabel}):
               <span contenteditable="true" data-inv-key="freight"
                 style="outline:none;border-bottom:1px dashed #1B4F72;cursor:text;display:inline-block;min-width:60px;text-align:right;padding:0 4px;"
                 onblur="saveInvEdit('${id}','freight',this.textContent);openInvoiceComercial('${id}')">${invEdits['freight']||'0,00'}</span>
@@ -1212,7 +1222,7 @@ function addCotItem() {
             <td style="padding:6px 10px;text-align:right;font-weight:600;">${moedaSym} <span id="invFreightDisplay">${fmtVal(freight)}</span></td>
           </tr>
           <tr style="background:#f0f9ff;">
-            <td colspan="5" style="padding:6px 10px;text-align:right;color:#374151;">Insurance (${moedaLabel}):
+            <td colspan="6" style="padding:6px 10px;text-align:right;color:#374151;">Insurance (${moedaLabel}):
               <span contenteditable="true" data-inv-key="insurance"
                 style="outline:none;border-bottom:1px dashed #1B4F72;cursor:text;display:inline-block;min-width:60px;text-align:right;padding:0 4px;"
                 onblur="saveInvEdit('${id}','insurance',this.textContent);openInvoiceComercial('${id}')">${invEdits['insurance']||'0,00'}</span>
@@ -1220,7 +1230,7 @@ function addCotItem() {
             <td style="padding:6px 10px;text-align:right;font-weight:600;">${moedaSym} <span id="invInsuranceDisplay">${fmtVal(insurance)}</span></td>
           </tr>
           <tr style="background:#1B4F72;color:white;">
-            <td colspan="5" style="padding:10px;text-align:right;font-weight:800;font-size:14px;">TOTAL INVOICE (${moedaLabel}):</td>
+            <td colspan="6" style="padding:10px;text-align:right;font-weight:800;font-size:14px;">TOTAL INVOICE (${moedaLabel}):</td>
             <td style="padding:10px;text-align:right;font-weight:900;font-size:16px;">${moedaSym} ${fmtVal(grandTotal)}</td>
           </tr>
         </tfoot>
@@ -1909,9 +1919,11 @@ function addCotItem() {
       const hasPhy  = grossUn > 0 || netUn > 0 || cbmUn > 0;
       const warnStyle = hasPhy ? '' : 'color:#dc2626;font-style:italic;';
 
+      // Nome do produto: campo name salvo, ou fallback no catálogo, ou código
+      const plProdName = it.name || (window.allItemsData ? (window.allItemsData.find(function(p){ return p.code===it.code; })||{}).name : '') || it.code || '—';
       return '<tr style="background:'+(i%2===0?'#fafafa':'white')+';border-bottom:1px solid #e5e7eb;">' +
         '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#1B4F72;font-size:11px;">'+(it.code||'—')+'</td>' +
-        '<td style="padding:8px 10px;color:#374151;font-size:12px;">'+(it.descPT||it.description||it.descEN||'—')+'</td>' +
+        '<td style="padding:8px 10px;color:#374151;font-size:12px;font-weight:600;">'+plProdName+'</td>' +
         '<td style="padding:8px 10px;text-align:right;font-weight:600;">'+(qty)+'</td>' +
         '<td style="padding:8px 10px;text-align:right;'+warnStyle+'">'+(grossT > 0 ? fmtNum(grossT,2)+' kg' : '— *')+'</td>' +
         '<td style="padding:8px 10px;text-align:right;'+warnStyle+'">'+(netT > 0 ? fmtNum(netT,2)+' kg' : '— *')+'</td>' +
