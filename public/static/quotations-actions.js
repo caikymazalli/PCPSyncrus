@@ -425,7 +425,7 @@ function addCotItem() {
       html += '<th style="padding:6px 8px;text-align:left;color:#166534;font-weight:700;">NCM</th>';
       html += '</tr></thead><tbody>';
       if (impItems.length === 0) {
-        html += '<tr><td colspan="7" style="padding:16px;text-align:center;color:#9ca3af;font-style:italic;">Nenhum item cadastrado. Edite o processo para adicionar itens.</td></tr>';
+        html += '<tr><td colspan="7" style="padding:16px;text-align:center;"><div style="color:#f59e0b;font-weight:600;margin-bottom:8px;">⚠ Nenhum item cadastrado neste processo.</div><div style="font-size:12px;color:#6b7280;">Use o botão <strong>Editar Processo</strong> abaixo para informar valor da invoice, itens e demais dados.</div></td></tr>';
       }
       impItems.forEach(it => {
         const sub = (it.sub || it.subtotal || ((it.qty||0) * (it.vu||it.unitPrice||0)) || 0);
@@ -719,6 +719,9 @@ function addCotItem() {
     if (tmEl) tmEl.textContent = sym+' '+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
     if (tbEl) tbEl.textContent = 'R$ '+brl.toLocaleString('pt-BR',{minimumFractionDigits:2});
     if (brlEl) brlEl.value = brl.toString();
+    // Sincronizar campo impValorInvoice com a soma dos itens (FOB automático)
+    const invEl = document.getElementById('impValorInvoice');
+    if (invEl && total > 0) { invEl.value = total.toFixed(2); }
     document.getElementById('impResumoItens') && (document.getElementById('impResumoItens').textContent = count);
     calcImpostos();
   }
@@ -874,7 +877,12 @@ function addCotItem() {
       ? imp.items
       : [{ code: imp.code, descPT: imp.description||'—', ncm: imp.ncm||'—', qty: imp.netWeight||1, vu: imp.invoiceValueEUR||imp.invoiceValueUSD||0, sub: imp.invoiceValueEUR||imp.invoiceValueUSD||0 }];
     // CIF = FOB (valor invoice) + Frete + Seguro (em moeda original)
-    const _fobVal = (imp.invoiceValueEUR||0) > 0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
+    // FOB = soma dos subtotais dos itens OU invoiceValueEUR/USD (o que for maior/válido)
+    const _itemsFOB = (imp.items||[]).reduce((acc, it) => acc + (it.sub || it.subtotal || ((it.qty||0)*(it.vu||it.unitPrice||0))), 0);
+    const _invoiceFOB = (imp.invoiceValueEUR||0) > 0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
+    // Fallback: se não há valor de invoice em moeda estrangeira nem itens, tentar calcular via BRL/câmbio
+    const _fobValFromBRL = (imp.invoiceValueBRL||0) > 0 && (_exchR||1) > 0 ? (imp.invoiceValueBRL||0) / (_exchR||1) : 0;
+    const _fobVal = _invoiceFOB > 0 ? _invoiceFOB : (_itemsFOB > 0 ? _itemsFOB : _fobValFromBRL);
     const _exchR  = imp.exchangeRate || 1;
     // Frete e seguro em moeda estrangeira: se foram informados em BRL, converter
     const _freteBRL  = (imp.numerario && imp.numerario.frete)  || 0;
@@ -927,7 +935,7 @@ function addCotItem() {
         '</tr>';
       }).join('')}</tbody>
       <tfoot>
-        ${_freteFX > 0 ? '<tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">FOB (Invoice):</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:#6b7280;">'+moedaSym+' '+_fobVal.toLocaleString("pt-BR",{minimumFractionDigits:2})+'</td></tr>' : ''}
+        <tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">FOB (Invoice):</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:${_fobVal>0?'#374151':'#dc2626'};font-weight:600;">${_fobVal>0 ? moedaSym+' '+_fobVal.toLocaleString("pt-BR",{minimumFractionDigits:2}) : '⚠ Editar Processo para informar valor'}</td></tr>
         ${_freteFX > 0 ? '<tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">+ Frete:</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:#6b7280;">'+moedaSym+' '+_freteFX.toLocaleString("pt-BR",{minimumFractionDigits:2})+'</td></tr>' : ''}
         ${_seguroFX > 0 ? '<tr style="background:#fafafa;"><td colspan="4" style="padding:5px 10px;color:#6b7280;text-align:right;font-size:11px;">+ Seguro:</td><td style="padding:5px 10px;text-align:right;font-size:11px;color:#6b7280;">'+moedaSym+' '+_seguroFX.toLocaleString("pt-BR",{minimumFractionDigits:2})+'</td></tr>' : ''}
         <tr style="background:#f5f3ff;">
@@ -938,7 +946,7 @@ function addCotItem() {
     </table>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      ${detRow('FOB INVOICE ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+_fobVal.toLocaleString('pt-BR',{minimumFractionDigits:2}))}
+      ${detRow('FOB INVOICE ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', _fobVal > 0 ? moedaSym+' '+_fobVal.toLocaleString('pt-BR',{minimumFractionDigits:2}) : '<span style="color:#dc2626;font-weight:700;">⚠ Não informado — use Editar</span>')}
       ${_freteFX > 0 ? detRow('+ FRETE ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+_freteFX.toLocaleString('pt-BR',{minimumFractionDigits:2})) : ''}
       ${_seguroFX > 0 ? detRow('+ SEGURO ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')', moedaSym+' '+_seguroFX.toLocaleString('pt-BR',{minimumFractionDigits:2})) : ''}
       ${detRow('<strong>TOTAL CIF ('+((imp.invoiceValueEUR||0)>0?'EUR':'USD')+')</strong>', '<strong>'+moedaSym+' '+(totalCIF||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong>')}
@@ -1567,3 +1575,417 @@ function addCotItem() {
       history.replaceState({}, '', window.location.pathname);
     }
   })();
+
+  // ════════════════════════════════════════════════════════════════════
+  // EDITAR PROCESSO DE IMPORTAÇÃO
+  // ════════════════════════════════════════════════════════════════════
+  function openEditImportModal(id) {
+    const imp = window.importsData.find(x => x.id === id);
+    if (!imp) return;
+    window._editingImpId = id;
+    document.getElementById('editImpCodigo').textContent = imp.code;
+    const taxes  = imp.taxes  || {};
+    const num    = imp.numerario || {};
+    const moedaSym = (imp.invoiceValueEUR||0)>0 ? 'EUR' : 'USD';
+    const invoiceVal = (imp.invoiceValueEUR||0)>0 ? (imp.invoiceValueEUR||0) : (imp.invoiceValueUSD||0);
+
+    const fmtDate = d => d ? d.substring(0,10) : '';
+
+    document.getElementById('editImportBody').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Invoice Nº</label>
+          <input type="text" id="editInvoiceNumber" class="form-control" value="${imp.invoiceNumber||''}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Data Invoice</label>
+          <input type="date" id="editInvoiceDate" class="form-control" value="${fmtDate(imp.invoiceDate)}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Moeda</label>
+          <select id="editCurrency" class="form-control">
+            <option value="USD" ${(imp.currency||'USD')==='USD'?'selected':''}>USD</option>
+            <option value="EUR" ${(imp.currency||'')==='EUR'?'selected':''}>EUR</option>
+            <option value="GBP" ${(imp.currency||'')==='GBP'?'selected':''}>GBP</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Taxa de Câmbio (R$)</label>
+          <input type="number" id="editExchangeRate" class="form-control" value="${imp.exchangeRate||5.52}" step="0.01">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Valor Invoice (${moedaSym})</label>
+          <input type="number" id="editInvoiceValue" class="form-control" value="${invoiceVal}" step="0.01">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Incoterm</label>
+          <select id="editIncoterm" class="form-control">
+            ${['FOB','CIF','EXW','CFR','DDP','DAP'].map(t=>`<option value="${t}" ${(imp.incoterm||'FOB')===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Porto Origem</label>
+          <input type="text" id="editPortOrigin" class="form-control" value="${imp.portOfOrigin||''}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Porto Destino</label>
+          <input type="text" id="editPortDest" class="form-control" value="${imp.portOfDestination||'Santos'}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Peso Bruto (kg)</label>
+          <input type="number" id="editGrossWeight" class="form-control" value="${imp.grossWeight||0}" step="0.1">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Peso Líquido (kg)</label>
+          <input type="number" id="editNetWeight" class="form-control" value="${imp.netWeight||0}" step="0.1">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Chegada Prevista</label>
+          <input type="date" id="editExpectedArrival" class="form-control" value="${fmtDate(imp.expectedArrival)}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">NCM (geral)</label>
+          <input type="text" id="editNcm" class="form-control" value="${imp.ncm||''}">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;display:block;">Descrição</label>
+        <input type="text" id="editDescription" class="form-control" value="${imp.description||''}">
+      </div>
+      <div style="background:#fef3c7;border-radius:8px;padding:12px;margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;"><i class="fas fa-percentage" style="margin-right:5px;"></i>Impostos / Alíquotas</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">II (%)</label><input type="number" id="editTaxII" class="form-control" value="${taxes.ii||0}" step="0.1"></div>
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">IPI (%)</label><input type="number" id="editTaxIPI" class="form-control" value="${taxes.ipi||0}" step="0.1"></div>
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">PIS (%)</label><input type="number" id="editTaxPIS" class="form-control" value="${taxes.pis||0}" step="0.1"></div>
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">COFINS (%)</label><input type="number" id="editTaxCOFINS" class="form-control" value="${taxes.cofins||0}" step="0.1"></div>
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">ICMS (%)</label><input type="number" id="editTaxICMS" class="form-control" value="${taxes.icms||0}" step="0.1"></div>
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">AFRMM (R$)</label><input type="number" id="editTaxAFRMM" class="form-control" value="${taxes.afrmm||0}" step="1"></div>
+          <div><label style="font-size:10px;color:#92400e;font-weight:700;display:block;margin-bottom:3px;">SISCOMEX (R$)</label><input type="number" id="editTaxSISCOMEX" class="form-control" value="${taxes.siscomex||0}" step="1"></div>
+        </div>
+      </div>
+      <div style="background:#e8f4fd;border-radius:8px;padding:12px;">
+        <div style="font-size:12px;font-weight:700;color:#1B4F72;margin-bottom:10px;"><i class="fas fa-money-bill-wave" style="margin-right:5px;"></i>Numerário / Custos Adicionais (R$)</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+          <div><label style="font-size:10px;color:#1B4F72;font-weight:700;display:block;margin-bottom:3px;">Frete</label><input type="number" id="editNumFrete" class="form-control" value="${num.frete||0}" step="0.01"></div>
+          <div><label style="font-size:10px;color:#1B4F72;font-weight:700;display:block;margin-bottom:3px;">Seguro</label><input type="number" id="editNumSeguro" class="form-control" value="${num.seguro||0}" step="0.01"></div>
+          <div><label style="font-size:10px;color:#1B4F72;font-weight:700;display:block;margin-bottom:3px;">Despachante</label><input type="number" id="editNumDesp" class="form-control" value="${num.desp||0}" step="0.01"></div>
+          <div><label style="font-size:10px;color:#1B4F72;font-weight:700;display:block;margin-bottom:3px;">Porto</label><input type="number" id="editNumPorto" class="form-control" value="${num.porto||0}" step="0.01"></div>
+          <div><label style="font-size:10px;color:#1B4F72;font-weight:700;display:block;margin-bottom:3px;">Armazenagem</label><input type="number" id="editNumArm" class="form-control" value="${num.arm||0}" step="0.01"></div>
+        </div>
+      </div>
+
+
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb;">
+        <div style="font-size:13px;font-weight:700;color:#1B4F72;margin-bottom:10px;"><i class="fas fa-boxes" style="margin-right:6px;"></i>Itens da Invoice
+          <span id="editItemsCount" style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px;"></span>
+        </div>
+        <div id="editItemsPreview"></div>
+      </div>
+    `;
+    // Preencher itens no edit modal
+    const editItemsCount = document.getElementById('editItemsCount');
+    const editItemsPreview = document.getElementById('editItemsPreview');
+    if (editItemsCount) {
+      editItemsCount.textContent = imp.items && imp.items.length > 0
+        ? '(' + imp.items.length + ' item(ns) cadastrado(s))'
+        : '(Nenhum item — valor FOB via campo acima)';
+    }
+    if (editItemsPreview) {
+      if (imp.items && imp.items.length > 0) {
+        let tbl = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+        tbl += '<thead><tr style="background:#e0f2fe;"><th style="padding:5px 8px;text-align:left;">Cód.</th><th style="padding:5px 8px;text-align:left;">Descrição PT</th><th style="padding:5px 8px;text-align:right;">Qtd</th><th style="padding:5px 8px;text-align:right;">Val.Unit.</th><th style="padding:5px 8px;text-align:right;">Subtotal</th></tr></thead><tbody>';
+        imp.items.forEach(it => {
+          const sub = it.sub || it.subtotal || ((it.qty||0)*(it.vu||0));
+          tbl += '<tr style="border-bottom:1px solid #e5e7eb;">';
+          tbl += '<td style="padding:4px 8px;font-family:monospace;color:#1B4F72;">'+(it.code||'—')+'</td>';
+          tbl += '<td style="padding:4px 8px;">'+(it.descPT||it.description||'—')+'</td>';
+          tbl += '<td style="padding:4px 8px;text-align:right;">'+(it.qty||0)+'</td>';
+          tbl += '<td style="padding:4px 8px;text-align:right;">'+(it.vu||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>';
+          tbl += '<td style="padding:4px 8px;text-align:right;font-weight:700;">'+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>';
+          tbl += '</tr>';
+        });
+        tbl += '</tbody></table>';
+        editItemsPreview.innerHTML = tbl;
+      } else {
+        editItemsPreview.innerHTML = '<div style="background:#fef9c3;padding:10px;border-radius:6px;font-size:12px;color:#92400e;"><i class="fas fa-info-circle" style="margin-right:5px;"></i>Sem itens cadastrados. Informe o <strong>Valor Invoice</strong> acima — o FOB na LI usará esse valor.</div>';
+      }
+    }
+    closeModal('importDetailModal');
+    openModal('editImportModal');
+  }
+
+  async function salvarEdicaoImport() {
+    const id = window._editingImpId;
+    if (!id) return;
+    const imp = window.importsData.find(x => x.id === id);
+    if (!imp) return;
+    const currency     = document.getElementById('editCurrency')?.value || 'USD';
+    const invoiceVal   = parseFloat(document.getElementById('editInvoiceValue')?.value || '0');
+    const exchangeRate = parseFloat(document.getElementById('editExchangeRate')?.value || '5.52');
+    const taxes = {
+      ii:       parseFloat(document.getElementById('editTaxII')?.value || '0'),
+      ipi:      parseFloat(document.getElementById('editTaxIPI')?.value || '0'),
+      pis:      parseFloat(document.getElementById('editTaxPIS')?.value || '0'),
+      cofins:   parseFloat(document.getElementById('editTaxCOFINS')?.value || '0'),
+      icms:     parseFloat(document.getElementById('editTaxICMS')?.value || '0'),
+      afrmm:    parseFloat(document.getElementById('editTaxAFRMM')?.value || '0'),
+      siscomex: parseFloat(document.getElementById('editTaxSISCOMEX')?.value || '0'),
+    };
+    const numerario = {
+      frete:  parseFloat(document.getElementById('editNumFrete')?.value || '0'),
+      seguro: parseFloat(document.getElementById('editNumSeguro')?.value || '0'),
+      desp:   parseFloat(document.getElementById('editNumDesp')?.value || '0'),
+      porto:  parseFloat(document.getElementById('editNumPorto')?.value || '0'),
+      arm:    parseFloat(document.getElementById('editNumArm')?.value || '0'),
+    };
+    const body = {
+      invoiceNumber:      document.getElementById('editInvoiceNumber')?.value?.trim() || '',
+      invoiceDate:        document.getElementById('editInvoiceDate')?.value || '',
+      currency, exchangeRate,
+      invoiceValueEUR:    currency === 'EUR' ? invoiceVal : 0,
+      invoiceValueUSD:    currency === 'USD' ? invoiceVal : 0,
+      invoiceValueBRL:    invoiceVal * exchangeRate,
+      incoterm:           document.getElementById('editIncoterm')?.value || 'FOB',
+      portOfOrigin:       document.getElementById('editPortOrigin')?.value || '',
+      portOfDestination:  document.getElementById('editPortDest')?.value || 'Santos',
+      grossWeight:        parseFloat(document.getElementById('editGrossWeight')?.value || '0'),
+      netWeight:          parseFloat(document.getElementById('editNetWeight')?.value || '0'),
+      expectedArrival:    document.getElementById('editExpectedArrival')?.value || '',
+      ncm:                document.getElementById('editNcm')?.value?.trim() || '',
+      description:        document.getElementById('editDescription')?.value?.trim() || '',
+      taxes, numerario,
+      items: imp.items || [],
+    };
+    try {
+      const res = await fetch('/suprimentos/api/imports/' + id, {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // Atualizar em memória
+        Object.assign(imp, {
+          invoiceNumber: body.invoiceNumber, invoiceDate: body.invoiceDate,
+          currency, exchangeRate,
+          invoiceValueEUR: body.invoiceValueEUR, invoiceValueUSD: body.invoiceValueUSD,
+          invoiceValueBRL: body.invoiceValueBRL, incoterm: body.incoterm,
+          portOfOrigin: body.portOfOrigin, portOfDestination: body.portOfDestination,
+          grossWeight: body.grossWeight, netWeight: body.netWeight,
+          expectedArrival: body.expectedArrival, ncm: body.ncm,
+          description: body.description, taxes, numerario,
+          items: body.items || imp.items || [],
+        });
+        showToastSup('✅ Processo atualizado com sucesso!', 'success');
+        closeModal('editImportModal');
+        setTimeout(() => openImportDetail(id), 200);
+      } else {
+        showToastSup(data.error || 'Erro ao salvar', 'error');
+      }
+    } catch(e) { showToastSup('Erro de conexão', 'error'); }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // DADOS FÍSICOS DOS PRODUTOS (peso bruto/líquido unitário e CBM)
+  // ════════════════════════════════════════════════════════════════════
+  // ── Dados Físicos dos Produtos (D1 + memória) ────────────────────────────
+  // Fallback para localStorage mantido por compatibilidade com dados antigos
+  function getProdPhysKey(code) { return 'prodPhys_' + code; }
+
+  function getProdPhysData(code) {
+    // Prioridade 1: window.allItemsData (carregado do D1 via hydration)
+    if (window.allItemsData) {
+      const item = window.allItemsData.find(function(i) { return i.code === code; });
+      if (item && (item.grossWeight > 0 || item.netWeight > 0 || item.cbm > 0)) {
+        return { grossWeight: item.grossWeight || 0, netWeight: item.netWeight || 0, cbm: item.cbm || 0 };
+      }
+    }
+    // Fallback: localStorage (dados salvos antes da migração)
+    try { return JSON.parse(localStorage.getItem(getProdPhysKey(code)) || 'null'); }
+    catch { return null; }
+  }
+
+  function openProdPhysicalModal(code, name) {
+    document.getElementById('prodPhysicalCode').value = code;
+    document.getElementById('prodPhysicalName').textContent = name;
+    const data = getProdPhysData(code) || {};
+    document.getElementById('prodPhysGrossPeso').value = data.grossWeight || '';
+    document.getElementById('prodPhysNetPeso').value   = data.netWeight   || '';
+    document.getElementById('prodPhysCBM').value       = data.cbm         || '';
+    openModal('prodPhysicalModal');
+  }
+
+  async function salvarDadosFisicos() {
+    const code = document.getElementById('prodPhysicalCode')?.value;
+    if (!code) return;
+    const gross = parseFloat(document.getElementById('prodPhysGrossPeso')?.value || '0');
+    const net   = parseFloat(document.getElementById('prodPhysNetPeso')?.value   || '0');
+    const cbm   = parseFloat(document.getElementById('prodPhysCBM')?.value       || '0');
+
+    // Mostrar loading
+    const saveBtn = document.querySelector('#prodPhysicalModal button[onclick="salvarDadosFisicos()"]');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando...'; }
+
+    try {
+      // 1. Persistir no D1 via API
+      const res  = await fetch('/suprimentos/api/product-phys-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, grossWeight: gross, netWeight: net, cbm })
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        // 2. Atualizar window.allItemsData em memória (sem reload)
+        if (window.allItemsData) {
+          const item = window.allItemsData.find(function(i) { return i.code === code; });
+          if (item) {
+            item.grossWeight = gross;
+            item.netWeight   = net;
+            item.cbm         = cbm;
+          }
+        }
+        // 3. Manter também no localStorage como cache (compatibilidade)
+        localStorage.setItem(getProdPhysKey(code), JSON.stringify({ grossWeight: gross, netWeight: net, cbm }));
+        showToastSup('✅ Dados físicos salvos para ' + code + ' (gross: ' + gross + 'kg | net: ' + net + 'kg | CBM: ' + cbm + 'm³)', 'success');
+        closeModal('prodPhysicalModal');
+      } else {
+        showToastSup('❌ Erro ao salvar: ' + (data.error || 'Tente novamente'), 'error');
+      }
+    } catch(e) {
+      // Fallback gracioso: salvar só no localStorage se API falhar
+      localStorage.setItem(getProdPhysKey(code), JSON.stringify({ grossWeight: gross, netWeight: net, cbm }));
+      showToastSup('⚠ Salvo localmente (sem conexão ao servidor). Reconecte para sincronizar.', 'warning');
+      closeModal('prodPhysicalModal');
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar Dados Físicos'; }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // PACKING LIST
+  // ════════════════════════════════════════════════════════════════════
+  function openPackingList(id) {
+    const imp = window.importsData.find(x => x.id === id);
+    if (!imp) return;
+    document.getElementById('packingListImpCodigo').textContent = imp.code;
+
+    const moedaSym    = (imp.invoiceValueEUR||0) > 0 ? '€' : 'US$';
+    const moedaLabel  = (imp.invoiceValueEUR||0) > 0 ? 'EUR' : 'USD';
+    const hoje        = new Date().toLocaleDateString('pt-BR');
+    const fmtDate     = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    const fmtNum      = (v,d=3) => (v||0).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+    // Montar lista de itens com dados físicos
+    const invItems = imp.items && imp.items.length > 0 ? imp.items
+      : [{ code: imp.code||'—', descEN: imp.description||'—', descPT: imp.description||'—', qty: 1, vu: imp.invoiceValueEUR||imp.invoiceValueUSD||0, sub: imp.invoiceValueEUR||imp.invoiceValueUSD||0, ncm: imp.ncm||'—' }];
+
+    let totalGross = 0, totalNet = 0, totalCBM = 0, totalVal = 0;
+    const rows = invItems.map(function(it, i) {
+      const qty     = it.qty || 1;
+      const physData = getProdPhysData(it.code) || {};
+      const grossUn = physData.grossWeight || 0;
+      const netUn   = physData.netWeight   || 0;
+      const cbmUn   = physData.cbm         || 0;
+      const grossT  = grossUn * qty;
+      const netT    = netUn   * qty;
+      const cbmT    = cbmUn   * qty;
+      const val     = it.sub || it.subtotal || ((it.qty||0)*(it.vu||0));
+      totalGross += grossT; totalNet += netT; totalCBM += cbmT; totalVal += val;
+
+      const hasPhy  = grossUn > 0 || netUn > 0 || cbmUn > 0;
+      const warnStyle = hasPhy ? '' : 'color:#dc2626;font-style:italic;';
+
+      return '<tr style="background:'+(i%2===0?'#fafafa':'white')+';border-bottom:1px solid #e5e7eb;">' +
+        '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#1B4F72;font-size:11px;">'+(it.code||'—')+'</td>' +
+        '<td style="padding:8px 10px;color:#374151;font-size:12px;">'+(it.descPT||it.description||it.descEN||'—')+'</td>' +
+        '<td style="padding:8px 10px;text-align:right;font-weight:600;">'+(qty)+'</td>' +
+        '<td style="padding:8px 10px;text-align:right;'+warnStyle+'">'+(grossT > 0 ? fmtNum(grossT,2)+' kg' : '— *')+'</td>' +
+        '<td style="padding:8px 10px;text-align:right;'+warnStyle+'">'+(netT > 0 ? fmtNum(netT,2)+' kg' : '— *')+'</td>' +
+        '<td style="padding:8px 10px;text-align:right;'+warnStyle+'">'+(cbmT > 0 ? fmtNum(cbmT,4)+' m³' : '— *')+'</td>' +
+        '<td style="padding:8px 10px;text-align:left;font-family:monospace;color:#7c3aed;font-weight:700;">'+(it.ncm||imp.ncm||'—')+'</td>' +
+        '</tr>';
+    }).join('');
+
+    const hasMissingPhys = invItems.some(it => {
+      const p = getProdPhysData(it.code); return !p || (!p.grossWeight && !p.netWeight && !p.cbm);
+    });
+
+    const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;max-width:860px;margin:0 auto;">
+
+      <!-- Cabeçalho -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #7c3aed;">
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#7c3aed;letter-spacing:1px;">PACKING LIST</div>
+          <div style="font-size:13px;color:#6c757d;margin-top:4px;">
+            Ref: <strong>${imp.invoiceNumber||'—'}</strong> &nbsp;·&nbsp; Data: ${fmtDate(imp.invoiceDate)} &nbsp;·&nbsp; Gerado em ${hoje}
+          </div>
+          <div style="font-size:12px;color:#6c757d;">
+            Incoterm: <strong>${imp.incoterm||'—'}</strong> &nbsp;·&nbsp;
+            Porto Embarque: <strong>${imp.portOfOrigin||'—'}</strong> &nbsp;·&nbsp;
+            Porto Destino: <strong>${imp.portOfDestination||'—'}</strong>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px;color:#9ca3af;">Processo</div>
+          <div style="font-size:18px;font-weight:800;color:#7c3aed;">${imp.code}</div>
+          <div style="font-size:11px;color:#6c757d;margin-top:4px;">Fornecedor: <strong>${imp.supplierName||'—'}</strong></div>
+        </div>
+      </div>
+
+      <!-- Tabela de Itens -->
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
+        <thead>
+          <tr style="background:#7c3aed;color:white;">
+            <th style="padding:9px 10px;text-align:left;">Código</th>
+            <th style="padding:9px 10px;text-align:left;">Produto</th>
+            <th style="padding:9px 10px;text-align:right;">Qtd</th>
+            <th style="padding:9px 10px;text-align:right;">Peso Bruto Total</th>
+            <th style="padding:9px 10px;text-align:right;">Peso Líq. Total</th>
+            <th style="padding:9px 10px;text-align:right;">CBM Total</th>
+            <th style="padding:9px 10px;text-align:left;">NCM</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="background:#f5f3ff;font-weight:800;">
+            <td colspan="2" style="padding:10px;color:#7c3aed;text-align:right;font-size:13px;">TOTAIS:</td>
+            <td style="padding:10px;text-align:right;color:#7c3aed;font-size:13px;">${invItems.length} itens</td>
+            <td style="padding:10px;text-align:right;color:#1B4F72;font-size:13px;">${totalGross>0?fmtNum(totalGross,2)+' kg':'—'}</td>
+            <td style="padding:10px;text-align:right;color:#1B4F72;font-size:13px;">${totalNet>0?fmtNum(totalNet,2)+' kg':'—'}</td>
+            <td style="padding:10px;text-align:right;color:#1B4F72;font-size:13px;">${totalCBM>0?fmtNum(totalCBM,4)+' m³':'—'}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Resumo final -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="background:#f0fdf4;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#166534;font-weight:700;text-transform:uppercase;">Peso Bruto Total</div>
+          <div style="font-size:20px;font-weight:800;color:#166534;">${totalGross>0?fmtNum(totalGross,2)+' kg':'—'}</div>
+        </div>
+        <div style="background:#f0fdf4;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#166534;font-weight:700;text-transform:uppercase;">Peso Líquido Total</div>
+          <div style="font-size:20px;font-weight:800;color:#166534;">${totalNet>0?fmtNum(totalNet,2)+' kg':'—'}</div>
+        </div>
+        <div style="background:#f5f3ff;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Volume Total (CBM)</div>
+          <div style="font-size:20px;font-weight:800;color:#7c3aed;">${totalCBM>0?fmtNum(totalCBM,4)+' m³':'—'}</div>
+        </div>
+      </div>
+
+      ${hasMissingPhys ? `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;font-size:12px;color:#991b1b;">
+        <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+        <strong>Atenção:</strong> Itens marcados com <em>—*</em> não possuem dados físicos cadastrados.
+        Acesse <strong>Produtos de Fornecedores Importados</strong> e clique no nome do produto para preencher peso bruto, peso líquido e CBM.
+      </div>` : ''}
+    </div>`;
+
+    document.getElementById('packingListBody').innerHTML = html;
+    closeModal('importDetailModal');
+    openModal('packingListModal');
+  }
+
