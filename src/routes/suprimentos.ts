@@ -203,6 +203,30 @@ app.get('/', (c) => { try {
     window.importsData = ${safeJsonStringify(importsData).replace(/<\//g, '<\\/')};
     window.allItemsData = ${safeJsonStringify([...stockItems, ...products]).replace(/<\//g, '<\\/')};
   </script>
+  <script>
+  // ── Atualização de status de importação ──────────────────────────────────
+  async function updateImpStatus(id, newStatus) {
+    const labels = { in_transit:'Em Trânsito', customs:'Desembaraço', delivered:'Entregue', cancelled:'Cancelado' };
+    const label = labels[newStatus] || newStatus;
+    if (!confirm('Confirmar mudança de status para: ' + label + '?')) return;
+    try {
+      const res = await fetch('/api/imports/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.ok || data.imp) {
+        showToast('Status atualizado para: ' + label, 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast('Erro ao atualizar status', 'error');
+      }
+    } catch(e) {
+      showToast('Erro de conexão', 'error');
+    }
+  }
+  </script>
 
   <!-- Pop-up: cotações pendentes de aprovação -->
   ${pendingApproval.length > 0 ? `
@@ -540,6 +564,39 @@ app.get('/', (c) => { try {
                 </button>
               </div>
             </div>
+            ${ /* Barra de avanço de status */
+              imp.status === 'waiting_ship' ? `
+            <div style="padding:8px 20px;background:#fffbeb;border-top:1px solid #fde68a;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:#92400e;font-weight:700;"><i class="fas fa-info-circle"></i> Aguardando embarque — confirme quando a carga partir</span>
+              <button class="btn btn-sm" style="background:#d97706;color:white;border:none;" onclick="updateImpStatus('${imp.id}','in_transit')">
+                <i class="fas fa-ship"></i> Confirmar Embarque → Em Trânsito
+              </button>
+              <button class="btn btn-sm" style="background:#dc2626;color:white;border:none;" onclick="updateImpStatus('${imp.id}','cancelled')">
+                <i class="fas fa-times"></i> Cancelar Processo
+              </button>
+            </div>` :
+              imp.status === 'in_transit' ? `
+            <div style="padding:8px 20px;background:#e8f4fd;border-top:1px solid #bee3f8;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:#1B4F72;font-weight:700;"><i class="fas fa-ship"></i> Em trânsito — registre quando chegar ao porto</span>
+              <button class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" onclick="updateImpStatus('${imp.id}','customs')">
+                <i class="fas fa-stamp"></i> Iniciar Desembaraço
+              </button>
+            </div>` :
+              imp.status === 'customs' ? `
+            <div style="padding:8px 20px;background:#f5f3ff;border-top:1px solid #ddd6fe;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:#7c3aed;font-weight:700;"><i class="fas fa-stamp"></i> Em desembaraço aduaneiro</span>
+              <button class="btn btn-sm" style="background:#16a34a;color:white;border:none;" onclick="updateImpStatus('${imp.id}','delivered')">
+                <i class="fas fa-check-circle"></i> Confirmar Entrega
+              </button>
+            </div>` :
+              imp.status === 'delivered' ? `
+            <div style="padding:8px 20px;background:#f0fdf4;border-top:1px solid #bbf7d0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:#16a34a;font-weight:700;"><i class="fas fa-check-circle"></i> Processo entregue — pode ser encerrado</span>
+              <button class="btn btn-sm" style="background:#374151;color:white;border:none;" onclick="updateImpStatus('${imp.id}','closed')">
+                <i class="fas fa-archive"></i> Encerrar Processo
+              </button>
+            </div>` : ''
+            }
 
             <!-- Grid de informações -->
             <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
@@ -2843,4 +2900,3 @@ app.post('/api/product-supplier-links/create', async (c) => {
 })
 
 export default app
-
