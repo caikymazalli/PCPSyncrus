@@ -237,7 +237,6 @@ app.get('/', (c) => { try {
     }),
     createdBy: q.createdBy || '',
     createdAt: q.createdAt || '',
-    deadline: q.deadline || '',
     supplierIds: q.supplierIds || [],
   }))
 
@@ -2051,8 +2050,12 @@ app.post('/api/quotations/:id/respond', async (c) => {
             await db.prepare(`UPDATE quotation_responses SET total_price=?, delivery_days=?, payment_terms=?, notes=?, responded_at=? WHERE quotation_id=? AND supplier_name=? AND user_id=?`)
               .bind(body.totalPrice, body.deliveryDays||0, body.paymentTerms||'', itemsJson, respondedAt, quotId, body.supplierName, userId).run()
           } else {
+            // Lookup actual supplier_id by name for better data integrity
+            const foundSupId = (tenant.suppliers || []).find((s: any) =>
+              s.name?.toLowerCase() === body.supplierName?.toLowerCase()
+            )?.id || ''
             await db.prepare(`INSERT INTO quotation_responses (id, quotation_id, supplier_id, supplier_name, unit_price, total_price, delivery_days, payment_terms, notes, responded_at, user_id, empresa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-              .bind(respId, quotId, '', body.supplierName,
+              .bind(respId, quotId, foundSupId, body.supplierName,
                 (body.items && body.items[0]) ? (body.items[0].unitPrice || 0) : 0,
                 body.totalPrice, body.deliveryDays||0, body.paymentTerms||'',
                 itemsJson, respondedAt, userId, q.empresaId || '1').run()
@@ -2119,7 +2122,7 @@ app.post('/api/quotations/create', async (c) => {
     const persistResult = await dbInsertWithRetry(db, 'quotations', {
       id, user_id: userId, empresa_id: empresaId, code: quotation.code,
       tipo: quotation.tipo, creator: quotation.createdBy, status: 'pending_approval',
-      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations, descricao: quotation.descricao }),
+      deadline: quotation.deadline, notes: JSON.stringify({ items: quotation.items, observations: quotation.observations, descricao: quotation.descricao, supplierIds: quotation.supplierIds || [] }),
     })
     if (!persistResult.success) {
       console.error(`[SUPRIMENTOS][COTAÇÃO][CRÍTICO] Falha ao persistir cotação ${id} em D1 após ${persistResult.attempts} tentativas: ${persistResult.error}`)
