@@ -915,7 +915,7 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
               status: r.status || 'sent', tipo: r.tipo || 'manual',
               createdBy: r.creator || '', createdAt: r.created_at || new Date().toISOString(),
               deadline: r.deadline || '', observations: notes.observations || '',
-              items: notes.items || [], supplierIds: [], supplierResponses: [],
+              items: notes.items || [], supplierIds: notes.supplierIds || [], supplierResponses: [],
               approvedBy: r.approved_by || '', approvedAt: r.approved_at || '',
               quotationReason: r.quotation_reason || '',
             })
@@ -978,6 +978,22 @@ export async function loadTenantFromDB(userId: string, db: D1Database, empresaId
                   q.status = 'with_responses'
                 }
               }
+            }
+            // Fallback: reconstruct supplierIds from responses for legacy records (saved before this fix)
+            if (!q.supplierIds || q.supplierIds.length === 0) {
+              const respsForQ = byQuotId[q.id] || []
+              // First try: use stored supplier_id directly
+              let respIds = respsForQ.map((r: any) => r.supplierId).filter(Boolean)
+              // Second try: match by supplierName from tenant.suppliers (for records where supplier_id was '')
+              if (respIds.length === 0 && respsForQ.length > 0) {
+                respIds = respsForQ.map((r: any) => {
+                  const sup = (tenant.suppliers || []).find((s: any) =>
+                    s.name?.toLowerCase() === (r.supplierName || '').toLowerCase()
+                  )
+                  return sup?.id || ''
+                }).filter(Boolean)
+              }
+              if (respIds.length > 0) q.supplierIds = [...new Set(respIds)]
             }
           }
         }
