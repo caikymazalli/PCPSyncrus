@@ -144,7 +144,6 @@ function masterLayout(title: string, content: string, loggedName: string = ''): 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Master Admin</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <style>
     * { box-sizing: border-box; }
@@ -1868,8 +1867,8 @@ app.get('/', async (c) => {
 
   // ── Abas do painel ────────────────────────────────────────────────────────────
   function switchPanelTab(tab) {
-    const panels = { clientes: 'panelClientes', suporte: 'panelSuporte', usuarios: 'panelUsuarios', auditoria: 'panelAuditoria' };
-    const tabs   = { clientes: 'tabClientes',   suporte: 'tabSuporte',   usuarios: 'tabUsuarios',   auditoria: 'tabAuditoria'   };
+    const panels = { clientes: 'panelClientes', suporte: 'panelSuporte', usuarios: 'panelUsuarios', auditoria: 'panelAuditoria', configuracoes: 'panelConfiguracoes' };
+    const tabs   = { clientes: 'tabClientes',   suporte: 'tabSuporte',   usuarios: 'tabUsuarios',   auditoria: 'tabAuditoria',   configuracoes: 'tabConfiguracoes'   };
 
     Object.keys(panels).forEach(key => {
       const panel = document.getElementById(panels[key]);
@@ -1879,6 +1878,7 @@ app.get('/', async (c) => {
     });
 
     if (tab === 'suporte') loadSupportTickets();
+    if (tab === 'configuracoes') loadPlatformSettings();
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────────
@@ -2582,16 +2582,16 @@ app.get('/', async (c) => {
     finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Criar'; } }
   }
 
-  // ── Configurações: sub-tabs ────────────────────────────────────────────────
-  document.querySelectorAll('.cfg-tab').forEach(btn => {
-    btn.addEventListener('click', function() {
-      document.querySelectorAll('.cfg-tab').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.cfg-section').forEach(s => s.style.display = 'none');
-      this.classList.add('active');
-      const sectionId = 'cfg' + this.dataset.cfg.charAt(0).toUpperCase() + this.dataset.cfg.slice(1);
-      const el = document.getElementById(sectionId);
-      if (el) el.style.display = 'block';
-    });
+  // ── Configurações: sub-tabs (event delegation para garantir binding) ─────────
+  document.addEventListener('click', function(ev) {
+    const cfgBtn = ev.target.closest('.cfg-tab');
+    if (!cfgBtn) return;
+    document.querySelectorAll('.cfg-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.cfg-section').forEach(s => s.style.display = 'none');
+    cfgBtn.classList.add('active');
+    const sectionId = 'cfg' + cfgBtn.dataset.cfg.charAt(0).toUpperCase() + cfgBtn.dataset.cfg.slice(1);
+    const el = document.getElementById(sectionId);
+    if (el) el.style.display = 'block';
   });
 
   // ── Carregar configurações ao abrir o painel ───────────────────────────────
@@ -2784,7 +2784,7 @@ app.get('/', async (c) => {
 
   try { const bcL = new BroadcastChannel('pcpsyncrus_branding'); bcL.onmessage = e => { if (e.data?.type === 'BRANDING_UPDATE') applyBrandingToPage(e.data.settings); }; } catch(e) {}
 
-  document.getElementById('tabConfiguracoes')?.addEventListener('click', function() { loadPlatformSettings(); });
+  // loadPlatformSettings() é chamado via switchPanelTab quando tab === 'configuracoes'
 
   </script>
   `
