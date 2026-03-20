@@ -27,4 +27,3 @@ CREATE INDEX IF NOT EXISTS idx_ptx_due_date    ON payment_transactions(due_date)
 CREATE INDEX IF NOT EXISTS idx_ptx_invoice     ON payment_transactions(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_due    ON invoices(due_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_paid   ON invoices(paid_at);
-
