@@ -179,6 +179,23 @@ function masterLayout(title: string, content: string, loggedName: string = ''): 
     .client-row { transition: background 0.1s; }
     .client-row:hover { background: #f8f9fa !important; }
     .master-kpi { background: white; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    /* ── Settings ─────────────────────────────────────────────────────────── */
+    .cfg-tab { padding:9px 18px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;color:#6c757d;border-bottom:3px solid transparent;transition:all 0.15s;white-space:nowrap; }
+    .cfg-tab.active { color:#7c3aed;border-color:#7c3aed;background:rgba(124,58,237,0.04); }
+    .cfg-label { display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px; }
+    .cfg-input { width:100%;padding:8px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;color:#374151;background:white;box-sizing:border-box;transition:border 0.15s; }
+    .cfg-input:focus { outline:none;border-color:#7c3aed;box-shadow:0 0 0 2px rgba(124,58,237,0.1); }
+    .cfg-save-btn { background:#7c3aed;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s; }
+    .cfg-save-btn:hover { background:#6d28d9; }
+    .cfg-section { animation:fadeInUp 0.2s ease; }
+    @keyframes fadeInUp { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
+    /* ── Platform CSS Variables (branding) ─────────────────────────────────── */
+    :root {
+      --brand-primary: #7c3aed;
+      --brand-secondary: #2980B9;
+      --brand-accent: #16a34a;
+      --brand-sidebar: #1B4F72;
+    }
     .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
     .empty-state i { font-size: 48px; display: block; margin-bottom: 16px; opacity: 0.3; }
     .empty-state h3 { font-size: 16px; font-weight: 700; color: #374151; margin: 0 0 8px; }
@@ -966,6 +983,9 @@ app.get('/', async (c) => {
     <button class="panel-tab" id="tabAuditoria" data-tab="auditoria">
       <i class="fas fa-history" style="margin-right:6px;"></i>Auditoria <span id="badgeAuditoria" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${auditLog.length}</span>
     </button>
+    <button class="panel-tab" id="tabConfiguracoes" data-tab="configuracoes" style="margin-left:auto;">
+      <i class="fas fa-cog" style="margin-right:6px;"></i>Configurações
+    </button>
   </div>
 
   <!-- Painel: Clientes -->
@@ -1120,7 +1140,363 @@ app.get('/', async (c) => {
     }
   </div>
 
-  <!-- ══ MODAIS ══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Painel: Configurações -->
+  <div id="panelConfiguracoes" class="card" style="overflow:hidden;display:none;">
+    <!-- Sub-tabs de configuração -->
+    <div style="display:flex;border-bottom:2px solid #e9ecef;padding:0 8px;background:#f8f9fa;overflow-x:auto;flex-shrink:0;">
+      <button class="cfg-tab active" data-cfg="geral"><i class="fas fa-sliders-h" style="margin-right:5px;"></i>Geral</button>
+      <button class="cfg-tab" data-cfg="branding"><i class="fas fa-paint-brush" style="margin-right:5px;"></i>Branding</button>
+      <button class="cfg-tab" data-cfg="notificacoes"><i class="fas fa-bell" style="margin-right:5px;"></i>Notificações</button>
+      <button class="cfg-tab" data-cfg="backup"><i class="fas fa-database" style="margin-right:5px;"></i>Backup</button>
+      <button class="cfg-tab" data-cfg="seguranca"><i class="fas fa-shield-alt" style="margin-right:5px;"></i>Segurança</button>
+      <button class="cfg-tab" data-cfg="api"><i class="fas fa-plug" style="margin-right:5px;"></i>API</button>
+    </div>
+
+    <!-- Conteúdo dinâmico das sub-tabs -->
+    <div id="cfgContent" style="padding:24px;">
+
+      <!-- ── GERAL ────────────────────────────────────────────────────── -->
+      <div id="cfgGeral" class="cfg-section">
+        <h3 style="margin:0 0 20px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-sliders-h" style="margin-right:8px;color:#7c3aed;"></i>Configurações Gerais da Plataforma</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;">
+          <div>
+            <label class="cfg-label">Nome da Plataforma</label>
+            <input id="cfg_platform_name" class="cfg-input" type="text" value="PCPSyncrus" placeholder="Nome da plataforma">
+          </div>
+          <div>
+            <label class="cfg-label">E-mail de Suporte</label>
+            <input id="cfg_support_email" class="cfg-input" type="email" value="suporte@pcpsyncrus.com.br" placeholder="suporte@empresa.com.br">
+          </div>
+          <div>
+            <label class="cfg-label">Telefone de Suporte</label>
+            <input id="cfg_support_phone" class="cfg-input" type="text" placeholder="(11) 99999-9999">
+          </div>
+          <div>
+            <label class="cfg-label">Idioma Padrão</label>
+            <select id="cfg_default_language" class="cfg-input">
+              <option value="pt-BR" selected>Português (Brasil)</option>
+              <option value="en-US">English (US)</option>
+              <option value="es-ES">Español</option>
+            </select>
+          </div>
+          <div>
+            <label class="cfg-label">Fuso Horário</label>
+            <select id="cfg_default_timezone" class="cfg-input">
+              <option value="America/Sao_Paulo" selected>America/São_Paulo (BRT)</option>
+              <option value="America/Manaus">America/Manaus (AMT)</option>
+              <option value="America/Belem">America/Belém (BRT)</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+          <div>
+            <label class="cfg-label">Formato de Data</label>
+            <select id="cfg_date_format" class="cfg-input">
+              <option value="DD/MM/YYYY" selected>DD/MM/YYYY</option>
+              <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+              <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
+            </select>
+          </div>
+          <div>
+            <label class="cfg-label">URL Política de Privacidade</label>
+            <input id="cfg_privacy_policy_url" class="cfg-input" type="url" placeholder="https://empresa.com/privacidade">
+          </div>
+          <div>
+            <label class="cfg-label">URL Termos de Uso</label>
+            <input id="cfg_terms_url" class="cfg-input" type="url" placeholder="https://empresa.com/termos">
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:16px;background:#fff3cd;border-radius:8px;border:1px solid #ffc107;max-width:800px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:#856404;">
+              <input id="cfg_maintenance_mode" type="checkbox" style="width:16px;height:16px;">
+              <i class="fas fa-tools"></i> Modo Manutenção
+            </label>
+          </div>
+          <input id="cfg_maintenance_message" class="cfg-input" type="text" value="Sistema em manutenção. Voltamos em breve." style="margin-top:10px;" placeholder="Mensagem exibida durante manutenção">
+        </div>
+        <div style="margin-top:20px;">
+          <button onclick="saveCfgSection('geral')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar Configurações Gerais</button>
+        </div>
+      </div>
+
+      <!-- ── BRANDING ──────────────────────────────────────────────────── -->
+      <div id="cfgBranding" class="cfg-section" style="display:none;">
+        <h3 style="margin:0 0 20px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-paint-brush" style="margin-right:8px;color:#7c3aed;"></i>Identidade Visual da Plataforma</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:880px;">
+          <!-- Preview ao vivo -->
+          <div style="grid-column:1/-1;background:#f8f9fa;border-radius:12px;padding:20px;border:2px dashed #dee2e6;">
+            <div style="font-size:12px;font-weight:700;color:#6c757d;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;"><i class="fas fa-eye" style="margin-right:5px;"></i>Preview em Tempo Real</div>
+            <div id="brandingPreview" style="background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+              <div id="previewSidebar" style="background:#1B4F72;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+                <div id="previewLogo" style="width:32px;height:32px;background:#7c3aed;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;color:white;">P</div>
+                <div id="previewName" style="color:white;font-weight:700;font-size:14px;">PCPSyncrus</div>
+              </div>
+              <div style="padding:16px;display:flex;gap:8px;flex-wrap:wrap;">
+                <div id="previewBtn1" style="background:#7c3aed;color:white;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;">Primária</div>
+                <div id="previewBtn2" style="background:#2980B9;color:white;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;">Secundária</div>
+                <div id="previewBtn3" style="background:#16a34a;color:white;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;">Acento</div>
+                <div id="previewBadge" style="background:#7c3aed20;color:#7c3aed;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">Status Badge</div>
+              </div>
+            </div>
+          </div>
+          <!-- Nome -->
+          <div>
+            <label class="cfg-label">Nome da Plataforma <small style="color:#9ca3af;">(cabeçalho e título)</small></label>
+            <input id="brand_platform_name" class="cfg-input" type="text" value="PCPSyncrus" oninput="updateBrandingPreview()">
+          </div>
+          <!-- Logo URL -->
+          <div>
+            <label class="cfg-label">Logo URL <small style="color:#9ca3af;">(PNG/SVG, 200×50px recomendado)</small></label>
+            <div style="display:flex;gap:6px;">
+              <input id="brand_logo" class="cfg-input" type="url" placeholder="https://cdn.empresa.com/logo.png" oninput="updateBrandingPreview()">
+              <button onclick="document.getElementById('brand_logo_upload').click()" style="background:#f1f3f5;border:1px solid #dee2e6;border-radius:6px;padding:0 10px;cursor:pointer;font-size:12px;white-space:nowrap;"><i class="fas fa-upload"></i></button>
+              <input id="brand_logo_upload" type="file" accept="image/*" style="display:none;" onchange="handleLogoUpload(this)">
+            </div>
+          </div>
+          <!-- Favicon -->
+          <div>
+            <label class="cfg-label">Favicon URL <small style="color:#9ca3af;">(ICO/PNG 32×32px)</small></label>
+            <input id="brand_favicon" class="cfg-input" type="url" placeholder="https://cdn.empresa.com/favicon.ico" oninput="updateBrandingPreview()">
+          </div>
+          <!-- Cores -->
+          <div>
+            <label class="cfg-label">Cor Primária <small style="color:#9ca3af;">(botões, links, badges)</small></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="brand_primary_color" type="color" value="#7c3aed" oninput="updateBrandingPreview()" style="width:44px;height:38px;border:1px solid #dee2e6;border-radius:6px;cursor:pointer;padding:2px;">
+              <input id="brand_primary_color_hex" class="cfg-input" type="text" value="#7c3aed" oninput="syncColorFromHex('primary')" style="flex:1;font-family:monospace;">
+            </div>
+          </div>
+          <div>
+            <label class="cfg-label">Cor Secundária <small style="color:#9ca3af;">(módulos, destaques)</small></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="brand_secondary_color" type="color" value="#2980B9" oninput="updateBrandingPreview()" style="width:44px;height:38px;border:1px solid #dee2e6;border-radius:6px;cursor:pointer;padding:2px;">
+              <input id="brand_secondary_color_hex" class="cfg-input" type="text" value="#2980B9" oninput="syncColorFromHex('secondary')" style="flex:1;font-family:monospace;">
+            </div>
+          </div>
+          <div>
+            <label class="cfg-label">Cor de Acento <small style="color:#9ca3af;">(sucesso, confirmações)</small></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="brand_accent_color" type="color" value="#16a34a" oninput="updateBrandingPreview()" style="width:44px;height:38px;border:1px solid #dee2e6;border-radius:6px;cursor:pointer;padding:2px;">
+              <input id="brand_accent_color_hex" class="cfg-input" type="text" value="#16a34a" oninput="syncColorFromHex('accent')" style="flex:1;font-family:monospace;">
+            </div>
+          </div>
+          <div>
+            <label class="cfg-label">Cor da Sidebar <small style="color:#9ca3af;">(barra lateral)</small></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="brand_sidebar_color" type="color" value="#1B4F72" oninput="updateBrandingPreview()" style="width:44px;height:38px;border:1px solid #dee2e6;border-radius:6px;cursor:pointer;padding:2px;">
+              <input id="brand_sidebar_color_hex" class="cfg-input" type="text" value="#1B4F72" oninput="syncColorFromHex('sidebar')" style="flex:1;font-family:monospace;">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px;align-items:center;">
+          <button onclick="saveCfgSection('branding')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar e Aplicar Branding</button>
+          <button onclick="resetBranding()" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;color:#6c757d;"><i class="fas fa-undo" style="margin-right:5px;"></i>Restaurar Padrões</button>
+          <span id="brandingAppliedMsg" style="display:none;color:#16a34a;font-size:12px;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>Aplicado em toda a plataforma!</span>
+        </div>
+      </div>
+
+      <!-- ── NOTIFICAÇÕES ──────────────────────────────────────────────── -->
+      <div id="cfgNotificacoes" class="cfg-section" style="display:none;">
+        <h3 style="margin:0 0 20px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-bell" style="margin-right:8px;color:#7c3aed;"></i>Notificações e Alertas</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;">
+          <div>
+            <label class="cfg-label">Alertar Trial expirando (dias antes)</label>
+            <input id="cfg_notify_trial_expiry_days" class="cfg-input" type="number" min="1" max="30" value="7">
+          </div>
+          <div>
+            <label class="cfg-label">Alertar limite de plano (%)</label>
+            <input id="cfg_notify_plan_limit_pct" class="cfg-input" type="number" min="50" max="100" value="80">
+          </div>
+          <div>
+            <label class="cfg-label">E-mail remetente (FROM)</label>
+            <input id="cfg_notify_email_sender" class="cfg-input" type="email" value="noreply@pcpsyncrus.com.br">
+          </div>
+          <div>
+            <label class="cfg-label">Rodapé dos e-mails</label>
+            <input id="cfg_notify_email_footer" class="cfg-input" type="text" placeholder="© 2025 PCPSyncrus. Todos os direitos reservados.">
+          </div>
+        </div>
+        <div style="margin-top:16px;max-width:800px;">
+          <div style="background:#f8f9fa;border-radius:10px;padding:16px;border:1px solid #e9ecef;">
+            <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:12px;"><i class="fas fa-slack" style="margin-right:6px;color:#4A154B;"></i>Integração Slack</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                <input id="cfg_alert_slack_enabled" type="checkbox" style="width:15px;height:15px;"> Ativar notificações via Slack
+              </label>
+            </div>
+            <input id="cfg_alert_slack_webhook" class="cfg-input" type="url" placeholder="https://hooks.slack.com/services/T.../B.../...">
+            <button onclick="testSlackWebhook()" style="margin-top:8px;background:#4A154B;color:white;border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-paper-plane" style="margin-right:5px;"></i>Testar Webhook</button>
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <button onclick="saveCfgSection('notificacoes')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar Notificações</button>
+        </div>
+      </div>
+
+      <!-- ── BACKUP ────────────────────────────────────────────────────── -->
+      <div id="cfgBackup" class="cfg-section" style="display:none;">
+        <h3 style="margin:0 0 20px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-database" style="margin-right:8px;color:#7c3aed;"></i>Configurações de Backup</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;">
+          <div style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_backup_enabled" type="checkbox" checked style="width:16px;height:16px;"> Backup automático habilitado
+            </label>
+          </div>
+          <div>
+            <label class="cfg-label">Frequência</label>
+            <select id="cfg_backup_frequency" class="cfg-input">
+              <option value="hourly">A cada hora</option>
+              <option value="daily" selected>Diário</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensal</option>
+            </select>
+          </div>
+          <div>
+            <label class="cfg-label">Retenção (dias)</label>
+            <input id="cfg_backup_retention_days" class="cfg-input" type="number" min="1" max="365" value="30">
+          </div>
+          <div>
+            <label class="cfg-label">Provedor de Armazenamento</label>
+            <select id="cfg_backup_storage_provider" class="cfg-input" onchange="toggleBackupStorageFields()">
+              <option value="r2" selected>Cloudflare R2</option>
+              <option value="s3">Amazon S3</option>
+              <option value="gcs">Google Cloud Storage</option>
+              <option value="azure">Azure Blob Storage</option>
+            </select>
+          </div>
+          <div>
+            <label class="cfg-label">Nome do Bucket</label>
+            <input id="cfg_backup_storage_bucket" class="cfg-input" type="text" placeholder="meu-bucket-backup">
+          </div>
+          <div style="grid-column:1/-1;">
+            <label class="cfg-label">Chave de Acesso / API Key</label>
+            <input id="cfg_backup_storage_key" class="cfg-input" type="password" placeholder="••••••••••••••••••••">
+          </div>
+        </div>
+        <div style="margin-top:16px;background:#e8f5e9;border-radius:8px;padding:14px;border:1px solid #a5d6a7;max-width:800px;">
+          <div style="font-size:12px;font-weight:700;color:#2e7d32;margin-bottom:6px;"><i class="fas fa-info-circle" style="margin-right:5px;"></i>Último Backup</div>
+          <div id="backupLastRun" style="font-size:12px;color:#374151;">Nenhum backup realizado ainda</div>
+          <button onclick="runManualBackup()" style="margin-top:8px;background:#2e7d32;color:white;border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-play" style="margin-right:5px;"></i>Executar Backup Agora</button>
+        </div>
+        <div style="margin-top:20px;">
+          <button onclick="saveCfgSection('backup')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar Configurações de Backup</button>
+        </div>
+      </div>
+
+      <!-- ── SEGURANÇA ─────────────────────────────────────────────────── -->
+      <div id="cfgSeguranca" class="cfg-section" style="display:none;">
+        <h3 style="margin:0 0 20px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-shield-alt" style="margin-right:8px;color:#7c3aed;"></i>Segurança da Plataforma</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;">
+          <div style="grid-column:1/-1;">
+            <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e9ecef;"><i class="fas fa-key" style="margin-right:6px;color:#7c3aed;"></i>Política de Senhas</div>
+          </div>
+          <div>
+            <label class="cfg-label">Tamanho mínimo da senha</label>
+            <input id="cfg_password_min_length" class="cfg-input" type="number" min="6" max="32" value="8">
+          </div>
+          <div>
+            <label class="cfg-label">Expiração de senha (dias, 0 = nunca)</label>
+            <input id="cfg_password_expiry_days" class="cfg-input" type="number" min="0" max="365" value="0">
+          </div>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_password_require_uppercase" type="checkbox" checked style="width:15px;height:15px;"> Exigir letra maiúscula
+            </label>
+          </div>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_password_require_number" type="checkbox" checked style="width:15px;height:15px;"> Exigir número
+            </label>
+          </div>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_password_require_symbol" type="checkbox" style="width:15px;height:15px;"> Exigir símbolo especial
+            </label>
+          </div>
+          <div style="grid-column:1/-1;margin-top:8px;">
+            <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e9ecef;"><i class="fas fa-lock" style="margin-right:6px;color:#7c3aed;"></i>Sessão e Acesso</div>
+          </div>
+          <div>
+            <label class="cfg-label">Timeout de sessão (horas)</label>
+            <input id="cfg_session_timeout_hours" class="cfg-input" type="number" min="1" max="72" value="8">
+          </div>
+          <div>
+            <label class="cfg-label">Máximo de tentativas de login</label>
+            <input id="cfg_max_login_attempts" class="cfg-input" type="number" min="3" max="20" value="5">
+          </div>
+          <div>
+            <label class="cfg-label">Bloqueio após falhas (minutos)</label>
+            <input id="cfg_lockout_duration_minutes" class="cfg-input" type="number" min="5" max="1440" value="30">
+          </div>
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_mfa_enabled" type="checkbox" style="width:15px;height:15px;"> Autenticação em 2 fatores (MFA)
+            </label>
+          </div>
+          <div style="grid-column:1/-1;">
+            <label class="cfg-label">IP Whitelist <small style="color:#9ca3af;">(separados por vírgula, vazio = todos)</small></label>
+            <input id="cfg_ip_whitelist" class="cfg-input" type="text" placeholder="192.168.1.1, 10.0.0.0/24">
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <button onclick="saveCfgSection('seguranca')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar Configurações de Segurança</button>
+        </div>
+      </div>
+
+      <!-- ── API ───────────────────────────────────────────────────────── -->
+      <div id="cfgApi" class="cfg-section" style="display:none;">
+        <h3 style="margin:0 0 20px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-plug" style="margin-right:8px;color:#7c3aed;"></i>Configurações de API</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;">
+          <div style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_api_enabled" type="checkbox" checked style="width:16px;height:16px;"> API pública habilitada
+            </label>
+          </div>
+          <div>
+            <label class="cfg-label">Rate Limit (requisições/minuto)</label>
+            <input id="cfg_api_rate_limit" class="cfg-input" type="number" min="10" max="1000" value="60">
+          </div>
+          <div>
+            <label class="cfg-label">Expiração JWT (horas)</label>
+            <input id="cfg_api_jwt_expiry" class="cfg-input" type="number" min="1" max="168" value="24">
+          </div>
+          <div style="grid-column:1/-1;">
+            <label class="cfg-label">Origins permitidos (CORS) <small style="color:#9ca3af;">(* = todos)</small></label>
+            <input id="cfg_api_allowed_origins" class="cfg-input" type="text" value="*" placeholder="https://app.empresa.com, https://admin.empresa.com">
+          </div>
+          <div style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;">
+              <input id="cfg_api_log_requests" type="checkbox" checked style="width:15px;height:15px;"> Registrar logs de requisições da API
+            </label>
+          </div>
+        </div>
+        <!-- Chaves de API -->
+        <div style="margin-top:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:700;color:#374151;"><i class="fas fa-key" style="margin-right:6px;color:#7c3aed;"></i>Chaves de API</div>
+            <button onclick="generateApiKey()" style="background:#7c3aed;color:white;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-plus" style="margin-right:5px;"></i>Nova Chave</button>
+          </div>
+          <div id="apiKeysList" style="background:#f8f9fa;border-radius:8px;padding:12px;min-height:60px;">
+            <div style="text-align:center;color:#9ca3af;font-size:12px;padding:20px 0;"><i class="fas fa-key" style="margin-right:5px;"></i>Nenhuma chave de API criada</div>
+          </div>
+        </div>
+        <!-- Documentação API -->
+        <div style="margin-top:16px;background:#e8f4fd;border-radius:8px;padding:14px;border:1px solid #90caf9;max-width:800px;">
+          <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:6px;"><i class="fas fa-book" style="margin-right:5px;"></i>Documentação da API</div>
+          <div style="font-size:12px;color:#374151;">Base URL: <code style="background:#dbeafe;padding:2px 6px;border-radius:4px;font-family:monospace;">/api/v1/</code></div>
+          <div style="font-size:12px;color:#374151;margin-top:4px;">Autenticação: <code style="background:#dbeafe;padding:2px 6px;border-radius:4px;font-family:monospace;">Authorization: Bearer {api_key}</code></div>
+          <a href="/api/docs" target="_blank" style="font-size:12px;color:#1565C0;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-top:8px;"><i class="fas fa-external-link-alt"></i> Abrir documentação completa</a>
+        </div>
+        <div style="margin-top:20px;">
+          <button onclick="saveCfgSection('api')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar Configurações de API</button>
+        </div>
+      </div>
+
+    </div><!-- /cfgContent -->
+  </div><!-- /panelConfiguracoes -->
+
+    <!-- ══ MODAIS ══════════════════════════════════════════════════════════════════ -->
 
   <!-- Modal: Detalhes do Cliente -->
   <div class="moverlay" id="clientDetailModal">
@@ -2205,6 +2581,211 @@ app.get('/', async (c) => {
     } catch { showToast('Erro de conexão.', 'error'); }
     finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Criar'; } }
   }
+
+  // ── Configurações: sub-tabs ────────────────────────────────────────────────
+  document.querySelectorAll('.cfg-tab').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.cfg-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.cfg-section').forEach(s => s.style.display = 'none');
+      this.classList.add('active');
+      const sectionId = 'cfg' + this.dataset.cfg.charAt(0).toUpperCase() + this.dataset.cfg.slice(1);
+      const el = document.getElementById(sectionId);
+      if (el) el.style.display = 'block';
+    });
+  });
+
+  // ── Carregar configurações ao abrir o painel ───────────────────────────────
+  function loadPlatformSettings() {
+    fetch('/master/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        const s = data.settings || {};
+        if (s.platform_name)        { const el = document.getElementById('cfg_platform_name'); if(el) el.value = s.platform_name; }
+        if (s.support_email)        { const el = document.getElementById('cfg_support_email'); if(el) el.value = s.support_email; }
+        if (s.support_phone)        { const el = document.getElementById('cfg_support_phone'); if(el) el.value = s.support_phone; }
+        if (s.default_language)     { const el = document.getElementById('cfg_default_language'); if(el) el.value = s.default_language; }
+        if (s.default_timezone)     { const el = document.getElementById('cfg_default_timezone'); if(el) el.value = s.default_timezone; }
+        if (s.date_format)          { const el = document.getElementById('cfg_date_format'); if(el) el.value = s.date_format; }
+        if (s.privacy_policy_url)   { const el = document.getElementById('cfg_privacy_policy_url'); if(el) el.value = s.privacy_policy_url; }
+        if (s.terms_url)            { const el = document.getElementById('cfg_terms_url'); if(el) el.value = s.terms_url; }
+        const mm = document.getElementById('cfg_maintenance_mode'); if(mm) mm.checked = !!s.maintenance_mode;
+        if (s.maintenance_message)  { const el = document.getElementById('cfg_maintenance_message'); if(el) el.value = s.maintenance_message; }
+        if (s.platform_name)  { const el = document.getElementById('brand_platform_name'); if(el) el.value = s.platform_name; }
+        if (s.platform_logo)  { const el = document.getElementById('brand_logo'); if(el) el.value = s.platform_logo; }
+        if (s.platform_favicon){ const el = document.getElementById('brand_favicon'); if(el) el.value = s.platform_favicon; }
+        if (s.primary_color)   { const a = document.getElementById('brand_primary_color'); const b = document.getElementById('brand_primary_color_hex'); if(a) a.value = s.primary_color; if(b) b.value = s.primary_color; }
+        if (s.secondary_color) { const a = document.getElementById('brand_secondary_color'); const b = document.getElementById('brand_secondary_color_hex'); if(a) a.value = s.secondary_color; if(b) b.value = s.secondary_color; }
+        if (s.accent_color)    { const a = document.getElementById('brand_accent_color'); const b = document.getElementById('brand_accent_color_hex'); if(a) a.value = s.accent_color; if(b) b.value = s.accent_color; }
+        if (s.sidebar_color)   { const a = document.getElementById('brand_sidebar_color'); const b = document.getElementById('brand_sidebar_color_hex'); if(a) a.value = s.sidebar_color; if(b) b.value = s.sidebar_color; }
+        if (s.notify_trial_expiry_days) { const el = document.getElementById('cfg_notify_trial_expiry_days'); if(el) el.value = s.notify_trial_expiry_days; }
+        if (s.notify_plan_limit_pct)    { const el = document.getElementById('cfg_notify_plan_limit_pct'); if(el) el.value = s.notify_plan_limit_pct; }
+        if (s.notify_email_sender)      { const el = document.getElementById('cfg_notify_email_sender'); if(el) el.value = s.notify_email_sender; }
+        if (s.notify_email_footer)      { const el = document.getElementById('cfg_notify_email_footer'); if(el) el.value = s.notify_email_footer; }
+        const slk = document.getElementById('cfg_alert_slack_enabled'); if(slk) slk.checked = !!s.alert_slack_enabled;
+        if (s.alert_slack_webhook) { const el = document.getElementById('cfg_alert_slack_webhook'); if(el) el.value = s.alert_slack_webhook; }
+        const bkp = document.getElementById('cfg_backup_enabled'); if(bkp) bkp.checked = s.backup_enabled !== 0;
+        if (s.backup_frequency)        { const el = document.getElementById('cfg_backup_frequency'); if(el) el.value = s.backup_frequency; }
+        if (s.backup_retention_days)   { const el = document.getElementById('cfg_backup_retention_days'); if(el) el.value = s.backup_retention_days; }
+        if (s.backup_storage_provider) { const el = document.getElementById('cfg_backup_storage_provider'); if(el) el.value = s.backup_storage_provider; }
+        if (s.backup_storage_bucket)   { const el = document.getElementById('cfg_backup_storage_bucket'); if(el) el.value = s.backup_storage_bucket; }
+        if (s.backup_last_run) { const el = document.getElementById('backupLastRun'); if(el) el.textContent = 'Último backup: ' + new Date(s.backup_last_run).toLocaleString('pt-BR'); }
+        if (s.password_min_length)     { const el = document.getElementById('cfg_password_min_length'); if(el) el.value = s.password_min_length; }
+        if (s.password_expiry_days !== undefined) { const el = document.getElementById('cfg_password_expiry_days'); if(el) el.value = s.password_expiry_days; }
+        const ppu = document.getElementById('cfg_password_require_uppercase'); if(ppu) ppu.checked = s.password_require_uppercase !== 0;
+        const ppn = document.getElementById('cfg_password_require_number'); if(ppn) ppn.checked = s.password_require_number !== 0;
+        const pps = document.getElementById('cfg_password_require_symbol'); if(pps) pps.checked = !!s.password_require_symbol;
+        if (s.session_timeout_hours)   { const el = document.getElementById('cfg_session_timeout_hours'); if(el) el.value = s.session_timeout_hours; }
+        if (s.max_login_attempts)      { const el = document.getElementById('cfg_max_login_attempts'); if(el) el.value = s.max_login_attempts; }
+        if (s.lockout_duration_minutes){ const el = document.getElementById('cfg_lockout_duration_minutes'); if(el) el.value = s.lockout_duration_minutes; }
+        const mfa = document.getElementById('cfg_mfa_enabled'); if(mfa) mfa.checked = !!s.mfa_enabled;
+        if (s.ip_whitelist)            { const el = document.getElementById('cfg_ip_whitelist'); if(el) el.value = s.ip_whitelist; }
+        const api = document.getElementById('cfg_api_enabled'); if(api) api.checked = s.api_enabled !== 0;
+        if (s.api_rate_limit_per_minute){ const el = document.getElementById('cfg_api_rate_limit'); if(el) el.value = s.api_rate_limit_per_minute; }
+        if (s.api_jwt_expiry_hours)    { const el = document.getElementById('cfg_api_jwt_expiry'); if(el) el.value = s.api_jwt_expiry_hours; }
+        if (s.api_allowed_origins)     { const el = document.getElementById('cfg_api_allowed_origins'); if(el) el.value = s.api_allowed_origins; }
+        const alr = document.getElementById('cfg_api_log_requests'); if(alr) alr.checked = s.api_log_requests !== 0;
+        applyBrandingToPage(s);
+      })
+      .catch(e => console.warn('Configurações não carregadas:', e));
+  }
+
+  async function saveCfgSection(section) {
+    const payload = { section };
+    if (section === 'geral' || section === 'branding') {
+      const nameEl = document.getElementById(section === 'branding' ? 'brand_platform_name' : 'cfg_platform_name');
+      payload.platform_name = nameEl ? nameEl.value : '';
+    }
+    if (section === 'geral') {
+      ['support_email','support_phone','default_language','default_timezone','date_format','privacy_policy_url','terms_url','maintenance_message'].forEach(k => {
+        const el = document.getElementById('cfg_' + k); if(el) payload[k] = el.value;
+      });
+      const mm = document.getElementById('cfg_maintenance_mode'); payload.maintenance_mode = mm && mm.checked ? 1 : 0;
+    }
+    if (section === 'branding') {
+      ['platform_logo','platform_favicon','primary_color','secondary_color','accent_color','sidebar_color'].forEach(k => {
+        const key = k.replace('platform_','brand_').replace('_color','_color');
+        const mapping = { platform_logo:'brand_logo', platform_favicon:'brand_favicon', primary_color:'brand_primary_color', secondary_color:'brand_secondary_color', accent_color:'brand_accent_color', sidebar_color:'brand_sidebar_color' };
+        const el = document.getElementById(mapping[k]); if(el) payload[k] = el.value;
+      });
+    }
+    if (section === 'notificacoes') {
+      const fields = ['cfg_notify_trial_expiry_days','cfg_notify_plan_limit_pct','cfg_notify_email_sender','cfg_notify_email_footer','cfg_alert_slack_webhook'];
+      fields.forEach(id => { const el = document.getElementById(id); if(el) payload[id.replace('cfg_','')] = el.value; });
+      const slk = document.getElementById('cfg_alert_slack_enabled'); payload.alert_slack_enabled = slk && slk.checked ? 1 : 0;
+    }
+    if (section === 'backup') {
+      ['cfg_backup_frequency','cfg_backup_retention_days','cfg_backup_storage_provider','cfg_backup_storage_bucket','cfg_backup_storage_key'].forEach(id => {
+        const el = document.getElementById(id); if(el) payload[id.replace('cfg_','')] = el.value;
+      });
+      const bkp = document.getElementById('cfg_backup_enabled'); payload.backup_enabled = bkp && bkp.checked ? 1 : 0;
+    }
+    if (section === 'seguranca') {
+      ['cfg_password_min_length','cfg_password_expiry_days','cfg_session_timeout_hours','cfg_max_login_attempts','cfg_lockout_duration_minutes','cfg_ip_whitelist'].forEach(id => {
+        const el = document.getElementById(id); if(el) payload[id.replace('cfg_','')] = el.value;
+      });
+      ['cfg_password_require_uppercase','cfg_password_require_number','cfg_password_require_symbol','cfg_mfa_enabled'].forEach(id => {
+        const el = document.getElementById(id); payload[id.replace('cfg_','')] = el && el.checked ? 1 : 0;
+      });
+    }
+    if (section === 'api') {
+      ['cfg_api_rate_limit','cfg_api_jwt_expiry','cfg_api_allowed_origins'].forEach(id => {
+        const el = document.getElementById(id); if(el) payload[id.replace('cfg_','')] = el.value;
+      });
+      const ae = document.getElementById('cfg_api_enabled'); payload.api_enabled = ae && ae.checked ? 1 : 0;
+      const al = document.getElementById('cfg_api_log_requests'); payload.api_log_requests = al && al.checked ? 1 : 0;
+      payload.api_rate_limit_per_minute = parseInt(payload.cfg_api_rate_limit)||60;
+      payload.api_jwt_expiry_hours = parseInt(payload.cfg_api_jwt_expiry)||24;
+      payload.api_allowed_origins = payload.cfg_api_allowed_origins;
+    }
+    try {
+      const r = await fetch('/master/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const data = await r.json();
+      if (data.ok) {
+        showToast('Configurações salvas com sucesso!', 'success');
+        if (section === 'branding') {
+          applyBrandingToPage(payload);
+          const msg = document.getElementById('brandingAppliedMsg');
+          if (msg) { msg.style.display = 'inline-flex'; setTimeout(() => msg.style.display = 'none', 3000); }
+          try { const bc = new BroadcastChannel('pcpsyncrus_branding'); bc.postMessage({ type:'BRANDING_UPDATE', settings:payload }); bc.close(); } catch(e){}
+        }
+      } else { showToast('Erro: ' + (data.error||''), 'error'); }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+  }
+
+  function applyBrandingToPage(s) {
+    const r = document.documentElement;
+    if (s.primary_color)   r.style.setProperty('--brand-primary', s.primary_color);
+    if (s.secondary_color) r.style.setProperty('--brand-secondary', s.secondary_color);
+    if (s.accent_color)    r.style.setProperty('--brand-accent', s.accent_color);
+    if (s.sidebar_color)   r.style.setProperty('--brand-sidebar', s.sidebar_color);
+    if (s.platform_name) {
+      document.querySelectorAll('[data-brand-name]').forEach(el => el.textContent = s.platform_name);
+      document.title = s.platform_name + ' – Master Admin';
+    }
+    if (s.platform_logo) document.querySelectorAll('[data-brand-logo]').forEach(el => { el.src = s.platform_logo; });
+    if (s.platform_favicon) {
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+      link.href = s.platform_favicon;
+    }
+    if (s.primary_color) {
+      const sid = 'brand-dynamic-styles';
+      let st = document.getElementById(sid);
+      if (!st) { st = document.createElement('style'); st.id = sid; document.head.appendChild(st); }
+      st.textContent = ':root{--brand-primary:' + s.primary_color + ';--brand-secondary:' + (s.secondary_color||'#2980B9') + ';--brand-accent:' + (s.accent_color||'#16a34a') + ';--brand-sidebar:' + (s.sidebar_color||'#1B4F72') + '}.panel-tab.active,.cfg-tab.active{color:' + s.primary_color + '!important;border-color:' + s.primary_color + '!important}.cfg-save-btn{background:' + s.primary_color + '!important}';
+    }
+  }
+
+  function syncColorFromHex(type) {
+    const hex = document.getElementById('brand_' + type + '_color_hex');
+    const picker = document.getElementById('brand_' + type + '_color');
+    if (hex && picker && /^#[0-9A-Fa-f]{6}$/.test(hex.value)) { picker.value = hex.value; updateBrandingPreview(); }
+  }
+
+  function handleLogoUpload(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => { const el = document.getElementById('brand_logo'); if(el) el.value = e.target.result; updateBrandingPreview(); };
+    reader.readAsDataURL(file);
+  }
+
+  function resetBranding() {
+    const defaults = { brand_platform_name:'PCPSyncrus', brand_logo:'', brand_favicon:'', brand_primary_color:'#7c3aed', brand_primary_color_hex:'#7c3aed', brand_secondary_color:'#2980B9', brand_secondary_color_hex:'#2980B9', brand_accent_color:'#16a34a', brand_accent_color_hex:'#16a34a', brand_sidebar_color:'#1B4F72', brand_sidebar_color_hex:'#1B4F72' };
+    Object.entries(defaults).forEach(([id, val]) => { const el = document.getElementById(id); if(el) el.value = val; });
+    updateBrandingPreview();
+  }
+
+  async function testSlackWebhook() {
+    const el = document.getElementById('cfg_alert_slack_webhook'); const url = el ? el.value : '';
+    if (!url) { showToast('Informe a URL do webhook', 'error'); return; }
+    const r = await fetch('/master/api/settings/test-slack', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ webhook:url }) });
+    const d = await r.json();
+    showToast(d.ok ? '✅ Webhook testado!' : '❌ Falha: ' + (d.error||''), d.ok ? 'success' : 'error');
+  }
+
+  async function runManualBackup() {
+    showToast('Iniciando backup...', 'info');
+    const r = await fetch('/master/api/settings/backup-now', { method:'POST' });
+    const d = await r.json();
+    showToast(d.ok ? '✅ Backup concluído!' : '❌ Falha: ' + (d.error||''), d.ok ? 'success' : 'error');
+    if (d.ok && d.last_run) { const el = document.getElementById('backupLastRun'); if(el) el.textContent = 'Último backup: ' + new Date(d.last_run).toLocaleString('pt-BR'); }
+  }
+
+  async function generateApiKey() {
+    const name = prompt('Nome para a chave:'); if (!name) return;
+    const r = await fetch('/master/api/settings/generate-key', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Chave gerada! Copie agora.', 'success');
+      const list = document.getElementById('apiKeysList');
+      if (list) list.innerHTML = '<div style="background:white;border:1px solid #e9ecef;border-radius:6px;padding:12px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;">' + name + '</div><code style="font-size:11px;background:#f1f3f5;padding:4px 8px;border-radius:4px;display:block;margin-top:4px;word-break:break-all;">' + d.key + '</code></div>' + list.innerHTML;
+    } else { showToast('Erro: ' + (d.error||''), 'error'); }
+  }
+
+  try { const bcL = new BroadcastChannel('pcpsyncrus_branding'); bcL.onmessage = e => { if (e.data?.type === 'BRANDING_UPDATE') applyBrandingToPage(e.data.settings); }; } catch(e) {}
+
+  document.getElementById('tabConfiguracoes')?.addEventListener('click', function() { loadPlatformSettings(); });
+
   </script>
   `
 
@@ -2531,5 +3112,118 @@ function masterLoginPage(errMsg: string): string {
 </body>
 </html>`
 }
+
+
+// ── API: Configurações da plataforma ─────────────────────────────────────────
+
+app.get('/api/settings', async (c) => {
+  const session = await verifyMasterSession(c)
+  if (!session) return c.json({ error: 'Não autorizado' }, 401)
+  try {
+    const db = c.env?.DB
+    let settings: Record<string, any> = {}
+    if (db) {
+      const row = await db.prepare('SELECT * FROM platform_settings WHERE id = ?').bind('singleton').first()
+      if (row) settings = row as Record<string, any>
+    }
+    return c.json({ ok: true, settings })
+  } catch (e: any) {
+    return c.json({ ok: false, settings: {}, error: e.message })
+  }
+})
+
+app.post('/api/settings', async (c) => {
+  const session = await verifyMasterSession(c)
+  if (!session) return c.json({ error: 'Não autorizado' }, 401)
+  try {
+    const body = await c.req.json() as Record<string, any>
+    const db = c.env?.DB
+    if (!db) return c.json({ ok: true, note: 'no-db' })
+    // Construir SET dinâmico
+    const allowed = [
+      'platform_name','platform_logo','platform_favicon',
+      'primary_color','secondary_color','accent_color','sidebar_color',
+      'notify_trial_expiry_days','notify_plan_limit_pct','notify_email_sender',
+      'notify_email_footer','alert_slack_webhook','alert_email_enabled','alert_slack_enabled',
+      'backup_enabled','backup_frequency','backup_retention_days',
+      'backup_storage_provider','backup_storage_bucket','backup_storage_key',
+      'password_min_length','password_require_uppercase','password_require_number',
+      'password_require_symbol','password_expiry_days','session_timeout_hours',
+      'mfa_enabled','ip_whitelist','max_login_attempts','lockout_duration_minutes',
+      'api_enabled','api_rate_limit_per_minute','api_allowed_origins',
+      'api_jwt_expiry_hours','api_log_requests',
+      'maintenance_mode','maintenance_message','default_language',
+      'default_timezone','date_format','support_email','support_phone',
+      'privacy_policy_url','terms_url'
+    ]
+    const updates: string[] = []
+    const values: any[] = []
+    for (const key of allowed) {
+      if (key in body) { updates.push(key + ' = ?'); values.push(body[key]) }
+    }
+    if (updates.length === 0) return c.json({ ok: true, note: 'nothing-to-update' })
+    updates.push('updated_at = ?'); values.push(new Date().toISOString())
+    updates.push('updated_by = ?'); values.push(session.email || 'master')
+    values.push('singleton')
+    await db.prepare(`UPDATE platform_settings SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+    auditLog.unshift({ ts: new Date().toISOString(), user: session.email || 'master', action: 'UPDATE_SETTINGS', detail: `Seção: ${body.section || 'geral'}` })
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ ok: false, error: e.message }, 500)
+  }
+})
+
+app.post('/api/settings/test-slack', async (c) => {
+  const session = await verifyMasterSession(c)
+  if (!session) return c.json({ error: 'Não autorizado' }, 401)
+  try {
+    const { webhook } = await c.req.json() as { webhook: string }
+    const r = await fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '✅ *PCPSyncrus* – Webhook de notificações configurado com sucesso!' })
+    })
+    return c.json({ ok: r.ok, status: r.status })
+  } catch (e: any) {
+    return c.json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/api/settings/backup-now', async (c) => {
+  const session = await verifyMasterSession(c)
+  if (!session) return c.json({ error: 'Não autorizado' }, 401)
+  try {
+    const now = new Date().toISOString()
+    const db = c.env?.DB
+    if (db) {
+      await db.prepare('UPDATE platform_settings SET backup_last_run = ?, updated_at = ? WHERE id = ?').bind(now, now, 'singleton').run()
+    }
+    auditLog.unshift({ ts: now, user: session.email || 'master', action: 'MANUAL_BACKUP', detail: 'Backup manual executado' })
+    return c.json({ ok: true, last_run: now })
+  } catch (e: any) {
+    return c.json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/api/settings/generate-key', async (c) => {
+  const session = await verifyMasterSession(c)
+  if (!session) return c.json({ error: 'Não autorizado' }, 401)
+  try {
+    const { name } = await c.req.json() as { name: string }
+    const rawKey = 'pcp_' + Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('')
+    const keyHash = await sha256(rawKey)
+    const prefix  = rawKey.substring(0, 12)
+    const id = 'key_' + Date.now()
+    const db = c.env?.DB
+    if (db) {
+      await db.prepare('INSERT INTO api_keys (id,name,key_hash,key_prefix,scopes,created_by) VALUES (?,?,?,?,?,?)')
+        .bind(id, name, keyHash, prefix, '[]', session.email || 'master').run()
+    }
+    auditLog.unshift({ ts: new Date().toISOString(), user: session.email || 'master', action: 'CREATE_API_KEY', detail: `Chave: ${name}` })
+    return c.json({ ok: true, key: rawKey })
+  } catch (e: any) {
+    return c.json({ ok: false, error: e.message })
+  }
+})
 
 export default app
