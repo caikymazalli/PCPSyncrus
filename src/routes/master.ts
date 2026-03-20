@@ -2983,12 +2983,12 @@ app.get('/', async (c) => {
           if (row.omie_codigo_lancamento) badges.push('<span class="omie-badge" title="Omie: #'+row.omie_codigo_lancamento+'">🔗 Omie</span>');
           if (row.omie_boleto_url) badges.push('<a class="omie-badge omie-boleto" href="'+row.omie_boleto_url+'" target="_blank" title="Abrir Boleto">📄 Boleto</a>');
           if (row.omie_nfse_numero) badges.push('<span class="omie-badge omie-nfse" title="NFS-e nº'+row.omie_nfse_numero+'">🧾 NFS-e</span>');
-          if (!row.omie_codigo_lancamento) badges.push('<button onclick="pushParaOmie(\''+esc(row.id)+'\')" class="abtn" title="Enviar para Omie" style="font-size:10px;padding:2px 5px;">+Omie</button>');
+          if (!row.omie_codigo_lancamento) badges.push('<button onclick="pushParaOmie(&apos;' + esc(row.id) + '&apos;)" class="abtn" title="Enviar para Omie" style="font-size:10px;padding:2px 5px;">+Omie</button>');
           return badges.join(' ') || '<span style="color:#d1d5db;font-size:11px;">—</span>';
         })() + '</td>' +
         '<td class="fin-td">' +
-          '<button onclick="openFinDetalhe('' + esc(row.id) + '')" class="abtn" title="Detalhes"><i class="fas fa-eye"></i></button>' +
-          '<button onclick="openEditLancamento('' + esc(row.id) + '')" class="abtn" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
+          '<button onclick="openFinDetalhe(&apos;' + esc(row.id) + '&apos;)" class="abtn" title="Detalhes"><i class="fas fa-eye"></i></button>' +
+          '<button onclick="openEditLancamento(&apos;' + esc(row.id) + '&apos;)" class="abtn" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
         '</td></tr>';
     }).join('');
   }
