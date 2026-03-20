@@ -166,7 +166,38 @@ app.get('/', (c) => { try {
 
   const pendingApproval = quotations.filter((q: any) => q.status === 'pending_approval')
   const importsData = imports || []
-  const totalImportBRL = importsData.reduce((acc: number, imp: any) => acc + (imp.numerario?.totalLandedCostBRL || 0), 0)
+  // totalImportBRL: calcula on-the-fly igual ao card template (numerario pode não estar persistido)
+  const totalImportBRL = importsData.reduce((acc: number, imp: any) => {
+    const num = imp.numerario || {}
+    const taxes = imp.taxes || {}
+    // Valor invoice em BRL
+    const _exchR = imp.exchangeRate || 5.52
+    const _invBRL = imp.invoiceValueBRL > 0
+      ? imp.invoiceValueBRL
+      : (imp.invoiceValueUSD || 0) * _exchR
+    // Componentes numerário
+    const _nFr = num.frete   || 0
+    const _nSg = num.seguro  || 0
+    const _nDp = num.desp    || 0
+    const _nPt = num.porto   || 0
+    const _nAr = num.arm     || 0
+    // Impostos
+    const ii      = taxes.ii      || 0
+    const ipi     = taxes.ipi     || 0
+    const pis     = taxes.pis     || 0
+    const cofins  = taxes.cofins  || 0
+    const icms    = taxes.icms    || 0
+    const afrmm   = taxes.afrmm   || 0
+    const siscomex= taxes.siscomex|| 0
+    const _taxBRL = num.totalLandedCostBRL > 0
+      ? 0  // usa o total armazenado
+      : _invBRL * (ii + ipi + pis + cofins + icms) / 100 + afrmm + siscomex
+    // Total: prefere valor armazenado, senão calcula
+    const _total = num.totalLandedCostBRL > 0
+      ? num.totalLandedCostBRL
+      : _invBRL + _nFr + _nSg + _nDp + _nPt + _nAr + _taxBRL
+    return acc + _total
+  }, 0)
 
   const quotationsData = (quotations || []).map((q: any) => ({
     id: q.id || '',
