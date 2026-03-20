@@ -4,6 +4,7 @@ import { registeredUsers, DEMO_USERS, loadAllUsersFromDB } from '../userStore'
 import { ALL_MODULES, MODULE_LABELS } from '../modules'
 import { getEmpresaModuleAccess } from '../moduleAccess'
 import type { AccessLevel, ModuleKey } from '../modules'
+import { createOmieClient, OmieClient } from '../lib/omie'
 
 const app = new Hono<{ Bindings: { DB: D1Database } }>()
 
@@ -196,6 +197,9 @@ function masterLayout(title: string, content: string, loggedName: string = ''): 
     .fin-badge-pending   { background:#fef9c3;color:#d97706;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
     .fin-badge-overdue   { background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
     .fin-badge-cancelled { background:#f3f4f6;color:#6c757d;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .omie-badge { display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#fff3e8;color:#c2410c;text-decoration:none; }
+    .omie-badge.omie-boleto { background:#eff6ff;color:#1d4ed8;cursor:pointer; }
+    .omie-badge.omie-nfse { background:#f5f3ff;color:#6d28d9; }
     .fin-badge-refunded  { background:#ede9fe;color:#7c3aed;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
     .fin-badge-failed    { background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
     .fin-bar { border-radius:4px 4px 0 0;min-width:28px;position:relative;cursor:pointer;transition:opacity 0.15s; }
@@ -1236,6 +1240,9 @@ app.get('/', async (c) => {
       <button onclick="exportFinCSV()" style="padding:7px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">
         <i class="fas fa-file-csv"></i> CSV
       </button>
+      <button id="btnSyncOmie" onclick="syncOmie()" style="padding:7px 14px;background:#e06619;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;display:none;" title="Sincronizar com Omie ERP">
+        <i class="fas fa-link"></i> Sync Omie
+      </button>
     </div>
 
     <!-- Tabela de faturas -->
@@ -1250,6 +1257,7 @@ app.get('/', async (c) => {
             <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Vencimento</th>
             <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Status</th>
             <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Pago em</th>
+            <th style="padding:10px 12px;text-align:center;color:#374151;font-weight:700;">Omie</th>
             <th style="padding:10px 12px;text-align:center;color:#374151;font-weight:700;">Ações</th>
           </tr>
         </thead>
@@ -1359,6 +1367,7 @@ app.get('/', async (c) => {
       <button class="cfg-tab" data-cfg="backup"><i class="fas fa-database" style="margin-right:5px;"></i>Backup</button>
       <button class="cfg-tab" data-cfg="seguranca"><i class="fas fa-shield-alt" style="margin-right:5px;"></i>Segurança</button>
       <button class="cfg-tab" data-cfg="api"><i class="fas fa-plug" style="margin-right:5px;"></i>API</button>
+      <button class="cfg-tab" data-cfg="omie"><i class="fas fa-link" style="margin-right:5px;"></i>Omie ERP</button>
     </div>
 
     <!-- Conteúdo dinâmico das sub-tabs -->
@@ -1701,6 +1710,73 @@ app.get('/', async (c) => {
         </div>
       </div>
 
+
+      <!-- ── OMIE ERP ────────────────────────────────────────────────────── -->
+      <div id="cfgOmie" class="cfg-section" style="display:none;">
+        <h3 style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-link" style="margin-right:8px;color:#e06619;"></i>Integração Omie ERP</h3>
+        <p style="margin:0 0 20px;font-size:12px;color:#6b7280;">Conecte o Painel Financeiro ao Omie para sincronizar contas a receber, gerar boletos e emitir NFS-e automaticamente.</p>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:14px 18px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:700;color:#c2410c;">
+            <input id="cfg_omie_enabled" type="checkbox" style="width:16px;height:16px;accent-color:#e06619;">
+            Habilitar integração com Omie ERP
+          </label>
+          <span style="font-size:11px;color:#9a3412;margin-left:auto;">Requer App Key e App Secret válidos</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;margin-bottom:20px;">
+          <div>
+            <label class="cfg-label">App Key <span style="color:#dc2626;">*</span></label>
+            <input id="cfg_omie_app_key" class="cfg-input" type="text" placeholder="Ex: 1234567890123">
+          </div>
+          <div>
+            <label class="cfg-label">App Secret <span style="color:#dc2626;">*</span></label>
+            <input id="cfg_omie_app_secret" class="cfg-input" type="password" placeholder="Ex: abcdef1234...">
+          </div>
+          <div>
+            <label class="cfg-label">ID Conta Corrente (nCodCC)</label>
+            <input id="cfg_omie_conta_corrente" class="cfg-input" type="text" placeholder="Ex: 4243124">
+            <div style="font-size:11px;color:#6b7280;margin-top:3px;">Código interno da conta corrente no Omie</div>
+          </div>
+          <div>
+            <label class="cfg-label">Código Categoria Padrão</label>
+            <input id="cfg_omie_codigo_categoria" class="cfg-input" type="text" placeholder="Ex: 1.01.02" value="1.01.02">
+            <div style="font-size:11px;color:#6b7280;margin-top:3px;">Categoria usada nos títulos a receber</div>
+          </div>
+          <div>
+            <label class="cfg-label">Código do Serviço (NFS-e)</label>
+            <input id="cfg_omie_codigo_servico" class="cfg-input" type="text" placeholder="Ex: 7003">
+            <div style="font-size:11px;color:#6b7280;margin-top:3px;">Código do serviço para emissão de NFS-e</div>
+          </div>
+          <div>
+            <label class="cfg-label">Sincronização Automática</label>
+            <select id="cfg_omie_sync_auto" class="cfg-input">
+              <option value="0">Desativada (manual)</option>
+              <option value="1">Ativada (a cada sync do financeiro)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px;">
+          <button onclick="testarConexaoOmie()" style="padding:9px 18px;background:#e06619;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
+            <i class="fas fa-plug" style="margin-right:6px;"></i>Testar Conexão Omie
+          </button>
+          <span id="omieTestResult" style="font-size:13px;display:none;"></span>
+        </div>
+        <div id="omieLastSyncInfo" style="display:none;padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:20px;font-size:12px;color:#166534;">
+          <i class="fas fa-check-circle" style="margin-right:6px;"></i>
+          <span id="omieLastSyncText">Última sincronização: —</span>
+        </div>
+        <div style="padding:14px 18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;max-width:800px;margin-bottom:20px;">
+          <div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:8px;"><i class="fas fa-info-circle" style="margin-right:5px;"></i>Como obter as credenciais Omie:</div>
+          <ol style="margin:0;padding-left:18px;font-size:12px;color:#374151;line-height:1.7;">
+            <li>Acesse <strong>app.omie.com.br</strong> &rarr; Menu &rarr; Configurações &rarr; API</li>
+            <li>Crie ou copie seu <strong>App Key</strong> e <strong>App Secret</strong></li>
+            <li>Para o ID da Conta Corrente: Financeiro &rarr; Contas Correntes &rarr; copie o código</li>
+            <li>Para o código do serviço: Serviços &rarr; Cadastro de Serviços &rarr; copie o código</li>
+          </ol>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+          <button onclick="saveCfgSection('omie')" class="cfg-save-btn"><i class="fas fa-save" style="margin-right:6px;"></i>Salvar Configurações Omie</button>
+        </div>
+      </div>
     </div><!-- /cfgContent -->
   </div><!-- /panelConfiguracoes -->
 
@@ -2902,6 +2978,14 @@ app.get('/', async (c) => {
         '<td class="fin-td" style="' + overdueSt + '">' + FMT_DATE(row.due_date) + '</td>' +
         '<td class="fin-td" style="color:#16a34a;">' + FMT_DATE(row.paid_at) + '</td>' +
         '<td class="fin-td">' + statusBadge + '</td>' +
+        '<td class="fin-td" style="text-align:center;">' + (() => {
+          const badges = [];
+          if (row.omie_codigo_lancamento) badges.push('<span class="omie-badge" title="Omie: #'+row.omie_codigo_lancamento+'">🔗 Omie</span>');
+          if (row.omie_boleto_url) badges.push('<a class="omie-badge omie-boleto" href="'+row.omie_boleto_url+'" target="_blank" title="Abrir Boleto">📄 Boleto</a>');
+          if (row.omie_nfse_numero) badges.push('<span class="omie-badge omie-nfse" title="NFS-e nº'+row.omie_nfse_numero+'">🧾 NFS-e</span>');
+          if (!row.omie_codigo_lancamento) badges.push('<button onclick="pushParaOmie(\''+esc(row.id)+'\')" class="abtn" title="Enviar para Omie" style="font-size:10px;padding:2px 5px;">+Omie</button>');
+          return badges.join(' ') || '<span style="color:#d1d5db;font-size:11px;">—</span>';
+        })() + '</td>' +
         '<td class="fin-td">' +
           '<button onclick="openFinDetalhe('' + esc(row.id) + '')" class="abtn" title="Detalhes"><i class="fas fa-eye"></i></button>' +
           '<button onclick="openEditLancamento('' + esc(row.id) + '')" class="abtn" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
@@ -3019,6 +3103,17 @@ app.get('/', async (c) => {
         if (s.api_jwt_expiry_hours)    { const el = document.getElementById('cfg_api_jwt_expiry'); if(el) el.value = s.api_jwt_expiry_hours; }
         if (s.api_allowed_origins)     { const el = document.getElementById('cfg_api_allowed_origins'); if(el) el.value = s.api_allowed_origins; }
         const alr = document.getElementById('cfg_api_log_requests'); if(alr) alr.checked = s.api_log_requests !== 0;
+    // Omie ERP
+    const oe = document.getElementById('cfg_omie_enabled'); if(oe) oe.checked = !!(s.omie_enabled);
+    const oak = document.getElementById('cfg_omie_app_key'); if(oak) oak.value = s.omie_app_key || '';
+    const oas = document.getElementById('cfg_omie_app_secret'); if(oas) oas.value = s.omie_app_secret || '';
+    const occ = document.getElementById('cfg_omie_conta_corrente'); if(occ) occ.value = s.omie_conta_corrente || '';
+    const ocat = document.getElementById('cfg_omie_codigo_categoria'); if(ocat) ocat.value = s.omie_codigo_categoria || '1.01.02';
+    const osrv = document.getElementById('cfg_omie_codigo_servico'); if(osrv) osrv.value = s.omie_codigo_servico || '';
+    const osync = document.getElementById('cfg_omie_sync_auto'); if(osync) osync.value = s.omie_sync_auto ? '1' : '0';
+    if(typeof initOmieUI === 'function') initOmieUI(s.omie_enabled);
+    if(s.omie_last_sync) { const ls = document.getElementById('omieLastSyncInfo'); const lt = document.getElementById('omieLastSyncText');
+      if(ls) ls.style.display='block'; if(lt) lt.textContent = 'Última sincronização: ' + new Date(s.omie_last_sync).toLocaleString('pt-BR'); }
         applyBrandingToPage(s);
       })
       .catch(e => console.warn('Configurações não carregadas:', e));
@@ -3071,6 +3166,15 @@ app.get('/', async (c) => {
       payload.api_rate_limit_per_minute = parseInt(payload.cfg_api_rate_limit)||60;
       payload.api_jwt_expiry_hours = parseInt(payload.cfg_api_jwt_expiry)||24;
       payload.api_allowed_origins = payload.cfg_api_allowed_origins;
+    }
+    if (section === 'omie') {
+      const oe  = document.getElementById('cfg_omie_enabled');          payload.omie_enabled          = oe && oe.checked ? 1 : 0;
+      const oak = document.getElementById('cfg_omie_app_key');          if(oak) payload.omie_app_key          = oak.value;
+      const oas = document.getElementById('cfg_omie_app_secret');       if(oas) payload.omie_app_secret       = oas.value;
+      const occ = document.getElementById('cfg_omie_conta_corrente');   if(occ) payload.omie_conta_corrente   = occ.value;
+      const ocat= document.getElementById('cfg_omie_codigo_categoria'); if(ocat) payload.omie_codigo_categoria = ocat.value || '1.01.02';
+      const osrv= document.getElementById('cfg_omie_codigo_servico');   if(osrv) payload.omie_codigo_servico   = osrv.value;
+      const osy = document.getElementById('cfg_omie_sync_auto');        payload.omie_sync_auto         = osy && osy.value === '1' ? 1 : 0;
     }
     try {
       const r = await fetch('/master/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
@@ -3158,6 +3262,103 @@ app.get('/', async (c) => {
   }
 
   try { const bcL = new BroadcastChannel('pcpsyncrus_branding'); bcL.onmessage = e => { if (e.data?.type === 'BRANDING_UPDATE') applyBrandingToPage(e.data.settings); }; } catch(e) {}
+
+
+  // ── Omie ERP: funções client-side ──────────────────────────────────────────
+  let _omieEnabled = false;
+
+  function initOmieUI(enabled) {
+    _omieEnabled = !!enabled;
+    const btn = document.getElementById('btnSyncOmie');
+    if (btn) btn.style.display = enabled ? '' : 'none';
+  }
+
+  async function testarConexaoOmie() {
+    const key = document.getElementById('cfg_omie_app_key')?.value?.trim();
+    const sec = document.getElementById('cfg_omie_app_secret')?.value?.trim();
+    const res = document.getElementById('omieTestResult');
+    if (!key || !sec) { showToast('Preencha App Key e App Secret antes de testar.', 'error'); return; }
+    if (res) { res.style.display='inline'; res.style.color='#6b7280'; res.textContent = '⏳ Testando...'; }
+    try {
+      const r = await fetch('/master/api/omie/test-connection', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_key: key, app_secret: sec })
+      });
+      const j = await r.json();
+      if (j.ok) {
+        if (res) { res.style.color='#16a34a'; res.textContent = '✅ Conexão OK! Empresa: ' + (j.empresa || '—'); }
+        showToast('Conexão com Omie estabelecida!', 'success');
+      } else {
+        if (res) { res.style.color='#dc2626'; res.textContent = '❌ Erro: ' + (j.error || 'Falha'); }
+        showToast('Falha Omie: ' + (j.error || ''), 'error');
+      }
+    } catch(e) {
+      if (res) { res.style.color='#dc2626'; res.textContent = '❌ Erro de rede'; }
+      showToast('Erro de rede ao testar Omie', 'error');
+    }
+  }
+
+  async function syncOmie() {
+    const btn = document.getElementById('btnSyncOmie');
+    if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Sincronizando...'; }
+    showToast('Iniciando sincronização com Omie...', 'info');
+    try {
+      const r = await fetch('/master/api/omie/sync', { method: 'POST' });
+      const j = await r.json();
+      if (j.ok) {
+        showToast('Omie sincronizado! ' + (j.synced||0) + ' registros atualizados.', 'success');
+        loadFinanceiro();
+      } else {
+        showToast('Erro ao sincronizar Omie: ' + (j.error||''), 'error');
+      }
+    } catch(e) { showToast('Erro de rede ao sincronizar com Omie', 'error'); }
+    finally { if (btn) { btn.disabled=false; btn.innerHTML='<i class="fas fa-link"></i> Sync Omie'; } }
+  }
+
+  async function pushParaOmie(invoiceId) {
+    if (!confirm('Enviar este lançamento para o Omie ERP?')) return;
+    showToast('Enviando para Omie...', 'info');
+    try {
+      const r = await fetch('/master/api/omie/push/' + invoiceId, { method: 'POST' });
+      const j = await r.json();
+      if (j.ok) { showToast('Lançamento enviado ao Omie! Código: ' + (j.omie_codigo||''), 'success'); loadFinanceiro(); }
+      else showToast('Erro ao enviar para Omie: ' + (j.error||''), 'error');
+    } catch(e) { showToast('Erro de rede ao enviar para Omie', 'error'); }
+  }
+
+  async function gerarBoletoOmie(invoiceId, omieCodigoLancamento) {
+    if (!confirm('Gerar boleto para este lançamento no Omie?\n\nAtenção: boletos gerados podem gerar tarifas bancárias.')) return;
+    showToast('Gerando boleto no Omie...', 'info');
+    try {
+      const r = await fetch('/master/api/omie/boleto/' + invoiceId, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ omie_codigo_lancamento: omieCodigoLancamento })
+      });
+      const j = await r.json();
+      if (j.ok) {
+        showToast('Boleto gerado com sucesso!', 'success');
+        if (j.boleto_url) window.open(j.boleto_url, '_blank');
+        loadFinanceiro();
+      } else showToast('Erro ao gerar boleto: ' + (j.error||''), 'error');
+    } catch(e) { showToast('Erro de rede ao gerar boleto', 'error'); }
+  }
+
+  async function emitirNFSeOmie(invoiceId, omieCodigoLancamento) {
+    if (!confirm('Buscar/vincular NFS-e do Omie para este lançamento?')) return;
+    showToast('Buscando NFS-e no Omie...', 'info');
+    try {
+      const r = await fetch('/master/api/omie/nfse/' + invoiceId, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ omie_codigo_lancamento: omieCodigoLancamento })
+      });
+      const j = await r.json();
+      if (j.ok) {
+        showToast('NFS-e nº ' + (j.nfse_numero||'—') + ' vinculada!', 'success');
+        if (j.nfse_pdf) window.open(j.nfse_pdf, '_blank');
+        loadFinanceiro();
+      } else showToast('Erro NFS-e: ' + (j.error||''), 'error');
+    } catch(e) { showToast('Erro de rede ao buscar NFS-e', 'error'); }
+  }
 
   // loadPlatformSettings() é chamado via switchPanelTab quando tab === 'configuracoes'
 
@@ -3717,6 +3918,8 @@ app.post('/api/settings', async (c) => {
       'mfa_enabled','ip_whitelist','max_login_attempts','lockout_duration_minutes',
       'api_enabled','api_rate_limit_per_minute','api_allowed_origins',
       'api_jwt_expiry_hours','api_log_requests',
+      'omie_app_key', 'omie_app_secret', 'omie_conta_corrente',
+      'omie_codigo_categoria', 'omie_codigo_servico', 'omie_enabled', 'omie_sync_auto',
       'maintenance_mode','maintenance_message','default_language',
       'default_timezone','date_format','support_email','support_phone',
       'privacy_policy_url','terms_url'
@@ -3996,6 +4199,283 @@ app.post('/api/financeiro/lancamento', async (c) => {
       auditLog.unshift({ ts: now, user: auth.email||'master', action: 'FIN_CREATE', detail: `Invoice ${newId} criada para ${body.empresa_name||body.user_id}` })
     }
     return c.json({ ok: true })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── OMIE ERP: Rotas de Integração ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function omieAuthCheck(c: any): Promise<{ ok: boolean; auth?: any }> {
+  const { getCookie: getC } = await import('hono/cookie')
+  const token = getC(c, MASTER_SESSION_KEY)
+  if (!token) return { ok: false }
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return { ok: false }
+    const payload = JSON.parse(atob(parts[1]))
+    if (payload.exp < Date.now() / 1000) return { ok: false }
+    return { ok: true, auth: payload }
+  } catch { return { ok: false } }
+}
+
+// POST /api/omie/test-connection
+app.post('/api/omie/test-connection', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  try {
+    const body = await c.req.json() as any
+    if (!body.app_key || !body.app_secret) return c.json({ ok: false, error: 'app_key e app_secret obrigatórios' })
+    const { OmieClient: OC } = await import('../lib/omie')
+    const client = new OC({ app_key: body.app_key, app_secret: body.app_secret })
+    const r = await client.call('geral/empresas', 'ListarEmpresas', { pagina: 1, registros_por_pagina: 1 })
+    if (!r.ok) return c.json({ ok: false, error: r.error || 'Credenciais inválidas' })
+    const emp = r.data?.empresas_cadastro?.[0]?.razao_social || 'OK'
+    return c.json({ ok: true, empresa: emp })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// POST /api/omie/sync — Pull Omie → Painel Financeiro
+app.post('/api/omie/sync', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB
+  if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  try {
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada ou desabilitada. Configure em Configurações > Omie ERP.' })
+    const result = await omie.pullContasReceber(3)
+    if (!result.ok) return c.json({ ok: false, error: result.error })
+    const now = new Date().toISOString()
+    let synced = 0, errors = 0
+    const details: string[] = []
+    for (const reg of result.registros) {
+      if (!reg.omie_codigo_integracao && !reg.omie_codigo_lancamento) continue
+      try {
+        const existing = await db.prepare(
+          'SELECT id FROM invoices WHERE omie_codigo_integracao=? OR omie_codigo_lancamento=?'
+        ).bind(reg.omie_codigo_integracao, reg.omie_codigo_lancamento).first<any>()
+        if (existing) {
+          await db.prepare(
+            'UPDATE invoices SET status=?,paid_at=?,omie_synced_at=?,omie_codigo_lancamento=?,omie_sync_error=NULL WHERE id=?'
+          ).bind(reg.status, reg.pago_em||null, now, reg.omie_codigo_lancamento, existing.id).run()
+        } else {
+          const newId = reg.omie_codigo_integracao || ('omie_' + reg.omie_codigo_lancamento)
+          await db.prepare(
+            'INSERT OR IGNORE INTO invoices (id,omie_codigo_lancamento,omie_codigo_integracao,amount,due_date,status,paid_at,omie_synced_at,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
+          ).bind(newId, reg.omie_codigo_lancamento, reg.omie_codigo_integracao, reg.valor, reg.vencimento, reg.status, reg.pago_em||null, now, reg.observacao, now).run()
+        }
+        synced++
+      } catch (e: any) { errors++; details.push('Erro ' + reg.omie_codigo_lancamento + ': ' + e.message) }
+    }
+    await db.prepare('UPDATE platform_settings SET omie_last_sync=? WHERE id=?').bind(now, 'singleton').run()
+    auditLog.unshift({ ts: now, user: auth.auth?.email||'master', action: 'OMIE_SYNC', detail: 'Pull Omie: ' + synced + ' registros, ' + errors + ' erros' })
+    return c.json({ ok: true, synced, errors, details })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// POST /api/omie/push/:id — Push lançamento local → Omie
+app.post('/api/omie/push/:id', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB
+  if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  const id = c.req.param('id')
+  try {
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada' })
+    const inv = await db.prepare('SELECT * FROM invoices WHERE id=?').bind(id).first<any>()
+    if (!inv) return c.json({ ok: false, error: 'Lançamento não encontrado' })
+    let omieClientCod: number | undefined
+    const omieCliente = await db.prepare('SELECT omie_codigo_cliente FROM omie_clientes WHERE user_id=?').bind(inv.user_id||id).first<any>()
+    if (omieCliente) {
+      omieClientCod = omieCliente.omie_codigo_cliente
+    } else {
+      const clientResult = await omie.upsertCliente({
+        codigo_cliente_integracao: 'syncrus_' + (inv.user_id||id),
+        razao_social: inv.empresa_name || inv.user_email || 'Cliente PCPSyncrus',
+        email: inv.user_email || '',
+      })
+      if (!clientResult.ok) return c.json({ ok: false, error: 'Erro ao criar cliente Omie: ' + clientResult.error })
+      omieClientCod = clientResult.codigo
+      await db.prepare(
+        'INSERT OR REPLACE INTO omie_clientes (user_id,empresa_name,user_email,omie_codigo_cliente,omie_codigo_integracao,updated_at) VALUES (?,?,?,?,?,?)'
+      ).bind(inv.user_id||id, inv.empresa_name||'', inv.user_email||'', omieClientCod, 'syncrus_'+(inv.user_id||id), new Date().toISOString()).run()
+    }
+    const pushResult = await omie.incluirContaReceber({
+      id_integracao: inv.id,
+      codigo_cliente: omieClientCod!,
+      valor: Number(inv.amount),
+      vencimento: inv.due_date,
+      numero_documento: inv.id,
+      observacao: inv.notes || ('PCPSyncrus - Plano ' + (inv.plan||'') + ' - ' + (inv.empresa_name||'')),
+    })
+    if (!pushResult.ok) return c.json({ ok: false, error: 'Erro Omie: ' + pushResult.error })
+    const now = new Date().toISOString()
+    await db.prepare(
+      'UPDATE invoices SET omie_codigo_lancamento=?,omie_codigo_integracao=?,omie_synced_at=?,omie_sync_error=NULL WHERE id=?'
+    ).bind(pushResult.codigo_lancamento, inv.id, now, id).run()
+    auditLog.unshift({ ts: now, user: auth.auth?.email||'master', action: 'OMIE_PUSH', detail: 'Invoice ' + id + ' enviada ao Omie código ' + pushResult.codigo_lancamento })
+    return c.json({ ok: true, omie_codigo: pushResult.codigo_lancamento })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// POST /api/omie/boleto/:id — Gerar boleto via Omie
+app.post('/api/omie/boleto/:id', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB; if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  const id = c.req.param('id')
+  try {
+    const body = await c.req.json() as any
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada' })
+    const inv = await db.prepare('SELECT * FROM invoices WHERE id=?').bind(id).first<any>()
+    if (!inv) return c.json({ ok: false, error: 'Lançamento não encontrado' })
+    const omieId = body.omie_codigo_lancamento || inv.omie_codigo_lancamento
+    if (!omieId) return c.json({ ok: false, error: 'Lançamento não vinculado ao Omie. Faça o push primeiro.' })
+    const boletoResult = await omie.gerarBoleto({ nCodTitulo: Number(omieId), cCodIntTitulo: inv.id })
+    if (!boletoResult.ok) return c.json({ ok: false, error: 'Erro Omie: ' + boletoResult.error })
+    const now = new Date().toISOString()
+    await db.prepare(
+      'UPDATE invoices SET omie_boleto_url=?,omie_boleto_linha_digitavel=?,omie_boleto_codigo_barras=?,omie_synced_at=? WHERE id=?'
+    ).bind(boletoResult.data?.cLinkBoleto||'', boletoResult.data?.cLinhaDigitavel||'', boletoResult.data?.cCodigoBarras||'', now, id).run()
+    auditLog.unshift({ ts: now, user: auth.auth?.email||'master', action: 'OMIE_BOLETO', detail: 'Boleto gerado via Omie para invoice ' + id })
+    return c.json({ ok: true, boleto_url: boletoResult.data?.cLinkBoleto||'', linha_digitavel: boletoResult.data?.cLinhaDigitavel||'' })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// GET /api/omie/boleto/:id — Obter URL boleto existente
+app.get('/api/omie/boleto/:id', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB; if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  const id = c.req.param('id')
+  try {
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada' })
+    const inv = await db.prepare('SELECT * FROM invoices WHERE id=?').bind(id).first<any>()
+    if (!inv) return c.json({ ok: false, error: 'Lançamento não encontrado' })
+    if (!inv.omie_codigo_lancamento) return c.json({ ok: false, error: 'Lançamento não vinculado ao Omie' })
+    const r = await omie.obterBoleto({ nCodTitulo: Number(inv.omie_codigo_lancamento), cCodIntTitulo: inv.id })
+    if (!r.ok) return c.json({ ok: false, error: r.error })
+    if (r.data?.cLinkBoleto && r.data.cLinkBoleto !== inv.omie_boleto_url) {
+      await db.prepare('UPDATE invoices SET omie_boleto_url=? WHERE id=?').bind(r.data.cLinkBoleto, id).run()
+    }
+    return c.json({ ok: true, boleto_url: r.data?.cLinkBoleto||'', linha_digitavel: r.data?.cLinhaDigitavel||'' })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// DELETE /api/omie/boleto/:id — Cancelar boleto
+app.delete('/api/omie/boleto/:id', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB; if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  const id = c.req.param('id')
+  try {
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada' })
+    const inv = await db.prepare('SELECT * FROM invoices WHERE id=?').bind(id).first<any>()
+    if (!inv?.omie_codigo_lancamento) return c.json({ ok: false, error: 'Lançamento não vinculado ao Omie' })
+    const r = await omie.cancelarBoleto({ nCodTitulo: Number(inv.omie_codigo_lancamento), cCodIntTitulo: inv.id })
+    if (!r.ok) return c.json({ ok: false, error: r.error })
+    const now = new Date().toISOString()
+    await db.prepare('UPDATE invoices SET omie_boleto_url=NULL,omie_boleto_linha_digitavel=NULL,omie_boleto_codigo_barras=NULL,omie_synced_at=? WHERE id=?').bind(now, id).run()
+    auditLog.unshift({ ts: now, user: auth.auth?.email||'master', action: 'OMIE_BOLETO_CANCEL', detail: 'Boleto cancelado via Omie para invoice ' + id })
+    return c.json({ ok: true })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// POST /api/omie/nfse/:id — Vincular/buscar NFS-e do Omie
+app.post('/api/omie/nfse/:id', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB; if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  const id = c.req.param('id')
+  try {
+    const body = await c.req.json() as any
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada' })
+    const inv = await db.prepare('SELECT * FROM invoices WHERE id=?').bind(id).first<any>()
+    if (!inv) return c.json({ ok: false, error: 'Lançamento não encontrado' })
+    const omieId = body.omie_codigo_lancamento || inv.omie_codigo_lancamento
+    if (!omieId) return c.json({ ok: false, error: 'Lançamento não vinculado ao Omie. Faça o push primeiro.' })
+    const hoje = new Date().toISOString().slice(0,10)
+    const tresM = new Date(); tresM.setMonth(tresM.getMonth()-3)
+    const nfseList = await omie.listarNFSes({ pagina:1, registros_por_pagina:10, data_inicial: tresM.toISOString().slice(0,10), data_final: hoje })
+    if (!nfseList.ok) return c.json({ ok: false, error: 'Erro ao buscar NFS-e: ' + nfseList.error })
+    const nfse = nfseList.data?.[0]
+    if (nfse?.nCodNF) {
+      const docResult = await omie.obterNFSe(nfse.nCodNF)
+      const now = new Date().toISOString()
+      await db.prepare(
+        'UPDATE invoices SET omie_nfse_id=?,omie_nfse_numero=?,omie_nfse_pdf=?,omie_nfse_xml=?,omie_synced_at=? WHERE id=?'
+      ).bind(nfse.nCodNF, nfse.nNumeroNFSe||'', docResult.data?.cPdfNFSe||'', docResult.data?.cXmlNFSe||'', now, id).run()
+      auditLog.unshift({ ts: now, user: auth.auth?.email||'master', action: 'OMIE_NFSE', detail: 'NFS-e ' + (nfse.nNumeroNFSe||nfse.nCodNF) + ' vinculada à invoice ' + id })
+      return c.json({ ok: true, nfse_numero: nfse.nNumeroNFSe, nfse_pdf: docResult.data?.cPdfNFSe||'' })
+    }
+    return c.json({ ok: false, error: 'Nenhuma NFS-e encontrada no Omie. Emita a NFS-e no Omie e depois clique em sincronizar.' })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// GET /api/omie/nfse/:id — Obter PDF/XML da NFS-e
+app.get('/api/omie/nfse/:id', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB; if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  const id = c.req.param('id')
+  try {
+    const inv = await db.prepare('SELECT omie_nfse_id,omie_nfse_numero,omie_nfse_pdf,omie_nfse_xml FROM invoices WHERE id=?').bind(id).first<any>()
+    if (!inv) return c.json({ ok: false, error: 'Lançamento não encontrado' })
+    if (!inv.omie_nfse_id) return c.json({ ok: false, error: 'NFS-e não vinculada a este lançamento' })
+    if (!inv.omie_nfse_pdf) {
+      const { createOmieClient: createOC } = await import('../lib/omie')
+      const omie = await createOC(db)
+      if (omie) {
+        const r = await omie.obterNFSe(Number(inv.omie_nfse_id))
+        if (r.ok && r.data?.cPdfNFSe) {
+          await db.prepare('UPDATE invoices SET omie_nfse_pdf=?,omie_nfse_xml=? WHERE id=?').bind(r.data.cPdfNFSe, r.data.cXmlNFSe||'', id).run()
+          return c.json({ ok: true, nfse_numero: inv.omie_nfse_numero, nfse_pdf: r.data.cPdfNFSe, nfse_xml: r.data.cXmlNFSe||'' })
+        }
+      }
+    }
+    return c.json({ ok: true, nfse_numero: inv.omie_nfse_numero, nfse_pdf: inv.omie_nfse_pdf||'', nfse_xml: inv.omie_nfse_xml||'' })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+// POST /api/omie/sync-contratos — Sync contratos recorrentes Omie
+app.post('/api/omie/sync-contratos', async (c) => {
+  const auth = await omieAuthCheck(c)
+  if (!auth.ok) return c.json({ ok: false, error: 'Não autenticado' }, 401)
+  const db = c.env?.DB; if (!db) return c.json({ ok: false, error: 'DB indisponível' })
+  try {
+    const { createOmieClient: createOC } = await import('../lib/omie')
+    const omie = await createOC(db)
+    if (!omie) return c.json({ ok: false, error: 'Integração Omie não configurada' })
+    const result = await omie.listarContratos({ registros_por_pagina: 100 })
+    if (!result.ok) return c.json({ ok: false, error: result.error })
+    const now = new Date().toISOString()
+    let synced = 0
+    for (const contrato of result.data || []) {
+      if (!contrato.cCodIntCtr) continue
+      const existing = await db.prepare('SELECT id FROM invoices WHERE omie_codigo_integracao=?').bind(contrato.cCodIntCtr).first<any>()
+      if (!existing) {
+        const newId = 'contrato_' + contrato.nCodCtr
+        await db.prepare(
+          'INSERT OR IGNORE INTO invoices (id,type,amount,status,omie_codigo_lancamento,omie_codigo_integracao,omie_synced_at,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?)'
+        ).bind(newId, 'recorrente', contrato.nValContrato||0, 'pending', contrato.nCodCtr||0, contrato.cCodIntCtr, now, 'Contrato Omie ' + (contrato.cNumCtr||contrato.nCodCtr), now).run()
+        synced++
+      }
+    }
+    auditLog.unshift({ ts: now, user: auth.auth?.email||'master', action: 'OMIE_SYNC_CONTRATOS', detail: 'Contratos recorrentes: ' + synced + ' novos de ' + (result.total||0) })
+    return c.json({ ok: true, synced, total: result.total||0 })
   } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
 })
 
