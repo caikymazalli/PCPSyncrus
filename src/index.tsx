@@ -23,7 +23,7 @@ import authApp from './routes/auth'
 import testApp from './routes/test'
 import suporteApp from './routes/suporte'
 import { newUserDashboard } from './newuser'
-import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getEffectiveTenantId, resetTenantHydrationCache } from './userStore'
+import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getTenantData, getEffectiveTenantId, resetTenantHydrationCache } from './userStore'
 
 type Bindings = {
   DB: D1Database
@@ -221,6 +221,37 @@ app.get('/novo', async (c) => {
 
 // ── /usar-demo ─────────────────────────────────────────────────────────────────
 app.get('/usar-demo', (c) => c.redirect('/'))
+
+
+// ── Debug: retorna estado do tenant (apenas sessões autenticadas) ──────────────
+app.get('/api/debug/tenant', async (c) => {
+  const token = getCookie(c, SESSION_COOKIE)
+  if (!token) return c.json({ error: 'Não autenticado' }, 401)
+  let session = getSession(token)
+  if (!session && c.env?.DB) session = await getSessionAsync(token, c.env.DB)
+  if (!session) return c.json({ error: 'Sessão inválida' }, 401)
+  // getTenantData and getEffectiveTenantId already imported at top of file
+  const tenantId = getEffectiveTenantId(session)
+  const t = getTenantData(tenantId)
+  return c.json({
+    tenantId,
+    counts: {
+      productionOrders:  (t.productionOrders  || []).length,
+      productionEntries: (t.productionEntries || []).length,
+      machines:          (t.machines          || []).length,
+      plants:            (t.plants            || []).length,
+      workbenches:       (t.workbenches       || []).length,
+      products:          (t.products          || []).length,
+      stockItems:        (t.stockItems        || []).length,
+      nonConformances:   (t.nonConformances   || []).length,
+      workInstructions:  (t.workInstructions  || []).length,
+      quotations:        (t.quotations        || []).length,
+      purchaseOrders:    (t.purchaseOrders    || []).length,
+      imports:           (t.imports           || []).length,
+      suppliers:         (t.suppliers         || []).length,
+    }
+  })
+})
 
 // ── Module routes ──────────────────────────────────────────────────────────────
 app.route('/', dashboardApp)
