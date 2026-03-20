@@ -178,6 +178,29 @@ function masterLayout(title: string, content: string, loggedName: string = ''): 
     .client-row { transition: background 0.1s; }
     .client-row:hover { background: #f8f9fa !important; }
     .master-kpi { background: white; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    /* ── Financeiro ───────────────────────────────────────────────────────── */
+    .fin-kpi { background:white;border-radius:10px;padding:14px 18px;border:1px solid #e9ecef;transition:box-shadow 0.15s; }
+    .fin-kpi:hover { box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .fin-kpi-label { font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;align-items:center;gap:5px; }
+    .fin-kpi-value { font-size:22px;font-weight:800;color:#1B4F72;line-height:1; }
+    .fin-kpi-sub { font-size:10px;color:#9ca3af;margin-top:3px; }
+    .fin-kpi-warn .fin-kpi-value { color:#d97706; }
+    .fin-kpi-danger .fin-kpi-value { color:#dc2626; }
+    .fin-kpi-success .fin-kpi-value { color:#16a34a; }
+    .fin-th { padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:0.3px;cursor:pointer;white-space:nowrap;user-select:none; }
+    .fin-th:hover { color:#374151; }
+    .fin-tr { border-bottom:1px solid #f1f3f5;transition:background 0.1s; }
+    .fin-tr:hover { background:#f8f9fa; }
+    .fin-td { padding:9px 12px;font-size:12px;color:#374151;vertical-align:middle;white-space:nowrap; }
+    .fin-badge-paid      { background:#dcfce7;color:#16a34a;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .fin-badge-pending   { background:#fef9c3;color:#d97706;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .fin-badge-overdue   { background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .fin-badge-cancelled { background:#f3f4f6;color:#6c757d;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .fin-badge-refunded  { background:#ede9fe;color:#7c3aed;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .fin-badge-failed    { background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
+    .fin-bar { border-radius:4px 4px 0 0;min-width:28px;position:relative;cursor:pointer;transition:opacity 0.15s; }
+    .fin-bar:hover { opacity:0.85; }
+    .fin-bar-label { font-size:9px;color:#6c757d;text-align:center;margin-top:4px;white-space:nowrap; }
     /* ── Settings ─────────────────────────────────────────────────────────── */
     .cfg-tab { padding:9px 18px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;color:#6c757d;border-bottom:3px solid transparent;transition:all 0.15s;white-space:nowrap; }
     .cfg-tab.active { color:#7c3aed;border-color:#7c3aed;background:rgba(124,58,237,0.04); }
@@ -982,6 +1005,9 @@ app.get('/', async (c) => {
     <button class="panel-tab" id="tabAuditoria" data-tab="auditoria">
       <i class="fas fa-history" style="margin-right:6px;"></i>Auditoria <span id="badgeAuditoria" style="background:#e9ecef;color:#374151;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;">${auditLog.length}</span>
     </button>
+    <button class="panel-tab" id="tabFinanceiro" data-tab="financeiro">
+      <i class="fas fa-dollar-sign" style="margin-right:6px;"></i>Financeiro
+    </button>
     <button class="panel-tab" id="tabConfiguracoes" data-tab="configuracoes" style="margin-left:auto;">
       <i class="fas fa-cog" style="margin-right:6px;"></i>Configurações
     </button>
@@ -1137,6 +1163,189 @@ app.get('/', async (c) => {
           </tbody>
         </table></div>`
     }
+  </div>
+
+
+  <!-- Painel: Financeiro -->
+  <div id="panelFinanceiro" style="display:none;padding:20px;">
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px;" id="finKpiGrid">
+      <div class="fin-kpi" id="kpiMRR">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">MRR</div>
+        <div style="font-size:22px;font-weight:800;color:#1B4F72;" id="kpiMRRVal">—</div>
+        <div style="font-size:11px;color:#9ca3af;" id="kpiMRRChange"></div>
+      </div>
+      <div class="fin-kpi" id="kpiARR">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">ARR</div>
+        <div style="font-size:22px;font-weight:800;color:#1B4F72;" id="kpiARRVal">—</div>
+      </div>
+      <div class="fin-kpi" id="kpiPending">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">A Receber</div>
+        <div style="font-size:22px;font-weight:800;color:#d97706;" id="kpiPendingVal">—</div>
+        <div style="font-size:11px;color:#9ca3af;" id="kpiPendingCount"></div>
+      </div>
+      <div class="fin-kpi" id="kpiOverdue">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Vencido</div>
+        <div style="font-size:22px;font-weight:800;color:#dc2626;" id="kpiOverdueVal">—</div>
+        <div style="font-size:11px;color:#9ca3af;" id="kpiOverdueCount"></div>
+      </div>
+      <div class="fin-kpi" id="kpiPaidMonth">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Pago (mês)</div>
+        <div style="font-size:22px;font-weight:800;color:#16a34a;" id="kpiPaidMonthVal">—</div>
+      </div>
+      <div class="fin-kpi" id="kpiTrials">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Em Trial</div>
+        <div style="font-size:22px;font-weight:800;color:#7c3aed;" id="kpiTrialsVal">—</div>
+      </div>
+      <div class="fin-kpi" id="kpiChurn">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Cancelados</div>
+        <div style="font-size:22px;font-weight:800;color:#9ca3af;" id="kpiChurnVal">—</div>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+      <select id="finFiltroStatus" onchange="loadFinanceiro()" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;">
+        <option value="">Todos os status</option>
+        <option value="pending">Pendente</option>
+        <option value="paid">Pago</option>
+        <option value="overdue">Vencido</option>
+        <option value="cancelled">Cancelado</option>
+        <option value="trial">Trial</option>
+      </select>
+      <select id="finFiltroPeriodo" onchange="loadFinanceiro()" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;">
+        <option value="all">Todos os períodos</option>
+        <option value="current_month">Mês atual</option>
+        <option value="last_month">Mês anterior</option>
+        <option value="last_3months">Últimos 3 meses</option>
+        <option value="last_6months">Últimos 6 meses</option>
+        <option value="this_year">Este ano</option>
+      </select>
+      <select id="finFiltroPlan" onchange="loadFinanceiro()" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#fff;">
+        <option value="">Todos os planos</option>
+        <option value="starter">Starter</option>
+        <option value="professional">Professional</option>
+        <option value="enterprise">Enterprise</option>
+        <option value="trial">Trial</option>
+      </select>
+      <input id="finSearch" type="text" placeholder="Buscar empresa / e-mail..." oninput="filterFinTable()" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;flex:1;min-width:180px;" />
+      <button onclick="loadFinanceiro()" style="padding:7px 14px;background:#1B4F72;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">
+        <i class="fas fa-sync-alt"></i> Atualizar
+      </button>
+      <button onclick="exportFinCSV()" style="padding:7px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">
+        <i class="fas fa-file-csv"></i> CSV
+      </button>
+    </div>
+
+    <!-- Tabela de faturas -->
+    <div style="overflow-x:auto;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb;">
+            <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Empresa</th>
+            <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Plano</th>
+            <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Ciclo</th>
+            <th style="padding:10px 12px;text-align:right;color:#374151;font-weight:700;">Valor</th>
+            <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Vencimento</th>
+            <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Status</th>
+            <th style="padding:10px 12px;text-align:left;color:#374151;font-weight:700;">Pago em</th>
+            <th style="padding:10px 12px;text-align:center;color:#374151;font-weight:700;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="finTableBody">
+          <tr><td colspan="8" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Paginação -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+      <div style="font-size:12px;color:#9ca3af;" id="finPagInfo"></div>
+      <div style="display:flex;gap:6px;" id="finPagBtns"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Lançamento Manual -->
+  <div id="modalLancamento" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;width:480px;max-width:95vw;padding:28px;box-shadow:0 8px 32px rgba(0,0,0,.18);">
+      <div style="font-size:16px;font-weight:700;color:#1B4F72;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;">
+        <span><i class="fas fa-file-invoice-dollar" style="margin-right:8px;"></i>Novo Lançamento</span>
+        <button onclick="document.getElementById('modalLancamento').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="display:grid;gap:12px;">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Empresa (user_id)</label>
+          <input id="lanEmpresa" type="text" placeholder="user_id do cliente" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Plano</label>
+            <select id="lanPlano" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+              <option value="starter">Starter</option>
+              <option value="professional">Professional</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Valor (R$)</label>
+            <input id="lanValor" type="number" step="0.01" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Vencimento</label>
+            <input id="lanVencimento" type="date" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Status</label>
+            <select id="lanStatus" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+              <option value="pending">Pendente</option>
+              <option value="paid">Pago</option>
+              <option value="overdue">Vencido</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Observação</label>
+          <textarea id="lanObs" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+        <button onclick="document.getElementById('modalLancamento').style.display='none'" style="padding:8px 18px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;">Cancelar</button>
+        <button onclick="salvarLancamento()" style="padding:8px 18px;background:#1B4F72;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Alterar Status -->
+  <div id="modalFinStatus" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;width:380px;max-width:95vw;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.18);">
+      <div style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+        <span><i class="fas fa-edit" style="margin-right:8px;"></i>Alterar Status da Fatura</span>
+        <button onclick="document.getElementById('modalFinStatus').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <input type="hidden" id="finStatusInvoiceId" />
+      <div style="display:grid;gap:12px;">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Novo Status</label>
+          <select id="finStatusNovo" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            <option value="pending">Pendente</option>
+            <option value="paid">Pago</option>
+            <option value="overdue">Vencido</option>
+            <option value="cancelled">Cancelado</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Observação</label>
+          <textarea id="finStatusObs" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
+        <button onclick="document.getElementById('modalFinStatus').style.display='none'" style="padding:8px 18px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;">Cancelar</button>
+        <button onclick="confirmarFinStatus()" style="padding:8px 18px;background:#1B4F72;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Confirmar</button>
+      </div>
+    </div>
   </div>
 
 
@@ -1867,8 +2076,8 @@ app.get('/', async (c) => {
 
   // ── Abas do painel ────────────────────────────────────────────────────────────
   function switchPanelTab(tab) {
-    const panels = { clientes: 'panelClientes', suporte: 'panelSuporte', usuarios: 'panelUsuarios', auditoria: 'panelAuditoria', configuracoes: 'panelConfiguracoes' };
-    const tabs   = { clientes: 'tabClientes',   suporte: 'tabSuporte',   usuarios: 'tabUsuarios',   auditoria: 'tabAuditoria',   configuracoes: 'tabConfiguracoes'   };
+    const panels = { clientes: 'panelClientes', suporte: 'panelSuporte', usuarios: 'panelUsuarios', auditoria: 'panelAuditoria', financeiro: 'panelFinanceiro', configuracoes: 'panelConfiguracoes' };
+    const tabs   = { clientes: 'tabClientes',   suporte: 'tabSuporte',   usuarios: 'tabUsuarios',   auditoria: 'tabAuditoria',   financeiro: 'tabFinanceiro',        configuracoes: 'tabConfiguracoes'   };
 
     Object.keys(panels).forEach(key => {
       const panel = document.getElementById(panels[key]);
@@ -1878,6 +2087,7 @@ app.get('/', async (c) => {
     });
 
     if (tab === 'suporte') loadSupportTickets();
+    if (tab === 'financeiro') loadFinanceiro();
     if (tab === 'configuracoes') loadPlatformSettings();
   }
 
@@ -2582,8 +2792,173 @@ app.get('/', async (c) => {
     finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Criar'; } }
   }
 
-  // ── Configurações: sub-tabs (event delegation para garantir binding) ─────────
-  document.addEventListener('click', function(ev) {
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FINANCEIRO
+  // ══════════════════════════════════════════════════════════════════════════════
+  let _finData = [];          // todos os invoices carregados
+  let _finFiltered = [];      // após filtros
+  let _finPage = 1;
+  const _finPageSize = 20;
+  let _finSortKey = 'due_date';
+  let _finSortDir = -1;       // -1 = desc
+  let _finCurrentId = null;   // id da cobrança em edição
+
+  const FIN_STATUS_LABEL = { pending:'Pendente', paid:'Pago', overdue:'Vencido', cancelled:'Cancelado', refunded:'Reembolsado', failed:'Falhou' };
+  const FIN_TYPE_LABEL   = { monthly:'Mensalidade', setup:'Setup', upgrade:'Upgrade', manual:'Manual', refund:'Reembolso', annual:'Anual' };
+  const PLAN_COLOR       = { starter:'#27AE60', professional:'#2980B9', enterprise:'#7c3aed' };
+  const FMT_BRL = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2,maximumFractionDigits:2});
+  const FMT_DATE = s => s ? new Date(s+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+
+  async function loadFinanceiro() {
+    document.getElementById('finTableBody').innerHTML =
+      '<tr><td colspan="8" style="text-align:center;padding:40px;color:#9ca3af;"><i class="fas fa-spinner fa-spin" style="font-size:18px;display:block;margin-bottom:6px;"></i>Carregando...</td></tr>';
+
+    const status  = document.getElementById('finFiltroStatus')?.value  || '';
+    const periodo = document.getElementById('finFiltroPeriodo')?.value || 'all';
+    const plan    = document.getElementById('finFiltroPlan')?.value    || '';
+    const qs      = new URLSearchParams();
+    if (status)  qs.set('status',  status);
+    if (periodo) qs.set('periodo', periodo);
+    if (plan)    qs.set('plan',    plan);
+
+    try {
+      const r = await fetch('/master/api/financeiro?' + qs.toString());
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      _finData     = data.invoices || [];
+      _finFiltered = [..._finData];
+      _finPage     = 1;
+      renderFinKpis(data.kpis || {});
+      renderFinBarChart(data.monthly || []);
+      renderFinPlanChart(data.planDist || []);
+      renderFinTable();
+    } catch(e) {
+      document.getElementById('finTableBody').innerHTML =
+        '<tr><td colspan="8" style="text-align:center;padding:40px;color:#dc2626;"><i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>Erro ao carregar: ' + e.message + '</td></tr>';
+    }
+  }
+
+  function filterFinTable() {
+    const q = (document.getElementById('finFiltroSearch')?.value || '').toLowerCase();
+    _finFiltered = q
+      ? _finData.filter(r => (r.empresa_name||'').toLowerCase().includes(q) || (r.user_email||'').toLowerCase().includes(q))
+      : [..._finData];
+    _finPage = 1;
+    renderFinTable();
+  }
+
+  function sortFinTable(key) {
+    if (_finSortKey === key) _finSortDir *= -1;
+    else { _finSortKey = key; _finSortDir = -1; }
+    _finFiltered.sort((a,b) => {
+      const va = a[key] || '', vb = b[key] || '';
+      return (va < vb ? -1 : va > vb ? 1 : 0) * _finSortDir;
+    });
+    _finPage = 1;
+    renderFinTable();
+  }
+
+  function finChangePage(delta) {
+    const total = Math.ceil(_finFiltered.length / _finPageSize);
+    _finPage = Math.max(1, Math.min(_finPage + delta, total));
+    renderFinTable();
+  }
+
+  function renderFinTable() {
+    const tbody = document.getElementById('finTableBody');
+    const start = (_finPage - 1) * _finPageSize;
+    const page  = _finFiltered.slice(start, start + _finPageSize);
+
+    if (_finFiltered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#9ca3af;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>Nenhum registro encontrado</td></tr>';
+      document.getElementById('finCount').textContent = '0 registros';
+      document.getElementById('finPageInfo').textContent = '';
+      document.getElementById('finPrevBtn').disabled = true;
+      document.getElementById('finNextBtn').disabled = true;
+      return;
+    }
+
+    const totalPgs = Math.ceil(_finFiltered.length / _finPageSize);
+    document.getElementById('finCount').textContent = _finFiltered.length + ' registros';
+    document.getElementById('finPageInfo').textContent = 'Página ' + _finPage + ' de ' + totalPgs;
+    document.getElementById('finPrevBtn').disabled = _finPage <= 1;
+    document.getElementById('finNextBtn').disabled = _finPage >= totalPgs;
+
+    const planLabel = { starter:'Starter', professional:'Professional', enterprise:'Enterprise' };
+
+    tbody.innerHTML = page.map(row => {
+      const badge = 'fin-badge-' + (row.status||'pending');
+      const pc = PLAN_COLOR[row.plan] || '#6c757d';
+      const isOverdue = row.status === 'pending' && row.due_date && new Date(row.due_date) < new Date();
+      const rowBg = isOverdue ? 'background:#fff5f5;' : '';
+      const overdueSt = isOverdue ? 'color:#dc2626;font-weight:700;' : '';
+      const planBadge = '<span style="background:' + pc + '20;color:' + pc + ';font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;">' + (planLabel[row.plan]||row.plan) + '</span>';
+      const statusBadge = '<span class="' + badge + '">' + (FIN_STATUS_LABEL[row.status]||row.status) + '</span>';
+      return '<tr class="fin-tr" style="' + rowBg + '">' +
+        '<td class="fin-td"><div style="font-weight:600;color:#1B4F72;">' + esc(row.empresa_name||row.user_email||'—') + '</div><div style="font-size:10px;color:#9ca3af;">' + esc(row.user_email||'') + '</div></td>' +
+        '<td class="fin-td">' + planBadge + '</td>' +
+        '<td class="fin-td" style="color:#6c757d;">' + (FIN_TYPE_LABEL[row.type]||row.type) + '</td>' +
+        '<td class="fin-td" style="font-weight:700;color:#374151;">' + FMT_BRL(row.amount) + '</td>' +
+        '<td class="fin-td" style="' + overdueSt + '">' + FMT_DATE(row.due_date) + '</td>' +
+        '<td class="fin-td" style="color:#16a34a;">' + FMT_DATE(row.paid_at) + '</td>' +
+        '<td class="fin-td">' + statusBadge + '</td>' +
+        '<td class="fin-td">' +
+          '<button onclick="openFinDetalhe('' + esc(row.id) + '')" class="abtn" title="Detalhes"><i class="fas fa-eye"></i></button>' +
+          '<button onclick="openEditLancamento('' + esc(row.id) + '')" class="abtn" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
+        '</td></tr>';
+    }).join('');
+  }
+
+  function renderFinKpis(kpis) {
+    document.getElementById('kpiMRRVal').textContent       = FMT_BRL(kpis.mrr);
+    document.getElementById('kpiARRVal').textContent       = FMT_BRL(kpis.arr);
+    document.getElementById('kpiPendenteVal').textContent  = FMT_BRL(kpis.pending);
+    document.getElementById('kpiVencidoVal').textContent   = FMT_BRL(kpis.overdue);
+    document.getElementById('kpiPagoVal').textContent      = FMT_BRL(kpis.paid_month);
+    document.getElementById('kpiAssinantesVal').textContent = (kpis.active||0) + ' / ' + (kpis.trial||0) + ' / ' + (kpis.total||0);
+    document.getElementById('kpiMRRSub').textContent       = (kpis.mrr_change>=0?'+':'')+Number(kpis.mrr_change||0).toFixed(1)+'% vs mês ant.';
+    document.getElementById('kpiPendenteSub').textContent  = (kpis.pending_count||0) + ' cobrança(s)';
+    document.getElementById('kpiVencidoSub').textContent   = (kpis.overdue_count||0) + ' em atraso';
+    document.getElementById('kpiPagoSub').textContent      = (kpis.paid_month_count||0) + ' pago(s) no mês';
+  }
+
+  function renderFinBarChart(monthly) {
+    const el = document.getElementById('finBarChart');
+    if (!el) return;
+    if (!monthly || !monthly.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px;">Sem dados de pagamento</div>'; return; }
+    const max = Math.max(...monthly.map(m => m.total), 1);
+    el.style.cssText = 'display:flex;gap:4px;align-items:flex-end;height:160px;padding:8px;overflow-x:auto;';
+    el.innerHTML = monthly.map(m => {
+      const pct = Math.max(8, Math.round((m.total / max) * 140));
+      const col = m.total > 0 ? '#7c3aed' : '#e9ecef';
+      const val = m.total > 0 ? 'R$ ' + Number(m.total).toLocaleString('pt-BR', {minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+      return '<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:32px;">' +
+        '<div style="font-size:9px;color:#374151;font-weight:700;margin-bottom:2px;">' + val + '</div>' +
+        '<div style="width:100%;background:' + col + ';border-radius:3px 3px 0 0;height:' + pct + 'px;transition:height 0.3s;"></div>' +
+        '<div style="font-size:8px;color:#6b7280;margin-top:3px;white-space:nowrap;">' + (m.label||m.month||'') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderFinPlanChart(planDist) {
+    const el = document.getElementById('finPlanChart');
+    if (!el) return;
+    if (!planDist || !planDist.length) { el.innerHTML = ''; return; }
+    const total = planDist.reduce((s, p) => s + (p.count||0), 0) || 1;
+    const colors = { starter:'#27AE60', professional:'#2980B9', enterprise:'#7c3aed', trial:'#f59e0b' };
+    el.innerHTML = planDist.map(p => {
+      const pct = Math.round((p.count / total) * 100);
+      const col = colors[p.plan] || '#9ca3af';
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
+        '<div style="width:12px;height:12px;border-radius:2px;background:' + col + ';flex-shrink:0;"></div>' +
+        '<div style="flex:1;font-size:12px;color:#374151;text-transform:capitalize;">' + (p.plan||'—') + '</div>' +
+        '<div style="font-size:12px;font-weight:700;color:#374151;">' + (p.count||0) + '</div>' +
+        '<div style="font-size:11px;color:#9ca3af;">(' + pct + '%)</div>' +
+        '</div>';
+    }).join('');
+  }
+
+    document.addEventListener('click', function(ev) {
     const cfgBtn = ev.target.closest('.cfg-tab');
     if (!cfgBtn) return;
     document.querySelectorAll('.cfg-tab').forEach(b => b.classList.remove('active'));
@@ -2785,6 +3160,176 @@ app.get('/', async (c) => {
   try { const bcL = new BroadcastChannel('pcpsyncrus_branding'); bcL.onmessage = e => { if (e.data?.type === 'BRANDING_UPDATE') applyBrandingToPage(e.data.settings); }; } catch(e) {}
 
   // loadPlatformSettings() é chamado via switchPanelTab quando tab === 'configuracoes'
+
+
+  function openFinDetalhe(id) {
+    const row = _finData.find(r=>r.id===id);
+    if (!row) return;
+    _finCurrentId = id;
+    const pc = PLAN_COLOR[row.plan]||'#6c757d';
+    const badge = 'fin-badge-' + (row.status||'pending');
+    document.getElementById('finDetalheBody').innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">EMPRESA</div><div style="font-weight:700;color:#1B4F72;">' + esc(row.empresa_name||'—') + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">E-MAIL</div><div>' + esc(row.user_email||'—') + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">PLANO</div><div><span style="background:' + pc + '20;color:' + pc + ';font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;">' + row.plan + '</span></div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">TIPO</div><div>' + (FIN_TYPE_LABEL[row.type]||row.type) + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VALOR</div><div style="font-weight:800;font-size:16px;color:#374151;">' + FMT_BRL(row.amount) + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">STATUS</div><div><span class="' + badge + '">' + (FIN_STATUS_LABEL[row.status]||row.status) + '</span></div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">VENCIMENTO</div><div>' + FMT_DATE(row.due_date) + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">PAGO EM</div><div style="color:#16a34a;">' + FMT_DATE(row.paid_at) + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">FORMA PGTO</div><div>' + (row.payment_method||'—') + '</div></div>' +
+      '<div><div style="font-size:10px;color:#9ca3af;font-weight:700;">REF. GATEWAY</div><div style="font-family:monospace;font-size:11px;">' + (row.external_ref||'—') + '</div></div>' +
+      (row.notes ? '<div style="grid-column:1/-1;"><div style="font-size:10px;color:#9ca3af;font-weight:700;">OBSERVAÇÃO</div><div>' + esc(row.notes) + '</div></div>' : '') +
+      '</div>';
+    openMM('finDetalheModal');
+  }
+
+  async function finMarkAs(newStatus) {
+    if (!_finCurrentId) return;
+    const btn = event.target.closest('button');
+    const orig = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    try {
+      const r = await fetch('/master/api/financeiro/status', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ id: _finCurrentId, status: newStatus, paid_at: newStatus==='paid' ? new Date().toISOString().split('T')[0] : null })
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showToast('Status atualizado para ' + FIN_STATUS_LABEL[newStatus], 'success');
+        closeMM('finDetalheModal');
+        loadFinanceiro();
+      } else { showToast('Erro: ' + (d.error||''), 'error'); }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = orig; }
+  }
+
+  function openNovoLancamento() {
+    _finCurrentId = null;
+    document.getElementById('lancamentoModalTitle').innerHTML = '<i class="fas fa-plus" style="margin-right:8px;"></i>Novo Lançamento';
+    document.getElementById('lancValor').value = '';
+    document.getElementById('lancObs').value = '';
+    document.getElementById('lancDataPago').value = '';
+    document.getElementById('lancStatus').value = 'pending';
+    document.getElementById('lancTipo').value = 'monthly';
+    document.getElementById('lancFormaPag').value = '';
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('lancVencimento').value = today;
+    // popular select de empresas
+    const sel = document.getElementById('lancEmpresa');
+    sel.innerHTML = masterClientsData.map(c => '<option value="' + esc(c.id) + '">' + esc(c.empresa||c.email||'') + '</option>').join('');
+    if (masterClientsData.length > 0) {
+      const first = masterClientsData[0];
+      document.getElementById('lancPlano').value = first.plano || 'starter';
+    }
+    openMM('lancamentoModal');
+  }
+
+  function openEditLancamento(id) {
+    const row = _finData.find(r=>r.id===id);
+    if (!row) return;
+    _finCurrentId = id;
+    document.getElementById('lancamentoModalTitle').innerHTML = '<i class="fas fa-pencil-alt" style="margin-right:8px;"></i>Editar Cobrança';
+    const sel = document.getElementById('lancEmpresa');
+    sel.innerHTML = masterClientsData.map(c => '<option value="' + esc(c.id) + '" ' + (c.id===row.user_id?'selected':'') + '>' + esc(c.empresa||c.email||'') + '</option>').join('');
+    document.getElementById('lancTipo').value      = row.type || 'monthly';
+    document.getElementById('lancPlano').value     = row.plan || 'starter';
+    document.getElementById('lancValor').value     = row.amount || 0;
+    document.getElementById('lancVencimento').value = row.due_date ? row.due_date.split('T')[0] : '';
+    document.getElementById('lancStatus').value    = row.status || 'pending';
+    document.getElementById('lancFormaPag').value  = row.payment_method || '';
+    document.getElementById('lancDataPago').value  = row.paid_at ? row.paid_at.split('T')[0] : '';
+    document.getElementById('lancObs').value       = row.notes || '';
+    openMM('lancamentoModal');
+  }
+
+  async function salvarLancamento() {
+    const btn = document.getElementById('btnSalvarLanc');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    const sel = document.getElementById('lancEmpresa');
+    const cliente = masterClientsData.find(c => c.id === sel.value) || {};
+    const payload = {
+      id: _finCurrentId,
+      user_id:        sel.value,
+      empresa_name:   cliente.empresa || cliente.email || '',
+      user_email:     cliente.email || '',
+      plan:           document.getElementById('lancPlano').value,
+      type:           document.getElementById('lancTipo').value,
+      amount:         parseFloat(document.getElementById('lancValor').value)||0,
+      due_date:       document.getElementById('lancVencimento').value,
+      status:         document.getElementById('lancStatus').value,
+      payment_method: document.getElementById('lancFormaPag').value,
+      paid_at:        document.getElementById('lancDataPago').value || null,
+      notes:          document.getElementById('lancObs').value,
+    };
+    try {
+      const r = await fetch('/master/api/financeiro/lancamento', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showToast(_finCurrentId ? 'Cobrança atualizada!' : 'Lançamento criado!', 'success');
+        closeMM('lancamentoModal');
+        loadFinanceiro();
+      } else { showToast('Erro: ' + (d.error||''), 'error'); }
+    } catch(e) { showToast('Erro de conexão', 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save" style="margin-right:6px;"></i>Salvar'; }
+  }
+
+  function exportFinCSV() {
+    if (!_finFiltered.length) { showToast('Nenhum dado para exportar', 'error'); return; }
+    const headers = ['ID','Empresa','Email','Plano','Tipo','Valor','Vencimento','Pago Em','Status','Forma Pgt','Ref Externa','Observação'];
+    const rows = _finFiltered.map(r => [
+      r.id, r.empresa_name||'', r.user_email||'', r.plan, r.type,
+      Number(r.amount||0).toFixed(2), r.due_date||'', r.paid_at||'',
+      r.status, r.payment_method||'', r.external_ref||'', r.notes||''
+    ].map(v => '"'+String(v).replace(/"/g,'""')+'"').join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\uFEFF'+csv);
+    a.download = 'financeiro_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.click();
+    showToast('CSV exportado!', 'success');
+  }
+
+  // ── Financeiro: funções auxiliares ──────────────────────────────────────────
+  function abrirNovoLancamento() {
+    const today = new Date().toISOString().slice(0,10);
+    const el = id => document.getElementById(id);
+    if (el('lanEmpresa'))   el('lanEmpresa').value   = '';
+    if (el('lanValor'))     el('lanValor').value     = '';
+    if (el('lanVencimento')) el('lanVencimento').value = today;
+    if (el('lanObs'))       el('lanObs').value       = '';
+    el('modalLancamento').style.display = 'flex';
+  }
+
+  function openFinStatusModal(invoiceId) {
+    document.getElementById('finStatusInvoiceId').value = invoiceId;
+    if (document.getElementById('finStatusObs'))
+      document.getElementById('finStatusObs').value = '';
+    document.getElementById('modalFinStatus').style.display = 'flex';
+  }
+
+  async function confirmarFinStatus() {
+    const invoiceId = document.getElementById('finStatusInvoiceId').value;
+    const status    = document.getElementById('finStatusNovo').value;
+    const notes     = (document.getElementById('finStatusObs')?.value || '').trim();
+    try {
+      const r = await fetch('/master/api/financeiro/status', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ invoice_id: invoiceId, status, notes })
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erro');
+      showToast('Status atualizado!', 'success');
+      document.getElementById('modalFinStatus').style.display = 'none';
+      loadFinanceiro();
+    } catch (e) {
+      showToast('Erro: ' + e.message, 'error');
+    }
+  }
 
   </script>
   `
@@ -3257,6 +3802,201 @@ app.post('/api/settings/generate-key', async (c) => {
   } catch (e: any) {
     return c.json({ ok: false, error: e.message })
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// API: Financeiro — Painel de Pagamentos e Assinaturas
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/financeiro', async (c) => {
+  if (!await isAuthenticated(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const db = c.env?.DB
+  const url = new URL(c.req.url)
+  const status  = url.searchParams.get('status')  || ''
+  const periodo = url.searchParams.get('periodo') || 'all'
+  const plan    = url.searchParams.get('plan')    || ''
+
+  const now   = new Date()
+  const ym    = (d: Date) => d.toISOString().slice(0, 7)
+  const ymd   = (d: Date) => d.toISOString().slice(0, 10)
+  const sub   = (months: number) => { const d = new Date(now); d.setMonth(d.getMonth() - months); return d }
+
+  let dateFilter = ''
+  if      (periodo === 'current_month')  dateFilter = `AND strftime('%Y-%m', i.due_date) = '${ym(now)}'`
+  else if (periodo === 'last_month')     dateFilter = `AND strftime('%Y-%m', i.due_date) = '${ym(sub(1))}'`
+  else if (periodo === 'last_3months')   dateFilter = `AND i.due_date >= '${ymd(sub(3))}'`
+  else if (periodo === 'last_6months')   dateFilter = `AND i.due_date >= '${ymd(sub(6))}'`
+  else if (periodo === 'this_year')      dateFilter = `AND strftime('%Y', i.due_date) = '${now.getFullYear()}'`
+
+  const statusFilter = status ? `AND i.status = '${status.replace(/'/g,"''")}'` : ''
+  const planFilter   = plan   ? `AND i.plan = '${plan.replace(/'/g,"''")}'`   : ''
+
+  let invoices: any[] = []
+  let kpis: Record<string, any> = { mrr:0, arr:0, mrr_change:0, pending:0, pending_count:0, overdue:0, overdue_count:0, paid_month:0, paid_month_count:0, active:0, trial:0, total:0 }
+  let monthly: any[] = []
+  let planDist: any[] = []
+
+  if (db) {
+    try {
+      // ── Invoices filtrados ─────────────────────────────────────────────────
+      const invSQL = `
+        SELECT i.id, i.user_id, i.plan, i.type, i.amount, i.amount_paid,
+               i.status, i.due_date, i.paid_at, i.payment_method, i.external_ref, i.notes,
+               COALESCE(e.razao_social, e.name, ru.empresa, i.user_id) AS empresa_name,
+               ru.email AS user_email
+        FROM invoices i
+        LEFT JOIN registered_users ru ON ru.id = i.user_id
+        LEFT JOIN empresas e ON e.id = ru.empresa_id
+        WHERE 1=1 ${dateFilter} ${statusFilter} ${planFilter}
+        ORDER BY i.due_date DESC LIMIT 500
+      `
+      const invRows = await db.prepare(invSQL).all()
+      invoices = (invRows.results || []) as any[]
+
+      // ── KPIs globais ────────────────────────────────────────────────────────
+      const kpiR = await db.prepare(`
+        SELECT
+          SUM(CASE WHEN status='pending'  THEN amount ELSE 0 END) AS pending_total,
+          COUNT(CASE WHEN status='pending' THEN 1 END)            AS pending_count,
+          SUM(CASE WHEN status='overdue'  THEN amount ELSE 0 END) AS overdue_total,
+          COUNT(CASE WHEN status='overdue' THEN 1 END)            AS overdue_count,
+          SUM(CASE WHEN status='paid' AND strftime('%Y-%m',COALESCE(paid_at,due_date))=strftime('%Y-%m','now') THEN amount ELSE 0 END) AS paid_month,
+          COUNT(CASE WHEN status='paid' AND strftime('%Y-%m',COALESCE(paid_at,due_date))=strftime('%Y-%m','now') THEN 1 END)           AS paid_month_count
+        FROM invoices
+      `).first() as any
+
+      // ── MRR via subscriptions ───────────────────────────────────────────────
+      let mrr = 0, mrrChange = 0
+      try {
+        const mrrR = await db.prepare(`SELECT SUM(monthly_value) AS v FROM subscriptions WHERE status IN ('active','trial')`).first() as any
+        mrr = Number(mrrR?.v || 0)
+        const mrrPR = await db.prepare(`SELECT SUM(monthly_value) AS v FROM subscriptions WHERE status IN ('active','trial') AND created_at < strftime('%Y-%m-01','now')`).first() as any
+        const mrrPrev = Number(mrrPR?.v || mrr)
+        mrrChange = mrrPrev > 0 ? ((mrr - mrrPrev) / mrrPrev * 100) : 0
+      } catch(_) {}
+
+      // ── Assinantes ──────────────────────────────────────────────────────────
+      let subsActive = 0, subsTrial = 0, subsTotal = 0
+      try {
+        const sR = await db.prepare(`SELECT COUNT(*) AS t, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS a, SUM(CASE WHEN status='trial' THEN 1 ELSE 0 END) AS tr FROM subscriptions`).first() as any
+        subsActive = Number(sR?.a||0); subsTrial = Number(sR?.tr||0); subsTotal = Number(sR?.t||0)
+      } catch(_) {
+        // fallback: contar por registered_users
+        try {
+          const ruR = await db.prepare(`SELECT COUNT(*) AS t FROM registered_users WHERE is_demo=0 AND (owner_id IS NULL OR owner_id='')`).first() as any
+          subsTotal = Number(ruR?.t||0); subsActive = subsTotal
+        } catch(_) {}
+      }
+
+      kpis = {
+        mrr, arr: mrr * 12, mrr_change: Math.round(mrrChange * 10) / 10,
+        pending: Number(kpiR?.pending_total||0), pending_count: Number(kpiR?.pending_count||0),
+        overdue: Number(kpiR?.overdue_total||0), overdue_count: Number(kpiR?.overdue_count||0),
+        paid_month: Number(kpiR?.paid_month||0), paid_month_count: Number(kpiR?.paid_month_count||0),
+        active: subsActive, trial: subsTrial, total: subsTotal,
+      }
+
+      // ── Receita por mês (últimos 12) ────────────────────────────────────────
+      try {
+        const mR = await db.prepare(`
+          SELECT strftime('%Y-%m', due_date) AS ym,
+                 SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) AS total
+          FROM invoices WHERE due_date >= date('now','-12 months')
+          GROUP BY ym ORDER BY ym
+        `).all()
+        const mRows = (mR.results||[]) as any[]
+        const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+        for (let i = 11; i >= 0; i--) {
+          const d = sub(i); const key = ym(d)
+          const found = mRows.find((m:any) => m.ym === key)
+          monthly.push({ label: MONTHS[d.getMonth()], ym: key, total: found ? Number(found.total) : 0 })
+        }
+      } catch(_) {}
+
+      // ── Dist. por plano ─────────────────────────────────────────────────────
+      try {
+        const pdR = await db.prepare(`
+          SELECT plan, COUNT(*) AS count, SUM(monthly_value) AS mrr
+          FROM subscriptions WHERE status IN ('active','trial')
+          GROUP BY plan ORDER BY mrr DESC
+        `).all()
+        planDist = ((pdR.results||[]) as any[]).map((r:any) => ({ plan:r.plan, count:Number(r.count), mrr:Number(r.mrr||0) }))
+      } catch(_) {
+        try {
+          const pdR2 = await db.prepare(`
+            SELECT plano AS plan, COUNT(*) AS count
+            FROM registered_users WHERE is_demo=0 AND (owner_id IS NULL OR owner_id='')
+            GROUP BY plano
+          `).all()
+          planDist = ((pdR2.results||[]) as any[]).map((r:any) => {
+            const prices: Record<string,number> = { starter:299, professional:599, enterprise:1490 }
+            return { plan:r.plan||'starter', count:Number(r.count), mrr:Number(r.count)*(prices[r.plan]||299) }
+          })
+        } catch(_) {}
+      }
+
+    } catch (e: any) {
+      console.log('financeiro error:', e.message)
+      // sem invoices ainda — calcular MRR via registered_users como fallback
+      try {
+        const prices: Record<string,number> = { starter:299, professional:599, enterprise:1490 }
+        const clients = masterClients.filter(cl => cl.status !== 'suspended' && cl.status !== 'cancelled')
+        const mrr = clients.reduce((s,cl) => s + (prices[cl.plano as keyof typeof prices] || 299), 0)
+        kpis = { mrr, arr: mrr*12, mrr_change: 0, pending:0, pending_count:0, overdue:0, overdue_count:0, paid_month:0, paid_month_count:0, active: clients.filter(cl=>cl.status==='active').length, trial: clients.filter(cl=>cl.status==='trial').length, total: clients.length }
+        const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+        monthly = MONTHS.map((l,i) => ({ label:l, ym:'2025-'+(i+1).toString().padStart(2,'0'), total:0 }))
+        const planMap: Record<string,{count:number,mrr:number}> = {}
+        clients.forEach(cl => { const p = cl.plano||'starter'; if (!planMap[p]) planMap[p]={count:0,mrr:0}; planMap[p].count++; planMap[p].mrr += prices[p as keyof typeof prices]||299 })
+        planDist = Object.entries(planMap).map(([plan,v]) => ({ plan, ...v }))
+      } catch(_) {}
+    }
+  } else {
+    // Mock sem DB
+    kpis = { mrr:8970, arr:107640, mrr_change:12.5, pending:2100, pending_count:4, overdue:599, overdue_count:1, paid_month:6870, paid_month_count:14, active:18, trial:5, total:23 }
+    const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+    monthly = MONTHS.map((l,i) => ({ label:l, ym:'2025-'+(i+1).toString().padStart(2,'0'), total:4000+Math.round(Math.random()*5000) }))
+    planDist = [{plan:'starter',count:12,mrr:3588},{plan:'professional',count:8,mrr:4792},{plan:'enterprise',count:3,mrr:4470}]
+  }
+
+  return c.json({ ok: true, invoices, kpis, monthly, planDist })
+})
+
+app.post('/api/financeiro/status', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  try {
+    const { id, status, paid_at } = await c.req.json() as any
+    const db = c.env?.DB
+    if (!db) return c.json({ ok: true, note: 'no-db' })
+    const now = new Date().toISOString()
+    try {
+      await db.prepare('UPDATE invoices SET status=?, paid_at=? WHERE id=?').bind(status, paid_at||null, id).run()
+    } catch(_) {}
+    auditLog.unshift({ ts: now, user: auth.email||'master', action: 'FIN_STATUS', detail: `Invoice ${id} → ${status}` })
+    return c.json({ ok: true })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
+})
+
+app.post('/api/financeiro/lancamento', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  try {
+    const body = await c.req.json() as any
+    const db = c.env?.DB
+    const now = new Date().toISOString()
+    if (!db) return c.json({ ok: true, note: 'no-db' })
+    if (body.id) {
+      await db.prepare('UPDATE invoices SET plan=?,type=?,amount=?,due_date=?,status=?,payment_method=?,paid_at=?,notes=? WHERE id=?')
+        .bind(body.plan,body.type,Number(body.amount||0),body.due_date,body.status,body.payment_method||'',body.paid_at||null,body.notes||'',body.id).run()
+      auditLog.unshift({ ts: now, user: auth.email||'master', action: 'FIN_UPDATE', detail: `Invoice ${body.id} atualizada` })
+    } else {
+      const newId = 'inv_' + Date.now()
+      await db.prepare('INSERT INTO invoices (id,user_id,plan,type,amount,due_date,status,payment_method,paid_at,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+        .bind(newId,body.user_id,body.plan||'starter',body.type||'monthly',Number(body.amount||0),body.due_date,body.status||'pending',body.payment_method||'',body.paid_at||null,body.notes||'',now).run()
+      auditLog.unshift({ ts: now, user: auth.email||'master', action: 'FIN_CREATE', detail: `Invoice ${newId} criada para ${body.empresa_name||body.user_id}` })
+    }
+    return c.json({ ok: true })
+  } catch (e: any) { return c.json({ ok: false, error: e.message }, 500) }
 })
 
 export default app
