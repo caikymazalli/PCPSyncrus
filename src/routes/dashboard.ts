@@ -8,22 +8,53 @@ app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
 
-  const kpis = tenant.kpis || {}
-  const productionOrders = tenant.productionOrders || []
-  const plants = tenant.plants || []
-  const machines = tenant.machines || []
+  // ── Dados do tenant ──────────────────────────────────────────────────────
+  const productionOrders  = tenant.productionOrders  || []
+  const productionEntries = tenant.productionEntries || []
+  const plants      = tenant.plants      || []
+  const machines    = tenant.machines    || []
   const workbenches = tenant.workbenches || []
-  const products = tenant.products || []
-  const stockItems = tenant.stockItems || []
+  const products    = tenant.products    || []
+  const stockItems  = tenant.stockItems  || []
 
-  // Work Instructions KPIs
+  // ── KPIs calculados dinamicamente (tenant.kpis fica stale após deploy) ──
+  const totalOrders     = productionOrders.length
+  const activeOrders    = productionOrders.filter((o: any) => o.status === 'in_progress').length
+  const plannedOrders   = productionOrders.filter((o: any) => o.status === 'planned').length
+  const completedOrders = productionOrders.filter((o: any) => o.status === 'completed').length
+  const cancelledOrders = productionOrders.filter((o: any) => o.status === 'cancelled').length
+  const totalProduced   = productionEntries.reduce((s: number, e: any) => s + (e.produced || 0), 0)
+  const totalRejected   = productionEntries.reduce((s: number, e: any) => s + (e.rejected || 0), 0)
+  const qualityRate     = totalProduced > 0
+    ? Math.round(((totalProduced - totalRejected) / totalProduced) * 100)
+    : (tenant.kpis?.qualityRate ?? 100)
+  const totalMachines   = machines.length
+  // Fallback para tenant.kpis apenas se dados reais não estiverem disponíveis
+  const kpis = {
+    totalOrders,
+    activeOrders,
+    plannedOrders,
+    completedOrders,
+    cancelledOrders,
+    totalProduced,
+    totalRejected,
+    qualityRate,
+    totalMachines,
+  }
+
+  // ── Stock KPIs ─────────────────────────────────────────────────────────────
+  const stockCritical        = stockItems.filter((i: any) => (i.status || '') === 'critical').length
+  const stockPurchaseNeeded  = stockItems.filter((i: any) => (i.status || '') === 'purchase_needed').length
+  const stockNormal          = stockItems.filter((i: any) => (i.status || '') === 'normal').length
+
+  // ── Work Instructions KPIs ─────────────────────────────────────────────────
   const workInstructions = tenant.workInstructions || []
   const wiDraft    = workInstructions.filter((i: any) => (i.status || 'draft') === 'draft').length
   const wiActive   = workInstructions.filter((i: any) => i.status === 'active').length
   const wiObsolete = workInstructions.filter((i: any) => i.status === 'obsolete').length
   const wiArchived = workInstructions.filter((i: any) => i.status === 'archived').length
 
-  // Non-Conformance KPIs
+  // ── Non-Conformance KPIs ───────────────────────────────────────────────────
   const nonConformances = tenant.nonConformances || []
   const ncOpen   = nonConformances.filter((n: any) => (n.status || 'open') === 'open').length
   const ncClosed = nonConformances.filter((n: any) => n.status === 'closed').length
@@ -302,6 +333,30 @@ app.get('/', (c) => {
     </div>
 
   </div>
+  
+
+  <script>
+    window._dashKpis = {
+      totalOrders:     ${kpis.totalOrders},
+      activeOrders:    ${kpis.activeOrders},
+      plannedOrders:   ${kpis.plannedOrders},
+      completedOrders: ${kpis.completedOrders},
+      totalProduced:   ${kpis.totalProduced},
+      qualityRate:     ${kpis.qualityRate},
+      totalMachines:   ${kpis.totalMachines},
+    };
+    window._dashStockStatus = {
+      critical:        ${stockCritical},
+      purchaseNeeded:  ${stockPurchaseNeeded},
+      normal:          ${stockNormal},
+    };
+    window._dashSummary = {
+      wiDraft: ${wiDraft}, wiActive: ${wiActive},
+      ncOpen:  ${ncOpen},  ncHigh:   ${ncHigh},
+      totalPlants: ${plants.length}, totalWorkbenches: ${workbenches.length},
+    };
+    console.log('[DASHBOARD] KPIs do SSR:', window._dashKpis);
+  </script>
   `
 
   return c.html(layout('Dashboard', content, 'dashboard', userInfo))
@@ -310,19 +365,51 @@ app.get('/', (c) => {
 app.get('/api/dashboard', (c) => {
   const tenant = getCtxTenant(c)
 
-  const kpis = tenant.kpis
-  const productionOrders = tenant.productionOrders
-  const chartData = tenant.chartData
-  const machines = tenant.machines
-  const products = tenant.products
-  const stockItems = tenant.stockItems
-  const mrpEntries = (tenant as any).mrpEntries || []
+  // ── Dados reais do tenant ──────────────────────────────────────────────
+  const productionOrders  = tenant.productionOrders  || []
+  const productionEntries = tenant.productionEntries || []
+  const machines          = tenant.machines          || []
+  const plants            = tenant.plants            || []
+  const workbenches       = tenant.workbenches       || []
+  const products          = tenant.products          || []
+  const stockItems        = tenant.stockItems        || []
+  const mrpEntries        = (tenant as any).mrpEntries || []
+
+  // ── KPIs calculados dinamicamente ─────────────────────────────────────
+  const totalOrders     = productionOrders.length
+  const activeOrders    = productionOrders.filter((o: any) => o.status === 'in_progress').length
+  const plannedOrders   = productionOrders.filter((o: any) => o.status === 'planned').length
+  const completedOrders = productionOrders.filter((o: any) => o.status === 'completed').length
+  const cancelledOrders = productionOrders.filter((o: any) => o.status === 'cancelled').length
+  const totalProduced   = productionEntries.reduce((s: number, e: any) => s + (e.produced || 0), 0)
+  const totalRejected   = productionEntries.reduce((s: number, e: any) => s + (e.rejected || 0), 0)
+  const qualityRate     = totalProduced > 0
+    ? Math.round(((totalProduced - totalRejected) / totalProduced) * 100) : 100
+  const kpis = {
+    totalOrders, activeOrders, plannedOrders, completedOrders, cancelledOrders,
+    totalProduced, totalRejected, qualityRate,
+    totalMachines: machines.length, totalPlants: plants.length,
+    totalWorkbenches: workbenches.length, totalProducts: products.length,
+  }
+
+  // ── ChartData calculado dinamicamente ─────────────────────────────────
+  const chartData = {
+    labels: [], planned: [], produced: [], rejected: [],
+    stockStatus: {
+      critical:           stockItems.filter((i: any) => (i.status||'') === 'critical').length,
+      normal:             stockItems.filter((i: any) => (i.status||'') === 'normal').length,
+      purchase_needed:    stockItems.filter((i: any) => (i.status||'') === 'purchase_needed').length,
+      manufacture_needed: stockItems.filter((i: any) => (i.status||'') === 'manufacture_needed').length,
+    }
+  }
 
   return c.json({
     kpis,
     productionOrders,
     chartData,
     machines,
+    plants,
+    workbenches,
     products,
     stockItems,
     mrpEntries
