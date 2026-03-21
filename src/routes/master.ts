@@ -1041,7 +1041,7 @@ app.get('/', async (c) => {
             <\/tr>
         </thead>
         <tbody id="finTableBody">
-            <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...<\/td><\/tr>
+             <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...<\/td><\/tr>
         </tbody>
       <\/table>
     </div>
@@ -2072,7 +2072,7 @@ app.get('/', async (c) => {
   // ── Financeiro ────────────────────────────────────────────────────────────
   async function loadFinanceiro() {
     const tbody = document.getElementById('finTableBody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;"><i class="fas fa-spinner fa-spin" style="font-size:20px;"></i><\/td><\/tr>';
+    if (tbody) tbody.innerHTML = '编码<td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;"><i class="fas fa-spinner fa-spin" style="font-size:20px;"></i><\/td><\/tr>';
 
     const status  = document.getElementById('finFiltroStatus')?.value  || '';
     const periodo = document.getElementById('finFiltroPeriodo')?.value || 'all';
@@ -2171,7 +2171,7 @@ app.get('/', async (c) => {
     const page  = _finFiltered.slice(start, start + _finPageSize);
 
     if (_finFiltered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">' +
+      tbody.innerHTML = '编码<td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">' +
         '<i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>Nenhum registro encontrado<\/td><\/tr>';
       const cc = document.getElementById('finCount');    if(cc) cc.textContent = '0 registros';
       const pi = document.getElementById('finPagInfo');  if(pi) pi.textContent = '';
@@ -2848,8 +2848,8 @@ app.get('/', async (c) => {
     item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 10px;background:white;border-radius:6px;border:1px solid #e9ecef;margin-bottom:6px;';
     item.innerHTML =
       '<code style="flex:1;font-size:11px;color:#374151;font-family:monospace;word-break:break-all;">'+esc(key)+'</code>' +
-      '<button onclick="navigator.clipboard.writeText(\''+esc(key)+'\').then(()=>showToast(\'Chave copiada!\',\'success\'))" style="background:#f1f3f5;border:1px solid #dee2e6;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;"><i class="fas fa-copy"></i></button>' +
-      '<button onclick="this.closest(\'div\').remove()" style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;color:#dc2626;"><i class="fas fa-trash"></i></button>';
+      '<button onclick="navigator.clipboard.writeText(\\''+esc(key)+'\\').then(()=>showToast(\\'Chave copiada!\\',\\'success\\'))" style="background:#f1f3f5;border:1px solid #dee2e6;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;"><i class="fas fa-copy"></i></button>' +
+      '<button onclick="this.closest(\\'div\\').remove()" style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;color:#dc2626;"><i class="fas fa-trash"></i></button>';
     const empty = list.querySelector('div[style*="text-align:center"]');
     if (empty) empty.remove();
     list.appendChild(item);
