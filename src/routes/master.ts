@@ -436,6 +436,159 @@ app.post('/api/client/:clientId/modules', async (c) => {
   auditLog.unshift({ ts: now, user: auth.name, action: 'SET_MODULES', detail: `Módulos atualizados para cliente ${clientId}` })
   return c.json({ ok: true })
 })
+// ── Rotas de Financeiro ──────────────────────────────────────────────────────
+app.get('/api/financeiro', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+
+  // Exemplo: gerar faturas a partir dos clientes em memória
+  const invoices = masterClients.filter(cli => cli.status === 'active').map(cli => ({
+    id: `inv_${cli.id}`,
+    user_id: cli.id,
+    empresa_name: cli.fantasia || cli.empresa,
+    user_email: cli.email,
+    plan: cli.plano,
+    type: cli.billing === 'annual' ? 'annual' : 'monthly',
+    amount: cli.valor,
+    due_date: cli.trialEnd || new Date().toISOString().split('T')[0],
+    paid_at: cli.status === 'active' ? new Date().toISOString().split('T')[0] : null,
+    status: cli.status === 'active' ? 'paid' : cli.status === 'trial' ? 'pending' : 'cancelled',
+    omie_codigo_lancamento: null,
+    omie_boleto_url: null,
+    omie_nfse_numero: null,
+  }))
+
+  // Filtros básicos
+  const status = c.req.query('status')
+  const periodo = c.req.query('periodo')
+  const plan = c.req.query('plan')
+  let filtered = invoices
+  if (status) filtered = filtered.filter(i => i.status === status)
+  if (plan) filtered = filtered.filter(i => i.plan === plan)
+  // Implementar filtro por período se necessário
+
+  return c.json({ ok: true, invoices: filtered })
+})
+
+app.post('/api/financeiro', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const body = await c.req.json()
+  if (!body.user_id || !body.amount || !body.due_date) {
+    return c.json({ error: 'Campos obrigatórios: user_id, amount, due_date' }, 400)
+  }
+  // Aqui você salvaria no banco. Exemplo com masterClients:
+  const cli = masterClients.find(c => c.id === body.user_id)
+  if (!cli) return c.json({ error: 'Cliente não encontrado' }, 404)
+  // Adicionar pagamento fictício (ajuste conforme necessidade)
+  if (!cli.pagamentos) cli.pagamentos = []
+  cli.pagamentos.push({
+    mes: new Date(body.due_date).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }),
+    valor: body.amount,
+    status: body.status === 'paid' ? 'pago' : 'pendente',
+    data: body.due_date
+  })
+  return c.json({ ok: true, id: `inv_${Date.now()}` })
+})
+
+app.put('/api/financeiro/:id', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const id = c.req.param('id')
+  const body = await c.req.json()
+  // Implementar atualização no banco
+  return c.json({ ok: true })
+})
+
+app.post('/api/financeiro/:id/status', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const id = c.req.param('id')
+  const { status } = await c.req.json()
+  // Atualizar status no banco
+  return c.json({ ok: true })
+})
+
+// ── Rotas Omie ───────────────────────────────────────────────────────────────
+app.post('/api/omie/test', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const { app_key, app_secret } = await c.req.json()
+  if (!app_key || !app_secret) {
+    return c.json({ error: 'App Key e App Secret são obrigatórios' }, 400)
+  }
+  try {
+    // Exemplo: usar o cliente Omie importado
+    const omie = createOmieClient(app_key, app_secret)
+    // Ajuste conforme os métodos reais disponíveis na classe OmieClient
+    const result = await omie.empresa.consultar()
+    return c.json({ ok: true, empresa: result.nome_fantasia })
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Erro ao conectar com Omie' }, 500)
+  }
+})
+
+app.post('/api/omie/push/:invoiceId', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const invoiceId = c.req.param('invoiceId')
+  // Buscar invoice (exemplo: do array masterClients)
+  const invoice = masterClients.find(c => `inv_${c.id}` === invoiceId)
+  if (!invoice) return c.json({ error: 'Fatura não encontrada' }, 404)
+  // Enviar para Omie via API
+  try {
+    const omie = createOmieClient(/* app_key, app_secret - obter de configuração */)
+    // const result = await omie.lancamento.incluir({ ... })
+    // return c.json({ ok: true, omie_codigo: result.codigo })
+    return c.json({ ok: true, omie_codigo: '123456' })
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500)
+  }
+})
+
+app.post('/api/omie/boleto/:invoiceId', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const invoiceId = c.req.param('invoiceId')
+  const { omie_codigo_lancamento } = await c.req.json()
+  // Gerar boleto no Omie
+  try {
+    // const omie = createOmieClient(...)
+    // const result = await omie.boleto.gerar(omie_codigo_lancamento)
+    return c.json({ ok: true, boleto_url: 'https://omie.com.br/boleto/123' })
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500)
+  }
+})
+
+app.post('/api/omie/nfse/:invoiceId', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  const invoiceId = c.req.param('invoiceId')
+  const { omie_codigo_lancamento } = await c.req.json()
+  // Emitir NFS-e
+  try {
+    // const omie = createOmieClient(...)
+    // const result = await omie.nfse.emitir(omie_codigo_lancamento)
+    return c.json({ ok: true, nfse_numero: '12345', nfse_pdf: 'https://omie.com.br/nfse/12345.pdf' })
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500)
+  }
+})
+
+app.post('/api/omie/sync', async (c) => {
+  const auth = await isAuthenticated(c)
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+  // Sincronizar contas a receber do Omie com o sistema
+  try {
+    // const omie = createOmieClient(...)
+    // const contas = await omie.contasReceber.listar()
+    // Atualizar dados locais
+    return c.json({ ok: true })
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500)
+  }
+})
 
 // ── Rota: GET /client/:clientId ────────────────────────────────────────────────
 app.get('/client/:clientId', async (c) => {
