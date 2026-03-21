@@ -581,12 +581,12 @@ app.get('/client/:clientId', async (c) => {
           const sc = p.status === 'pago' ? '#16a34a' : '#dc2626'
           const sb = p.status === 'pago' ? '#f0fdf4' : '#fef2f2'
           return `<tr style="border-bottom:1px solid #f1f3f5;">
-            <td style="padding:8px;font-weight:600;color:#374151;">${p.mes}</td>
-            <td style="padding:8px;text-align:right;font-weight:700;color:#1B4F72;">R$ ${p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-            <td style="padding:8px;text-align:center;"><span class="mbadge" style="background:${sb};color:${sc};">${p.status}</span></td>
-            <td style="padding:8px;color:#6c757d;">${p.data}</td>
-           </tr>`
-        }).join('')}</tbody></table>`
+            <td style="padding:8px;font-weight:600;color:#374151;">${p.mes}<\/td>
+            <td style="padding:8px;text-align:right;font-weight:700;color:#1B4F72;">R$ ${p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}<\/td>
+            <td style="padding:8px;text-align:center;"><span class="mbadge" style="background:${sb};color:${sc};">${p.status}</span><\/td>
+            <td style="padding:8px;color:#6c757d;">${p.data}<\/td>
+           <\/tr>`
+        }).join('')}</tbody><\/table>`
       : `<div class="empty-state"><i class="fas fa-receipt"></i><h3>Nenhum pagamento registrado</h3></div>`
     }
   </div>
@@ -750,17 +750,17 @@ app.get('/', async (c) => {
                 <div style="font-weight:700;color:#1B4F72;">${cli.fantasia || cli.empresa}</div>
                 <div style="font-size:11px;color:#9ca3af;">${cli.email}</div>
                 ${cli.obs ? `<div style="font-size:10px;color:#d97706;margin-top:2px;"><i class="fas fa-sticky-note" style="font-size:9px;"></i> ${escapeHtml(cli.obs.slice(0,40))}${cli.obs.length>40?'...':''}</div>` : ''}
-               </td>
-              <td style="padding:10px 14px;"><div style="font-weight:600;color:#374151;">${cli.responsavel}</div><div style="font-size:11px;color:#9ca3af;">${cli.tel||'—'}</div></td>
-              <td style="padding:10px 14px;"><span class="mbadge" style="background:${pl.bg};color:${pl.color};">${pl.label}</span><div style="font-size:10px;color:#9ca3af;margin-top:3px;">${billingLabel[cli.billing]||cli.billing}</div></td>
+                <\/td>
+              <td style="padding:10px 14px;"><div style="font-weight:600;color:#374151;">${cli.responsavel}</div><div style="font-size:11px;color:#9ca3af;">${cli.tel||'—'}</div><\/td>
+              <td style="padding:10px 14px;"><span class="mbadge" style="background:${pl.bg};color:${pl.color};">${pl.label}</span><div style="font-size:10px;color:#9ca3af;margin-top:3px;">${billingLabel[cli.billing]||cli.billing}</div><\/td>
               <td style="padding:10px 14px;text-align:center;">
                 <span class="mbadge" style="background:${st.bg};color:${st.color};">${st.label}</span>
                 ${cli.status==='trial' ? `<div style="font-size:10px;color:${(daysLeft||0)<=3?'#dc2626':'#d97706'};margin-top:2px;font-weight:700;">${(daysLeft||0)>0?(daysLeft)+' dias':'EXPIRADO'}</div>` : ''}
-               </td>
-              <td style="padding:10px 14px;text-align:right;font-weight:800;color:#1B4F72;">${cli.status==='active'?'R$ '+cli.valor.toLocaleString('pt-BR',{minimumFractionDigits:2}):'R$ —'}</td>
-              <td style="padding:10px 14px;text-align:center;font-weight:700;color:#374151;">${cli.empresas}</td>
-              <td style="padding:10px 14px;text-align:center;font-weight:700;color:#374151;">${cli.usuarios}</td>
-              <td style="padding:10px 14px;font-size:11px;color:#374151;">${new Date(cli.criadoEm+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                <\/td>
+              <td style="padding:10px 14px;text-align:right;font-weight:800;color:#1B4F72;">${cli.status==='active'?'R$ '+cli.valor.toLocaleString('pt-BR',{minimumFractionDigits:2}):'R$ —'}<\/td>
+              <td style="padding:10px 14px;text-align:center;font-weight:700;color:#374151;">${cli.empresas}<\/td>
+              <td style="padding:10px 14px;text-align:center;font-weight:700;color:#374151;">${cli.usuarios}<\/td>
+              <td style="padding:10px 14px;font-size:11px;color:#374151;">${new Date(cli.criadoEm+'T12:00:00').toLocaleDateString('pt-BR')}<\/td>
               <td style="padding:10px 14px;text-align:center;">
                 <div style="display:flex;gap:4px;justify-content:center;">
                   <a class="abtn" href="/master/client/${safeId}" style="color:#2980B9;text-decoration:none;">
@@ -782,11 +782,11 @@ app.get('/', async (c) => {
                   ${cli.status === 'active' ? `<button class="abtn" data-action="suspend" data-id="${safeId}" style="color:#dc2626;border-color:#fecaca;"><i class="fas fa-ban"></i><span class="tooltip-text">Suspender</span></button>` : ''}
                   ${cli.status === 'inactive' ? `<button class="abtn" data-action="reactivate" data-id="${safeId}" style="color:#16a34a;border-color:#86efac;"><i class="fas fa-check-circle"></i><span class="tooltip-text">Reativar</span></button>` : ''}
                 </div>
-               </td>
-             </tr>`
+                <\/td>
+              <\/tr>`
           }).join('')}
         </tbody>
-       </table></div>`
+      <\/table><\/div>`
 
   const content = `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-bottom:22px;">
@@ -981,14 +981,14 @@ app.get('/', async (c) => {
               const ac: Record<string,string> = { LOGIN:'#16a34a', ADD_CLIENT:'#2980B9', MIGRATE_PLAN:'#7c3aed', ADD_MASTER_USER:'#d97706' }
               const col = ac[ev.action] || '#374151'
               return `<tr style="border-bottom:1px solid #f1f3f5;">
-                <td style="padding:9px 14px;font-size:11px;color:#6c757d;white-space:nowrap;">${new Date(ev.ts).toLocaleString('pt-BR')}</td>
-                <td style="padding:9px 14px;font-weight:600;color:#374151;">${ev.user}</td>
-                <td style="padding:9px 14px;"><span class="mbadge" style="background:${col}20;color:${col};">${ev.action}</span></td>
-                <td style="padding:9px 14px;color:#374151;">${ev.detail}</td>
-               </tr>`
+                <td style="padding:9px 14px;font-size:11px;color:#6c757d;white-space:nowrap;">${new Date(ev.ts).toLocaleString('pt-BR')}<\/td>
+                <td style="padding:9px 14px;font-weight:600;color:#374151;">${ev.user}<\/td>
+                <td style="padding:9px 14px;"><span class="mbadge" style="background:${col}20;color:${col};">${ev.action}</span><\/td>
+                <td style="padding:9px 14px;color:#374151;">${ev.detail}<\/td>
+               <\/tr>`
             }).join('')}
           </tbody>
-         </table></div>`
+        <\/table><\/div>`
     }
   </div>
 
@@ -1038,12 +1038,12 @@ app.get('/', async (c) => {
             <th class="fin-th">Status</th>
             <th class="fin-th" style="text-align:center;">Omie</th>
             <th class="fin-th" style="text-align:center;">Ações</th>
-           </tr>
+            <\/tr>
         </thead>
         <tbody id="finTableBody">
-           <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...</td></tr>
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...<\/td><\/tr>
         </tbody>
-       </table>
+      <\/table>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
       <div style="font-size:12px;color:#9ca3af;" id="finCount"></div>
@@ -1557,7 +1557,7 @@ app.get('/', async (c) => {
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/\\"/g,'&quot;').replace(/'/g,'&#39;');
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
@@ -1816,7 +1816,7 @@ app.get('/', async (c) => {
           '<th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Valor</th>' +
           '<th style="padding:8px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>' +
           '<th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Data</th>' +
-          ' </thead><tbody>';
+          ' <\/thead><tbody>';
         cli.pagamentos.forEach(p => {
           const sc = p.status==='pago'?'#16a34a':'#dc2626';
           const sb = p.status==='pago'?'#f0fdf4':'#fef2f2';
@@ -2061,7 +2061,7 @@ app.get('/', async (c) => {
     masterClientsData.forEach(c => {
       rows.push([c.empresa,c.fantasia,c.responsavel,c.email,c.tel||'',c.plano,c.status,c.valor,c.criadoEm]);
     });
-    const csv = rows.map(r => r.map(v => '"'+String(v||'').replace(/\\"/g,'""')+'"').join(',')).join('\\n');
+    const csv = rows.map(r => r.map(v => '"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\\n');
     const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2422,7 +2422,7 @@ app.get('/', async (c) => {
         FIN_STATUS_LABEL[r.status]||r.status||''
       ]);
     });
-    const csv  = rows.map(r => r.map(v => '"'+String(v||'').replace(/\\"/g,'""')+'"').join(',')).join('\\n');
+    const csv  = rows.map(r => r.map(v => '"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\\n');
     const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
