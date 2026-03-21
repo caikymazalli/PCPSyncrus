@@ -585,7 +585,7 @@ app.get('/client/:clientId', async (c) => {
             <td style="padding:8px;text-align:right;font-weight:700;color:#1B4F72;">R$ ${p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
             <td style="padding:8px;text-align:center;"><span class="mbadge" style="background:${sb};color:${sc};">${p.status}</span></td>
             <td style="padding:8px;color:#6c757d;">${p.data}</td>
-          </tr>`
+           </tr>`
         }).join('')}</tbody></table>`
       : `<div class="empty-state"><i class="fas fa-receipt"></i><h3>Nenhum pagamento registrado</h3></div>`
     }
@@ -783,7 +783,7 @@ app.get('/', async (c) => {
                   ${cli.status === 'inactive' ? `<button class="abtn" data-action="reactivate" data-id="${safeId}" style="color:#16a34a;border-color:#86efac;"><i class="fas fa-check-circle"></i><span class="tooltip-text">Reativar</span></button>` : ''}
                 </div>
                </td>
-              </tr>`
+             </tr>`
           }).join('')}
         </tbody>
        </table></div>`
@@ -1041,7 +1041,7 @@ app.get('/', async (c) => {
            </tr>
         </thead>
         <tbody id="finTableBody">
-          <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...</td></tr>
+           <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...</td></tr>
         </tbody>
        </table>
     </div>
@@ -1557,7 +1557,7 @@ app.get('/', async (c) => {
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      .replace(/\\"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
@@ -1703,7 +1703,6 @@ app.get('/', async (c) => {
     const pl = document.getElementById('filterPlano')?.value||'';
     let count = 0;
     document.querySelectorAll('#clientTableBody tr').forEach(row => {
-      // CORREÇÃO AQUI: ')===st' -> '')===st
       const show = (!q||( row.dataset.search||'').includes(q)) && (!st||(row.dataset.status||'')===st) && (!pl||(row.dataset.plano||'')===pl);
       row.style.display = show ? '' : 'none';
       if (show) count++;
@@ -1822,13 +1821,13 @@ app.get('/', async (c) => {
           const sc = p.status==='pago'?'#16a34a':'#dc2626';
           const sb = p.status==='pago'?'#f0fdf4':'#fef2f2';
           html += '<tr style="border-bottom:1px solid #f1f3f5;">' +
-            '<td style="padding:8px;font-weight:600;color:#374151;">'+esc(p.mes)+'</td>' +
-            '<td style="padding:8px;text-align:right;font-weight:700;color:#1B4F72;">'+FMT_BRL(p.valor)+'</td>' +
-            '<td style="padding:8px;text-align:center;"><span class="mbadge" style="background:'+sb+';color:'+sc+';">'+esc(p.status)+'</span></td>' +
-            '<td style="padding:8px;color:#6c757d;">'+esc(p.data)+'</td>' +
-            '</tr>';
+            '<td style="padding:8px;font-weight:600;color:#374151;">'+esc(p.mes)+'<\/td>' +
+            '<td style="padding:8px;text-align:right;font-weight:700;color:#1B4F72;">'+FMT_BRL(p.valor)+'<\/td>' +
+            '<td style="padding:8px;text-align:center;"><span class="mbadge" style="background:'+sb+';color:'+sc+';">'+esc(p.status)+'</span><\/td>' +
+            '<td style="padding:8px;color:#6c757d;">'+esc(p.data)+'<\/td>' +
+            '<\/tr>';
         });
-        html += '</tbody></table>';
+        html += '<\/tbody><\/table>';
       }
     } else if (tab === 'atividade') {
       html = '<div style="display:flex;flex-direction:column;gap:0;">';
@@ -2062,7 +2061,7 @@ app.get('/', async (c) => {
     masterClientsData.forEach(c => {
       rows.push([c.empresa,c.fantasia,c.responsavel,c.email,c.tel||'',c.plano,c.status,c.valor,c.criadoEm]);
     });
-    const csv = rows.map(r => r.map(v => '"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+    const csv = rows.map(r => r.map(v => '"'+String(v||'').replace(/\\"/g,'""')+'"').join(',')).join('\\n');
     const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2073,7 +2072,7 @@ app.get('/', async (c) => {
   // ── Financeiro ────────────────────────────────────────────────────────────
   async function loadFinanceiro() {
     const tbody = document.getElementById('finTableBody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;"><i class="fas fa-spinner fa-spin" style="font-size:20px;"></i></td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;"><i class="fas fa-spinner fa-spin" style="font-size:20px;"></i><\/td><\/tr>';
 
     const status  = document.getElementById('finFiltroStatus')?.value  || '';
     const periodo = document.getElementById('finFiltroPeriodo')?.value || 'all';
@@ -2173,7 +2172,7 @@ app.get('/', async (c) => {
 
     if (_finFiltered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">' +
-        '<i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>Nenhum registro encontrado</td></tr>';
+        '<i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>Nenhum registro encontrado<\/td><\/tr>';
       const cc = document.getElementById('finCount');    if(cc) cc.textContent = '0 registros';
       const pi = document.getElementById('finPagInfo');  if(pi) pi.textContent = '';
       const pb = document.getElementById('finPagBtns');  if(pb) pb.innerHTML   = '';
@@ -2247,19 +2246,19 @@ app.get('/', async (c) => {
 
       return '<tr class="fin-tr" style="'+rowBg+'">' +
         '<td class="fin-td"><div style="font-weight:600;color:#1B4F72;">'+esc(row.empresa_name||row.user_email||'—')+'</div>' +
-        '<div style="font-size:10px;color:#9ca3af;">'+esc(row.user_email||'')+'</div></td>' +
-        '<td class="fin-td">'+planBadge+'</td>' +
-        '<td class="fin-td" style="color:#6c757d;">'+esc(FIN_TYPE_LABEL[row.type]||row.type||'—')+'</td>' +
-        '<td class="fin-td" style="font-weight:700;color:#374151;">'+FMT_BRL(row.amount)+'</td>' +
-        '<td class="fin-td" style="'+overdueSt+'">'+FMT_DATE(row.due_date)+'</td>' +
-        '<td class="fin-td" style="color:#16a34a;">'+FMT_DATE(row.paid_at)+'</td>' +
-        '<td class="fin-td">'+statusBadge+'</td>' +
-        '<td class="fin-td" style="text-align:center;">'+(omieBadges.length?omieBadges.join(' '):'<span style="color:#d1d5db;font-size:11px;">—</span>')+'</td>' +
+        '<div style="font-size:10px;color:#9ca3af;">'+esc(row.user_email||'')+'</div><\/td>' +
+        '<td class="fin-td">'+planBadge+'<\/td>' +
+        '<td class="fin-td" style="color:#6c757d;">'+esc(FIN_TYPE_LABEL[row.type]||row.type||'—')+'<\/td>' +
+        '<td class="fin-td" style="font-weight:700;color:#374151;">'+FMT_BRL(row.amount)+'<\/td>' +
+        '<td class="fin-td" style="'+overdueSt+'">'+FMT_DATE(row.due_date)+'<\/td>' +
+        '<td class="fin-td" style="color:#16a34a;">'+FMT_DATE(row.paid_at)+'<\/td>' +
+        '<td class="fin-td">'+statusBadge+'<\/td>' +
+        '<td class="fin-td" style="text-align:center;">'+(omieBadges.length?omieBadges.join(' '):'<span style="color:#d1d5db;font-size:11px;">—</span>')+'<\/td>' +
         '<td class="fin-td" style="white-space:nowrap;">' +
           '<button class="abtn" data-action="fin-detalhe" data-id="'+safeId+'" title="Detalhes"><i class="fas fa-eye"></i></button> ' +
           '<button class="abtn" data-action="fin-edit"    data-id="'+safeId+'" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
-        '</td>' +
-      '</tr>';
+        '<\/td>' +
+      '<\/tr>';
     }).join('');
   }
 
@@ -2423,7 +2422,7 @@ app.get('/', async (c) => {
         FIN_STATUS_LABEL[r.status]||r.status||''
       ]);
     });
-    const csv  = rows.map(r => r.map(v => '"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+    const csv  = rows.map(r => r.map(v => '"'+String(v||'').replace(/\\"/g,'""')+'"').join(',')).join('\\n');
     const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2890,26 +2889,26 @@ function buildMasterUsersTable(users: typeof masterUsers): string {
         }
         const role = roleMap[u.role] || { label: u.role, color:'#6c757d', bg:'#e9ecef' }
         return `<tr style="border-bottom:1px solid #f1f3f5;">
-          <td style="padding:10px 14px;font-weight:700;color:#1B4F72;">${escapeHtml(u.name)}</td>
-          <td style="padding:10px 14px;color:#374151;">${escapeHtml(u.email)}</td>
-          <td style="padding:10px 14px;"><span class="mbadge" style="background:${role.bg};color:${role.color};">${role.label}</span></td>
+          <td style="padding:10px 14px;font-weight:700;color:#1B4F72;">${escapeHtml(u.name)}<\/td>
+          <td style="padding:10px 14px;color:#374151;">${escapeHtml(u.email)}<\/td>
+          <td style="padding:10px 14px;"><span class="mbadge" style="background:${role.bg};color:${role.color};">${role.label}</span><\/td>
           <td style="padding:10px 14px;text-align:center;">
             <span class="mbadge" style="background:${u.active?'#f0fdf4':'#fef2f2'};color:${u.active?'#16a34a':'#dc2626'};">
               ${u.active?'Ativo':'Inativo'}
             </span>
-          </td>
-          <td style="padding:10px 14px;font-size:11px;color:#6c757d;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : 'Nunca'}</td>
+           <\/td>
+          <td style="padding:10px 14px;font-size:11px;color:#6c757d;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : 'Nunca'}<\/td>
           <td style="padding:10px 14px;text-align:center;">
             <button class="abtn" data-action="toggle-master-user" data-id="${escapeHtml(u.id)}"
               style="color:${u.active?'#dc2626':'#16a34a'};border-color:${u.active?'#fecaca':'#86efac'};">
               <i class="fas ${u.active?'fa-ban':'fa-check-circle'}"></i>
               <span class="tooltip-text">${u.active?'Desativar':'Ativar'}</span>
             </button>
-          </td>
-         </tr>`
+           <\/td>
+         <\/tr>`
       }).join('')}
     </tbody>
-   </table></div>`
+   <\/table><\/div>`
 }
 
 // ── Página de login ────────────────────────────────────────────────────────────
