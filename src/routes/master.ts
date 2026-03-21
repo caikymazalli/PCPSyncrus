@@ -577,7 +577,7 @@ app.get('/client/:clientId', async (c) => {
           <th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Valor</th>
           <th style="padding:8px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
           <th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Data</th>
-         </tr></thead><tbody>${cli.pagamentos.map(p => {
+         </thead><tbody>${cli.pagamentos.map(p => {
           const sc = p.status === 'pago' ? '#16a34a' : '#dc2626'
           const sb = p.status === 'pago' ? '#f0fdf4' : '#fef2f2'
           return `<tr style="border-bottom:1px solid #f1f3f5;">
@@ -732,7 +732,7 @@ app.get('/', async (c) => {
           <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Users</th>
           <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Cadastro</th>
           <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ações</th>
-         </tr></thead>
+         </thead>
         <tbody id="clientTableBody">
           ${clients.map((cli) => {
             const pl = PLANS[cli.plano] || PLANS.starter
@@ -783,7 +783,7 @@ app.get('/', async (c) => {
                   ${cli.status === 'inactive' ? `<button class="abtn" data-action="reactivate" data-id="${safeId}" style="color:#16a34a;border-color:#86efac;"><i class="fas fa-check-circle"></i><span class="tooltip-text">Reativar</span></button>` : ''}
                 </div>
                </td>
-             </tr>`
+              </tr>`
           }).join('')}
         </tbody>
        </table></div>`
@@ -975,7 +975,7 @@ app.get('/', async (c) => {
             <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Usuário</th>
             <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ação</th>
             <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Detalhe</th>
-           </tr></thead>
+           </thead>
           <tbody>
             ${auditLog.slice(0,100).map(ev => {
               const ac: Record<string,string> = { LOGIN:'#16a34a', ADD_CLIENT:'#2980B9', MIGRATE_PLAN:'#7c3aed', ADD_MASTER_USER:'#d97706' }
@@ -1043,7 +1043,7 @@ app.get('/', async (c) => {
         <tbody id="finTableBody">
           <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...</td></tr>
         </tbody>
-      </table>
+       </table>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
       <div style="font-size:12px;color:#9ca3af;" id="finCount"></div>
@@ -1703,7 +1703,8 @@ app.get('/', async (c) => {
     const pl = document.getElementById('filterPlano')?.value||'';
     let count = 0;
     document.querySelectorAll('#clientTableBody tr').forEach(row => {
-      const show = (!q||( row.dataset.search||'').includes(q)) && (!st||(row.dataset.status||')===st) && (!pl||(row.dataset.plano||'')===pl);
+      // CORREÇÃO AQUI: ')===st' -> '')===st
+      const show = (!q||( row.dataset.search||'').includes(q)) && (!st||(row.dataset.status||'')===st) && (!pl||(row.dataset.plano||'')===pl);
       row.style.display = show ? '' : 'none';
       if (show) count++;
     });
@@ -2880,7 +2881,7 @@ function buildMasterUsersTable(users: typeof masterUsers): string {
       <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
       <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Último Login</th>
       <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ações</th>
-     </tr></thead>
+     </thead>
     <tbody>
       ${users.map(u => {
         const roleMap: Record<string,{label:string,color:string,bg:string}> = {
