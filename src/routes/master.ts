@@ -123,6 +123,106 @@ function loginRedirect() {
   <body style="background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;min-height:100vh;">Redirecionando...</body></html>`
 }
 
+function masterLoginPage(errMsg: string = ''): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Master Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:linear-gradient(135deg,#0f172a,#1e1b4b); display:flex; align-items:center; justify-content:center; padding:24px; }
+    .login-card { width:100%; max-width:420px; background:white; border-radius:18px; box-shadow:0 25px 80px rgba(0,0,0,0.35); overflow:hidden; }
+    .login-head { padding:28px 28px 20px; background:linear-gradient(135deg,#1a1035,#2d1b69); color:white; }
+    .login-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.18); border-radius:999px; padding:6px 12px; font-size:11px; font-weight:700; letter-spacing:0.3px; text-transform:uppercase; }
+    .login-body { padding:28px; }
+    .form-label { display:block; font-size:12px; font-weight:700; color:#374151; margin-bottom:6px; }
+    .form-control { width:100%; padding:12px 14px; border:1.5px solid #d1d5db; border-radius:10px; font-size:14px; outline:none; transition:border 0.2s, box-shadow 0.2s; }
+    .form-control:focus { border-color:#7c3aed; box-shadow:0 0 0 4px rgba(124,58,237,0.12); }
+    .btn-login { width:100%; border:none; border-radius:10px; background:#7c3aed; color:white; font-size:14px; font-weight:800; padding:12px 16px; cursor:pointer; transition:transform 0.06s, background 0.15s; }
+    .btn-login:hover { background:#6d28d9; }
+    .btn-login:active { transform:translateY(1px); }
+    .error-box { margin-bottom:16px; padding:12px 14px; border-radius:10px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:13px; font-weight:600; }
+    .hint { margin-top:14px; font-size:12px; color:#6b7280; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-head">
+      <div class="login-badge"><i class="fas fa-shield-alt"></i> Área restrita</div>
+      <h1 style="margin:16px 0 6px;font-size:24px;line-height:1.1;">Master Admin</h1>
+      <div style="font-size:13px;color:rgba(255,255,255,0.72);">Acesso administrativo da plataforma PCP Planner</div>
+    </div>
+    <div class="login-body">
+      ${errMsg ? `<div class="error-box"><i class="fas fa-exclamation-circle" style="margin-right:8px;"></i>${escapeHtml(errMsg)}</div>` : ''}
+      <form method="post" action="/master/login">
+        <div style="margin-bottom:14px;">
+          <label class="form-label" for="email">E-mail</label>
+          <input id="email" name="email" type="email" class="form-control" placeholder="master@syncrus.com.br" autocomplete="username" required>
+        </div>
+        <div style="margin-bottom:18px;">
+          <label class="form-label" for="pwd">Senha</label>
+          <input id="pwd" name="pwd" type="password" class="form-control" placeholder="Digite sua senha" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn-login"><i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Entrar no painel</button>
+      </form>
+      <div class="hint">Use suas credenciais de administrador para continuar.</div>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
+function buildMasterUsersTable(users: Array<{
+  id: string; email: string; pwdHash: string; name: string;
+  createdAt: string; lastLogin: string | null; active: boolean; role: string
+}>): string {
+  if (users.length === 0) {
+    return `<div class="empty-state"><i class="fas fa-user-shield"></i><h3>Nenhum usuário master cadastrado</h3><p>Adicione o primeiro usuário com acesso ao painel.</p></div>`
+  }
+
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="background:#f8f9fa;border-bottom:2px solid #e9ecef;">
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Nome</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">E-mail</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Perfil</th>
+      <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Criado em</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Último login</th>
+      <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ações</th>
+    </tr></thead>
+    <tbody>
+      ${users.map((u) => {
+        const activeBadge = u.active
+          ? '<span class="mbadge" style="background:#dcfce7;color:#16a34a;">Ativo</span>'
+          : '<span class="mbadge" style="background:#fee2e2;color:#dc2626;">Inativo</span>'
+        const roleColors: Record<string, { bg: string; color: string; label: string }> = {
+          superadmin: { bg: '#ede9fe', color: '#7c3aed', label: 'Super Admin' },
+          admin: { bg: '#dbeafe', color: '#2563eb', label: 'Admin' },
+          viewer: { bg: '#f3f4f6', color: '#4b5563', label: 'Viewer' },
+        }
+        const roleMeta = roleColors[u.role] || { bg: '#f3f4f6', color: '#4b5563', label: u.role || 'Usuário' }
+        return `<tr style="border-bottom:1px solid #f1f3f5;">
+          <td style="padding:10px 14px;"><div style="font-weight:700;color:#1B4F72;">${escapeHtml(u.name)}</div></td>
+          <td style="padding:10px 14px;color:#374151;">${escapeHtml(u.email)}</td>
+          <td style="padding:10px 14px;"><span class="mbadge" style="background:${roleMeta.bg};color:${roleMeta.color};">${escapeHtml(roleMeta.label)}</span></td>
+          <td style="padding:10px 14px;text-align:center;">${activeBadge}</td>
+          <td style="padding:10px 14px;color:#374151;">${u.createdAt ? new Date(u.createdAt + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+          <td style="padding:10px 14px;color:#374151;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : 'Nunca acessou'}</td>
+          <td style="padding:10px 14px;text-align:center;">
+            <button class="abtn" data-action="toggle-master-user" data-id="${escapeHtml(u.id)}" style="color:${u.active ? '#dc2626' : '#16a34a'};${u.active ? 'border-color:#fecaca;background:#fff5f5;' : 'border-color:#bbf7d0;background:#f0fdf4;'}">
+              <i class="fas ${u.active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+              <span class="tooltip-text">${u.active ? 'Desativar usuário' : 'Reativar usuário'}</span>
+            </button>
+          </td>
+        </tr>`
+      }).join('')}
+    </tbody>
+  </table></div>`
+}
+
 function masterLayout(title: string, content: string, loggedName: string = ''): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
