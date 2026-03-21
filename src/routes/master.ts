@@ -668,43 +668,79 @@ app.post('/api/omie/push/:invoiceId', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
 
-  const app_key = c.env.OMIE_APP_KEY
-  const app_secret = c.env.OMIE_APP_SECRET
+  const body = await c.req.json().catch(() => ({} as any)) as any
+  const app_key = String(body?.app_key || c.env.OMIE_APP_KEY || '').trim()
+  const app_secret = String(body?.app_secret || c.env.OMIE_APP_SECRET || '').trim()
+  const codigo_categoria = String(body?.codigo_categoria || '').trim()
+  const id_conta_corrente = Number(body?.id_conta_corrente || 0)
+  const omie_customer_code = Number(body?.codigo_cliente_fornecedor || 0)
+
   if (!app_key || !app_secret) {
-    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
+    return c.json({ error: 'Informe App Key e App Secret ou configure as credenciais no servidor' }, 400)
+  }
+  if (!codigo_categoria) {
+    return c.json({ error: 'Informe o Código da Categoria da Omie nas configurações' }, 400)
+  }
+  if (!id_conta_corrente) {
+    return c.json({ error: 'Informe o ID da Conta Corrente da Omie nas configurações' }, 400)
   }
 
   const invoiceId = c.req.param('invoiceId')
-  // Buscar a fatura (exemplo: do array masterClients)
   const client = masterClients.find(c => `inv_${c.id}` === invoiceId)
   if (!client) return c.json({ error: 'Fatura não encontrada' }, 404)
 
-  // Mapear para o formato Omie
+  const toBrDate = (value?: string | null) => {
+    const d = value ? new Date(String(value).slice(0, 10) + 'T12:00:00') : new Date()
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const contaReceber: any = {
+    codigo_lancamento_integracao: invoiceId,
+    data_vencimento: toBrDate(client.trialEnd || undefined),
+    valor_documento: Number(client.valor || 0),
+    codigo_categoria,
+    data_previsao: toBrDate(client.trialEnd || undefined),
+    id_conta_corrente,
+    numero_documento: invoiceId,
+    data_emissao: toBrDate(new Date().toISOString().slice(0, 10)),
+  }
+
+  if (omie_customer_code) contaReceber.codigo_cliente_fornecedor = omie_customer_code
+  else contaReceber.codigo_cliente_fornecedor_integracao = client.id
+
   const payload = {
-    call: 'IncluirLancamento',
+    call: 'IncluirContaReceber',
     app_key,
     app_secret,
-    param: [{
-      codigo_cliente_fornecedor: client.id, // ID do cliente no Omie (precisa estar cadastrado)
-      data_vencimento: client.trialEnd || new Date().toISOString().split('T')[0],
-      valor_documento: client.valor || 0,
-      // outros campos conforme documentação
-      codigo_banco: '001', // exemplo
-    }]
+    param: [contaReceber]
   }
 
   try {
-    const response = await fetch('https://app.omie.com.br/api/v1/financas/contasreceber/', {
+    const response = await fetch('https://app.omie.com.br/api/v1/financas/contareceber/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-    const data = await response.json()
-    if (data.faultstring) throw new Error(data.faultstring)
-    return c.json({ ok: true, omie_codigo: data.codigo_lancamento })
+    const raw = await response.text()
+    let data: any = {}
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      throw new Error(`Resposta inválida da Omie (HTTP ${response.status})`)
+    }
+    if (!response.ok) {
+      throw new Error(data?.faultstring || data?.message || `HTTP ${response.status} ao incluir conta a receber`)
+    }
+    if (data?.faultstring || data?.faultcode) {
+      throw new Error(data?.faultstring || 'Falha retornada pela API da Omie')
+    }
+    return c.json({ ok: true, omie_codigo: data.codigo_lancamento_omie || data.codigo_lancamento_integracao || null, omie_data: data })
   } catch (err: any) {
     console.error('Erro Omie push:', err)
-    return c.json({ error: err.message }, 500)
+    return c.json({ error: err?.message || 'Falha ao enviar conta a receber para a Omie' }, 500)
   }
 })
 
@@ -712,36 +748,52 @@ app.post('/api/omie/boleto/:invoiceId', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
 
-  const app_key = c.env.OMIE_APP_KEY
-  const app_secret = c.env.OMIE_APP_SECRET
-  if (!app_key || !app_secret) {
-    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
-  }
+  const body = await c.req.json().catch(() => ({} as any)) as any
+  const app_key = String(body?.app_key || c.env.OMIE_APP_KEY || '').trim()
+  const app_secret = String(body?.app_secret || c.env.OMIE_APP_SECRET || '').trim()
+  const omie_codigo_lancamento = Number(body?.omie_codigo_lancamento || 0)
+  const codigo_integracao = String(body?.codigo_lancamento_integracao || c.req.param('invoiceId') || '').trim()
 
-  const invoiceId = c.req.param('invoiceId')
-  const { omie_codigo_lancamento } = await c.req.json()
+  if (!app_key || !app_secret) {
+    return c.json({ error: 'Informe App Key e App Secret ou configure as credenciais no servidor' }, 400)
+  }
+  if (!omie_codigo_lancamento && !codigo_integracao) {
+    return c.json({ error: 'Informe o código do lançamento Omie ou o código de integração do título' }, 400)
+  }
 
   const payload = {
     call: 'GerarBoleto',
     app_key,
     app_secret,
     param: [{
-      codigo_lancamento_omie: omie_codigo_lancamento
+      nCodTitulo: omie_codigo_lancamento || undefined,
+      cCodIntTitulo: codigo_integracao || undefined,
     }]
   }
 
   try {
-    const response = await fetch('https://app.omie.com.br/api/v1/financas/contasreceber/', {
+    const response = await fetch('https://app.omie.com.br/api/v1/financas/contareceberboleto/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-    const data = await response.json()
-    if (data.faultstring) throw new Error(data.faultstring)
-    return c.json({ ok: true, boleto_url: data.url_boleto })
+    const raw = await response.text()
+    let data: any = {}
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      throw new Error(`Resposta inválida da Omie (HTTP ${response.status})`)
+    }
+    if (!response.ok) {
+      throw new Error(data?.faultstring || data?.message || `HTTP ${response.status} ao gerar boleto`)
+    }
+    if (data?.faultstring || data?.faultcode) {
+      throw new Error(data?.faultstring || 'Falha retornada pela API da Omie')
+    }
+    return c.json({ ok: true, boleto_url: data.cLinkBoleto || null, omie_data: data })
   } catch (err: any) {
     console.error('Erro Omie boleto:', err)
-    return c.json({ error: err.message }, 500)
+    return c.json({ error: err?.message || 'Falha ao gerar boleto na Omie' }, 500)
   }
 })
 
@@ -806,7 +858,7 @@ app.post('/api/omie/sync', async (c) => {
   }
 
   try {
-    const response = await fetch('https://app.omie.com.br/api/v1/geral/financas/', {
+    const response = await fetch('https://app.omie.com.br/api/v1/financas/pesquisartitulos/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -828,7 +880,7 @@ app.post('/api/omie/sync', async (c) => {
       throw new Error(data?.faultstring || 'Falha retornada pela API da Omie')
     }
 
-    const titulos = Array.isArray(data?.titulos) ? data.titulos : []
+    const titulos = Array.isArray(data?.titulos) ? data.titulos : Array.isArray(data?.lista_titulos) ? data.lista_titulos : Array.isArray(data?.conta_receber_cadastro) ? data.conta_receber_cadastro : []
     return c.json({ ok: true, titulos, total: titulos.length })
   } catch (err: any) {
     console.error('Erro Omie sync:', err)
@@ -2763,9 +2815,25 @@ app.get('/', async (c) => {
 
   async function pushParaOmie(invoiceId) {
     if (!confirm('Enviar este lançamento para o Omie ERP?')) return;
+    const key = document.getElementById('cfg_omie_app_key')?.value?.trim();
+    const secret = document.getElementById('cfg_omie_app_secret')?.value?.trim();
+    const conta = document.getElementById('cfg_omie_conta_corrente')?.value?.trim();
+    const categoria = document.getElementById('cfg_omie_codigo_categoria')?.value?.trim();
+    if (!key || !secret) { showToast('Informe App Key e App Secret da Omie.','error'); return; }
+    if (!conta) { showToast('Informe o ID da Conta Corrente da Omie.','error'); return; }
+    if (!categoria) { showToast('Informe o Código da Categoria da Omie.','error'); return; }
     showToast('Enviando para Omie...','info');
     try {
-      const res  = await fetch('/master/api/omie/push/'+encodeURIComponent(invoiceId), { method:'POST' });
+      const res  = await fetch('/master/api/omie/push/'+encodeURIComponent(invoiceId), {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          app_key:key,
+          app_secret:secret,
+          id_conta_corrente:conta,
+          codigo_categoria:categoria
+        })
+      });
       const data = await res.json().catch(()=>({}));
       if (data.ok) { showToast('Enviado ao Omie! Código: '+(data.omie_codigo||''),'success'); loadFinanceiro(); }
       else { showToast('Erro Omie: '+(data.error||''),'error'); }
@@ -2774,11 +2842,19 @@ app.get('/', async (c) => {
 
   async function gerarBoletoOmie(invoiceId, omieId) {
     if (!confirm('Gerar boleto no Omie para este lançamento?')) return;
+    const key = document.getElementById('cfg_omie_app_key')?.value?.trim();
+    const secret = document.getElementById('cfg_omie_app_secret')?.value?.trim();
+    if (!key || !secret) { showToast('Informe App Key e App Secret da Omie.','error'); return; }
     showToast('Gerando boleto...','info');
     try {
       const res  = await fetch('/master/api/omie/boleto/'+encodeURIComponent(invoiceId), {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({omie_codigo_lancamento: omieId})
+        body:JSON.stringify({
+          app_key:key,
+          app_secret:secret,
+          omie_codigo_lancamento: omieId,
+          codigo_lancamento_integracao: invoiceId
+        })
       });
       const data = await res.json().catch(()=>({}));
       if (data.ok) {
