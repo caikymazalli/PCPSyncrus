@@ -614,10 +614,12 @@ app.post('/api/omie/test', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
 
-  const app_key = c.env.OMIE_APP_KEY
-  const app_secret = c.env.OMIE_APP_SECRET
+  const body = await c.req.json().catch(() => ({} as any)) as any
+  const app_key = String(body?.app_key || c.env.OMIE_APP_KEY || '').trim()
+  const app_secret = String(body?.app_secret || c.env.OMIE_APP_SECRET || '').trim()
+
   if (!app_key || !app_secret) {
-    return c.json({ error: 'Credenciais Omie não configuradas no servidor' }, 500)
+    return c.json({ error: 'Informe App Key e App Secret ou configure as credenciais no servidor' }, 400)
   }
 
   try {
@@ -631,14 +633,34 @@ app.post('/api/omie/test', async (c) => {
         param: [{ pagina: 1, registros_por_pagina: 1 }]
       })
     })
-    const data = await response.json()
-    if (data.faultstring) throw new Error(data.faultstring)
 
-    const nomeEmpresa = data.empresa_cadastro?.[0]?.nome_fantasia || 'Empresa não identificada'
+    const raw = await response.text()
+    let data: any = {}
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      throw new Error(`Resposta inválida da Omie (HTTP ${response.status})`)
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.faultstring || data?.message || `HTTP ${response.status} ao consultar Omie`)
+    }
+
+    if (data?.faultstring || data?.faultcode) {
+      throw new Error(data?.faultstring || 'Falha retornada pela API da Omie')
+    }
+
+    const nomeEmpresa =
+      data?.empresa_cadastro?.[0]?.nome_fantasia ||
+      data?.empresa_cadastro?.[0]?.razao_social ||
+      data?.cadastros?.[0]?.nome_fantasia ||
+      data?.cadastros?.[0]?.razao_social ||
+      'Conexão estabelecida com sucesso'
+
     return c.json({ ok: true, empresa: nomeEmpresa })
   } catch (err: any) {
     console.error('Erro Omie test:', err)
-    return c.json({ error: err.message || 'Falha na conexão' }, 500)
+    return c.json({ error: err?.message || 'Falha na conexão com a Omie' }, 500)
   }
 })
 
