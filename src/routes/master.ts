@@ -787,10 +787,12 @@ app.post('/api/omie/sync', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
 
-  const app_key = c.env.OMIE_APP_KEY
-  const app_secret = c.env.OMIE_APP_SECRET
+  const body = await c.req.json().catch(() => ({} as any)) as any
+  const app_key = String(body?.app_key || c.env.OMIE_APP_KEY || '').trim()
+  const app_secret = String(body?.app_secret || c.env.OMIE_APP_SECRET || '').trim()
+
   if (!app_key || !app_secret) {
-    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
+    return c.json({ error: 'Informe App Key e App Secret ou configure as credenciais no servidor' }, 400)
   }
 
   const payload = {
@@ -800,7 +802,6 @@ app.post('/api/omie/sync', async (c) => {
     param: [{
       pagina: 1,
       registros_por_pagina: 100,
-      // filtros opcionais: status, data_inicial, etc.
     }]
   }
 
@@ -810,13 +811,28 @@ app.post('/api/omie/sync', async (c) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
-    const data = await response.json()
-    if (data.faultstring) throw new Error(data.faultstring)
-    // Processar os títulos retornados (data.titulos) e atualizar o sistema local
-    return c.json({ ok: true, titulos: data.titulos })
+
+    const raw = await response.text()
+    let data: any = {}
+    try {
+      data = raw ? JSON.parse(raw) : {}
+    } catch {
+      throw new Error(`Resposta inválida da Omie (HTTP ${response.status})`)
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.faultstring || data?.message || `HTTP ${response.status} ao sincronizar com a Omie`)
+    }
+
+    if (data?.faultstring || data?.faultcode) {
+      throw new Error(data?.faultstring || 'Falha retornada pela API da Omie')
+    }
+
+    const titulos = Array.isArray(data?.titulos) ? data.titulos : []
+    return c.json({ ok: true, titulos, total: titulos.length })
   } catch (err: any) {
     console.error('Erro Omie sync:', err)
-    return c.json({ error: err.message }, 500)
+    return c.json({ error: err?.message || 'Falha na sincronização com a Omie' }, 500)
   }
 })
 
@@ -2791,11 +2807,21 @@ app.get('/', async (c) => {
   }
 
   async function syncOmie() {
+    const key = document.getElementById('cfg_omie_app_key')?.value?.trim();
+    const secret = document.getElementById('cfg_omie_app_secret')?.value?.trim();
+    if (!key || !secret) { showToast('Informe App Key e App Secret da Omie.','error'); return; }
     showToast('Sincronizando com Omie...','info');
     try {
-      const res  = await fetch('/master/api/omie/sync', { method:'POST' });
+      const res  = await fetch('/master/api/omie/sync', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ app_key:key, app_secret:secret })
+      });
       const data = await res.json().catch(()=>({}));
-      if (data.ok) { showToast('Sincronização concluída!','success'); loadFinanceiro(); }
+      if (data.ok) {
+        showToast('Sincronização concluída' + (typeof data.total === 'number' ? ': '+data.total+' título(s).' : '!'),'success');
+        loadFinanceiro();
+      }
       else { showToast('Erro sync: '+(data.error||''),'error'); }
     } catch { showToast('Erro de rede.','error'); }
   }
