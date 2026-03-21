@@ -6,7 +6,7 @@ import { getEmpresaModuleAccess } from '../moduleAccess'
 import type { AccessLevel, ModuleKey } from '../modules'
 import { createOmieClient, OmieClient } from '../lib/omie'
 
-const app = new Hono<{ Bindings: { DB: D1Database } }>()
+const app = new Hono<{ Bindings: { DB: D1Database; OMIE_APP_KEY?: string; OMIE_APP_SECRET?: string } }>()
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
 const MASTER_SESSION_KEY = 'master_session'
@@ -123,127 +123,147 @@ function loginRedirect() {
   <body style="background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;min-height:100vh;">Redirecionando...</body></html>`
 }
 
-function masterLayout(title: string, content: string, loggedName: string = ''): string {
+// ── Função auxiliar: tabela de usuários master ─────────────────────────────────
+function buildMasterUsersTable(users: typeof masterUsers): string {
+  if (!users.length) {
+    return `<div class="empty-state"><i class="fas fa-user-shield"></i><h3>Nenhum usuário master</h3></div>`
+  }
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="background:#f8f9fa;border-bottom:2px solid #e9ecef;">
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Nome</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">E-mail</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Perfil</th>
+      <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
+      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Último Login</th>
+      <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ações</th>
+     </thead>
+    <tbody>
+      ${users.map(u => {
+        const roleMap: Record<string,{label:string,color:string,bg:string}> = {
+          superadmin: { label:'Super Admin', color:'#7c3aed', bg:'#f5f3ff' },
+          viewer:     { label:'Visualizador', color:'#2980B9', bg:'#e8f4fd' },
+        }
+        const role = roleMap[u.role] || { label: u.role, color:'#6c757d', bg:'#e9ecef' }
+        return `<tr style="border-bottom:1px solid #f1f3f5;">
+          <td style="padding:10px 14px;font-weight:700;color:#1B4F72;">${escapeHtml(u.name)}<\/td>
+          <td style="padding:10px 14px;color:#374151;">${escapeHtml(u.email)}<\/td>
+          <td style="padding:10px 14px;"><span class="mbadge" style="background:${role.bg};color:${role.color};">${role.label}</span><\/td>
+          <td style="padding:10px 14px;text-align:center;">
+            <span class="mbadge" style="background:${u.active?'#f0fdf4':'#fef2f2'};color:${u.active?'#16a34a':'#dc2626'};">
+              ${u.active?'Ativo':'Inativo'}
+            </span>
+           <\/td>
+          <td style="padding:10px 14px;font-size:11px;color:#6c757d;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : 'Nunca'}<\/td>
+          <td style="padding:10px 14px;text-align:center;">
+            <button class="abtn" data-action="toggle-master-user" data-id="${escapeHtml(u.id)}"
+              style="color:${u.active?'#dc2626':'#16a34a'};border-color:${u.active?'#fecaca':'#86efac'};">
+              <i class="fas ${u.active?'fa-ban':'fa-check-circle'}"></i>
+              <span class="tooltip-text">${u.active?'Desativar':'Ativar'}</span>
+            </button>
+           <\/td>
+         <\/tr>`
+      }).join('')}
+    </tbody>
+   <\/table><\/div>`
+}
+
+// ── Página de login ────────────────────────────────────────────────────────────
+function masterLoginPage(errMsg: string = ''): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — Master Admin</title>
+  <title>Master Admin — Login</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <style>
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f3f5; margin: 0; padding: 0; }
-    .master-topbar { background: linear-gradient(135deg, #1a1035, #2d1b69); border-bottom: 1px solid rgba(124,58,237,0.3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(0,0,0,0.25); }
-    .master-main { max-width: 1400px; margin: 0 auto; padding: 24px; }
-    .card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
-    .form-control { width: 100%; padding: 9px 12px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 13px; outline: none; transition: border 0.2s; }
-    .form-control:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
-    .form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
-    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; transition: all 0.15s; }
-    .btn-primary { background: #1B4F72; color: white; }
-    .btn-primary:hover { background: #154360; }
-    .btn-secondary { background: #f1f3f5; color: #374151; border: 1px solid #e9ecef; }
-    .btn-secondary:hover { background: #e9ecef; }
-    .btn-sm { padding: 5px 10px; font-size: 11px; }
-    .mbadge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; gap: 4px; }
-    .moverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
-    .moverlay.open { display: flex; }
-    .mmodal { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; animation: mIn 0.22s ease; }
-    @keyframes mIn { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
-    .mtab { padding: 8px 16px; font-size: 12px; font-weight: 600; border: none; background: none; cursor: pointer; color: #6c757d; border-bottom: 2px solid transparent; }
-    .mtab.active { color: #7c3aed; border-color: #7c3aed; }
-    .panel-tab { padding: 10px 20px; font-size: 13px; font-weight: 600; border: none; background: none; cursor: pointer; color: #6c757d; border-bottom: 3px solid transparent; transition: all 0.15s; white-space: nowrap; }
-    .panel-tab.active { color: #7c3aed; border-color: #7c3aed; background: rgba(124,58,237,0.04); }
-    .abtn { background: none; border: 1px solid #e9ecef; border-radius: 6px; padding: 5px 8px; font-size: 11px; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 3px; position: relative; }
-    .abtn:hover { background: #f1f3f5; border-color: #adb5bd; }
-    .abtn .tooltip-text { visibility: hidden; opacity: 0; background: #1a1a2e; color: white; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 5px; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); white-space: nowrap; transition: opacity 0.15s; pointer-events: none; z-index: 999; }
-    .abtn .tooltip-text::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 4px solid transparent; border-top-color: #1a1a2e; }
-    .abtn:hover .tooltip-text { visibility: visible; opacity: 1; }
-    .client-row { transition: background 0.1s; }
-    .client-row:hover { background: #f8f9fa !important; }
-    .master-kpi { background: white; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
-    .fin-kpi { background:white;border-radius:10px;padding:14px 18px;border:1px solid #e9ecef;transition:box-shadow 0.15s; }
-    .fin-kpi:hover { box-shadow:0 2px 8px rgba(0,0,0,0.08); }
-    .fin-kpi-label { font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;align-items:center;gap:5px; }
-    .fin-kpi-value { font-size:22px;font-weight:800;color:#1B4F72;line-height:1; }
-    .fin-kpi-sub { font-size:10px;color:#9ca3af;margin-top:3px; }
-    .fin-th { padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;letter-spacing:0.3px;cursor:pointer;white-space:nowrap;user-select:none; }
-    .fin-th:hover { color:#374151; }
-    .fin-tr { border-bottom:1px solid #f1f3f5;transition:background 0.1s; }
-    .fin-tr:hover { background:#f8f9fa; }
-    .fin-td { padding:9px 12px;font-size:12px;color:#374151;vertical-align:middle;white-space:nowrap; }
-    .fin-badge-paid      { background:#dcfce7;color:#16a34a;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
-    .fin-badge-pending   { background:#fef9c3;color:#d97706;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
-    .fin-badge-overdue   { background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
-    .fin-badge-cancelled { background:#f3f4f6;color:#6c757d;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
-    .fin-badge-refunded  { background:#ede9fe;color:#7c3aed;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
-    .fin-badge-failed    { background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px; }
-    .omie-badge { display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#fff3e8;color:#c2410c;text-decoration:none; }
-    .omie-badge.omie-boleto { background:#eff6ff;color:#1d4ed8;cursor:pointer; }
-    .omie-badge.omie-nfse { background:#f5f3ff;color:#6d28d9; }
-    .fin-bar { border-radius:4px 4px 0 0;min-width:28px;position:relative;cursor:pointer;transition:opacity 0.15s; }
-    .fin-bar:hover { opacity:0.85; }
-    .fin-bar-label { font-size:9px;color:#6c757d;text-align:center;margin-top:4px;white-space:nowrap; }
-    .cfg-tab { padding:9px 18px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;color:#6c757d;border-bottom:3px solid transparent;transition:all 0.15s;white-space:nowrap; }
-    .cfg-tab.active { color:#7c3aed;border-color:#7c3aed;background:rgba(124,58,237,0.04); }
-    .cfg-label { display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px; }
-    .cfg-input { width:100%;padding:8px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;color:#374151;background:white;box-sizing:border-box;transition:border 0.15s; }
-    .cfg-input:focus { outline:none;border-color:#7c3aed;box-shadow:0 0 0 2px rgba(124,58,237,0.1); }
-    .cfg-save-btn { background:#7c3aed;color:white;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s; }
-    .cfg-save-btn:hover { background:#6d28d9; }
-    .cfg-section { animation:fadeInUp 0.2s ease; }
-    @keyframes fadeInUp { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
-    :root {
-      --brand-primary: #7c3aed;
-      --brand-secondary: #2980B9;
-      --brand-accent: #16a34a;
-      --brand-sidebar: #1B4F72;
-    }
-    .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
-    .empty-state i { font-size: 48px; display: block; margin-bottom: 16px; opacity: 0.3; }
-    .empty-state h3 { font-size: 16px; font-weight: 700; color: #374151; margin: 0 0 8px; }
-    .empty-state p { font-size: 13px; margin: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; padding: 20px; }
+    .login-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 25px 50px rgba(0,0,0,0.5); }
+    .form-control { width: 100%; padding: 11px 14px; border: 1.5px solid rgba(255,255,255,0.15); border-radius: 10px; font-size: 14px; outline: none; transition: border 0.2s; background: rgba(255,255,255,0.08); color: white; }
+    .form-control::placeholder { color: rgba(255,255,255,0.35); }
+    .form-control:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.2); }
+    .btn-login { width: 100%; padding: 13px; background: linear-gradient(135deg, #7c3aed, #5b21b6); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
+    .btn-login:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(124,58,237,0.4); }
+    .btn-login:active { transform: translateY(0); }
+    label { display: block; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.6); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .err-box { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #fca5a5; display: flex; align-items: center; gap: 8px; }
   </style>
 </head>
 <body>
-  <div class="master-topbar">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <div style="width:32px;height:32px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(124,58,237,0.4);">
-        <i class="fas fa-shield-alt" style="color:white;font-size:14px;"></i>
+  <div class="login-card">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="width:56px;height:56px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 8px 24px rgba(124,58,237,0.4);">
+        <i class="fas fa-shield-alt" style="color:white;font-size:24px;"></i>
+      </div>
+      <div style="font-size:22px;font-weight:800;color:white;letter-spacing:-0.5px;">Master Admin</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-top:4px;">Acesso restrito — PCP Planner</div>
+    </div>
+
+    ${errMsg ? `<div class="err-box" style="margin-bottom:20px;"><i class="fas fa-exclamation-circle"></i>${errMsg}</div>` : ''}
+
+    <form method="POST" action="/master/login" style="display:flex;flex-direction:column;gap:18px;">
+      <div>
+        <label for="email"><i class="fas fa-envelope" style="margin-right:5px;"></i>E-mail</label>
+        <input class="form-control" type="email" id="email" name="email" placeholder="master@syncrus.com.br" required autocomplete="email">
       </div>
       <div>
-        <div style="font-size:14px;font-weight:800;color:white;letter-spacing:-0.3px;">Master Admin</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:500;">PCP Planner — Painel Restrito</div>
+        <label for="pwd"><i class="fas fa-lock" style="margin-right:5px;"></i>Senha</label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" id="pwd" name="pwd" placeholder="••••••••" required autocomplete="current-password" style="padding-right:44px;">
+          <button type="button" id="togglePwd" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.4);padding:0;">
+            <i class="fas fa-eye" id="eyeIcon"></i>
+          </button>
+        </div>
       </div>
-      <div style="margin-left:16px;display:flex;align-items:center;gap:6px;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.35);border-radius:20px;padding:3px 12px;">
-        <div style="width:6px;height:6px;background:#4ade80;border-radius:50%;"></div>
-        <span style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:600;">AMBIENTE DE CONTROLE</span>
+      <button type="submit" class="btn-login">
+        <i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Entrar no Master Admin
+      </button>
+    </form>
+
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;">
+      <a href="/" style="font-size:12px;color:rgba(255,255,255,0.3);text-decoration:none;transition:color 0.15s;" onmouseover="this.style.color='rgba(255,255,255,0.6)'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
+        <i class="fas fa-arrow-left" style="margin-right:5px;"></i>Voltar para a plataforma
+      </a>
+    </div>
+
+    <div style="margin-top:16px;text-align:center;">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.25);border-radius:20px;padding:4px 14px;">
+        <div style="width:6px;height:6px;background:#4ade80;border-radius:50%;animation:pulse 2s infinite;"></div>
+        <span style="font-size:11px;color:rgba(255,255,255,0.5);font-weight:600;">AMBIENTE SEGURO</span>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;">
-      ${loggedName ? `<span style="font-size:12px;color:rgba(255,255,255,0.6);"><i class="fas fa-user-circle" style="margin-right:5px;color:#a78bfa;"></i>${loggedName}</span>` : ''}
-      <a href="/" style="font-size:12px;color:rgba(255,255,255,0.5);text-decoration:none;padding:5px 10px;border:1px solid rgba(255,255,255,0.15);border-radius:6px;transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">
-        <i class="fas fa-external-link-alt" style="margin-right:4px;font-size:10px;"></i>Plataforma
-      </a>
-      <a href="/master/logout" style="font-size:12px;color:#fca5a5;text-decoration:none;padding:5px 12px;border:1px solid rgba(239,68,68,0.3);border-radius:6px;background:rgba(239,68,68,0.1);transition:all 0.15s;" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">
-        <i class="fas fa-sign-out-alt" style="margin-right:4px;"></i>Sair
-      </a>
-    </div>
   </div>
-  <div class="master-main">
-    ${content}
-  </div>
-  <div id="toastContainer" style="position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+
+  <style>
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+
   <script>
-  function showToast(msg, type) {
-    const c = document.getElementById('toastContainer');
-    const t = document.createElement('div');
-    t.style.cssText = 'padding:12px 20px;border-radius:10px;font-size:13px;font-weight:700;color:white;background:'+(type==='success'?'#16a34a':type==='info'?'#2980B9':'#dc2626')+';box-shadow:0 4px 20px rgba(0,0,0,0.25);animation:mIn 0.3s ease;pointer-events:auto;display:flex;align-items:center;gap:8px;';
-    t.innerHTML = '<i class="fas '+(type==='success'?'fa-check-circle':type==='info'?'fa-info-circle':'fa-exclamation-circle')+'"></i> '+msg;
-    c.appendChild(t);
-    setTimeout(() => t.remove(), 3200);
-  }
+    document.getElementById('togglePwd').addEventListener('click', function() {
+      const inp = document.getElementById('pwd');
+      const ico = document.getElementById('eyeIcon');
+      if (inp.type === 'password') {
+        inp.type = 'text';
+        ico.className = 'fas fa-eye-slash';
+      } else {
+        inp.type = 'password';
+        ico.className = 'fas fa-eye';
+      }
+    });
+
+    // Auto-focus no campo de e-mail
+    document.getElementById('email').focus();
+
+    // Prevenir duplo submit
+    document.querySelector('form').addEventListener('submit', function() {
+      const btn = document.querySelector('.btn-login');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Verificando...';
+    });
   </script>
 </body>
 </html>`
@@ -436,20 +456,21 @@ app.post('/api/client/:clientId/modules', async (c) => {
   auditLog.unshift({ ts: now, user: auth.name, action: 'SET_MODULES', detail: `Módulos atualizados para cliente ${clientId}` })
   return c.json({ ok: true })
 })
+
 // ── Rotas de Financeiro ──────────────────────────────────────────────────────
 app.get('/api/financeiro', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
 
-  // Exemplo: gerar faturas a partir dos clientes em memória
-  const invoices = masterClients.filter(cli => cli.status === 'active').map(cli => ({
+  // Gerar faturas a partir dos clientes em memória
+  const invoices = masterClients.map(cli => ({
     id: `inv_${cli.id}`,
     user_id: cli.id,
     empresa_name: cli.fantasia || cli.empresa,
     user_email: cli.email,
     plan: cli.plano,
     type: cli.billing === 'annual' ? 'annual' : 'monthly',
-    amount: cli.valor,
+    amount: cli.valor || 0,
     due_date: cli.trialEnd || new Date().toISOString().split('T')[0],
     paid_at: cli.status === 'active' ? new Date().toISOString().split('T')[0] : null,
     status: cli.status === 'active' ? 'paid' : cli.status === 'trial' ? 'pending' : 'cancelled',
@@ -458,14 +479,14 @@ app.get('/api/financeiro', async (c) => {
     omie_nfse_numero: null,
   }))
 
-  // Filtros básicos
+  // Filtros básicos (opcionais)
   const status = c.req.query('status')
   const periodo = c.req.query('periodo')
   const plan = c.req.query('plan')
   let filtered = invoices
   if (status) filtered = filtered.filter(i => i.status === status)
   if (plan) filtered = filtered.filter(i => i.plan === plan)
-  // Implementar filtro por período se necessário
+  // período pode ser tratado conforme necessidade
 
   return c.json({ ok: true, invoices: filtered })
 })
@@ -477,10 +498,9 @@ app.post('/api/financeiro', async (c) => {
   if (!body.user_id || !body.amount || !body.due_date) {
     return c.json({ error: 'Campos obrigatórios: user_id, amount, due_date' }, 400)
   }
-  // Aqui você salvaria no banco. Exemplo com masterClients:
   const cli = masterClients.find(c => c.id === body.user_id)
   if (!cli) return c.json({ error: 'Cliente não encontrado' }, 404)
-  // Adicionar pagamento fictício (ajuste conforme necessidade)
+  // Adiciona pagamento fictício (apenas para demo)
   if (!cli.pagamentos) cli.pagamentos = []
   cli.pagamentos.push({
     mes: new Date(body.due_date).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }),
@@ -496,7 +516,7 @@ app.put('/api/financeiro/:id', async (c) => {
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
   const id = c.req.param('id')
   const body = await c.req.json()
-  // Implementar atualização no banco
+  // Implementar atualização no banco se necessário
   return c.json({ ok: true })
 })
 
@@ -509,39 +529,79 @@ app.post('/api/financeiro/:id/status', async (c) => {
   return c.json({ ok: true })
 })
 
-// ── Rotas Omie ───────────────────────────────────────────────────────────────
+// ── Rotas Omie (usando credenciais do ambiente) ──────────────────────────────────
 app.post('/api/omie/test', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
-  const { app_key, app_secret } = await c.req.json()
+
+  const app_key = c.env.OMIE_APP_KEY
+  const app_secret = c.env.OMIE_APP_SECRET
   if (!app_key || !app_secret) {
-    return c.json({ error: 'App Key e App Secret são obrigatórios' }, 400)
+    return c.json({ error: 'Credenciais Omie não configuradas no servidor' }, 500)
   }
+
   try {
-    // Exemplo: usar o cliente Omie importado
-    const omie = createOmieClient(app_key, app_secret)
-    // Ajuste conforme os métodos reais disponíveis na classe OmieClient
-    const result = await omie.empresa.consultar()
-    return c.json({ ok: true, empresa: result.nome_fantasia })
+    const response = await fetch('https://app.omie.com.br/api/v1/geral/empresas/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call: 'ListarEmpresas',
+        app_key,
+        app_secret,
+        param: [{ pagina: 1, registros_por_pagina: 1 }]
+      })
+    })
+    const data = await response.json()
+    if (data.faultstring) throw new Error(data.faultstring)
+
+    const nomeEmpresa = data.empresa_cadastro?.[0]?.nome_fantasia || 'Empresa não identificada'
+    return c.json({ ok: true, empresa: nomeEmpresa })
   } catch (err: any) {
-    return c.json({ error: err.message || 'Erro ao conectar com Omie' }, 500)
+    console.error('Erro Omie test:', err)
+    return c.json({ error: err.message || 'Falha na conexão' }, 500)
   }
 })
 
 app.post('/api/omie/push/:invoiceId', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+
+  const app_key = c.env.OMIE_APP_KEY
+  const app_secret = c.env.OMIE_APP_SECRET
+  if (!app_key || !app_secret) {
+    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
+  }
+
   const invoiceId = c.req.param('invoiceId')
-  // Buscar invoice (exemplo: do array masterClients)
-  const invoice = masterClients.find(c => `inv_${c.id}` === invoiceId)
-  if (!invoice) return c.json({ error: 'Fatura não encontrada' }, 404)
-  // Enviar para Omie via API
+  // Buscar a fatura (exemplo: do array masterClients)
+  const client = masterClients.find(c => `inv_${c.id}` === invoiceId)
+  if (!client) return c.json({ error: 'Fatura não encontrada' }, 404)
+
+  // Mapear para o formato Omie
+  const payload = {
+    call: 'IncluirLancamento',
+    app_key,
+    app_secret,
+    param: [{
+      codigo_cliente_fornecedor: client.id, // ID do cliente no Omie (precisa estar cadastrado)
+      data_vencimento: client.trialEnd || new Date().toISOString().split('T')[0],
+      valor_documento: client.valor || 0,
+      // outros campos conforme documentação
+      codigo_banco: '001', // exemplo
+    }]
+  }
+
   try {
-    const omie = createOmieClient(/* app_key, app_secret - obter de configuração */)
-    // const result = await omie.lancamento.incluir({ ... })
-    // return c.json({ ok: true, omie_codigo: result.codigo })
-    return c.json({ ok: true, omie_codigo: '123456' })
+    const response = await fetch('https://app.omie.com.br/api/v1/financas/contasreceber/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    const data = await response.json()
+    if (data.faultstring) throw new Error(data.faultstring)
+    return c.json({ ok: true, omie_codigo: data.codigo_lancamento })
   } catch (err: any) {
+    console.error('Erro Omie push:', err)
     return c.json({ error: err.message }, 500)
   }
 })
@@ -549,14 +609,36 @@ app.post('/api/omie/push/:invoiceId', async (c) => {
 app.post('/api/omie/boleto/:invoiceId', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+
+  const app_key = c.env.OMIE_APP_KEY
+  const app_secret = c.env.OMIE_APP_SECRET
+  if (!app_key || !app_secret) {
+    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
+  }
+
   const invoiceId = c.req.param('invoiceId')
   const { omie_codigo_lancamento } = await c.req.json()
-  // Gerar boleto no Omie
+
+  const payload = {
+    call: 'GerarBoleto',
+    app_key,
+    app_secret,
+    param: [{
+      codigo_lancamento_omie: omie_codigo_lancamento
+    }]
+  }
+
   try {
-    // const omie = createOmieClient(...)
-    // const result = await omie.boleto.gerar(omie_codigo_lancamento)
-    return c.json({ ok: true, boleto_url: 'https://omie.com.br/boleto/123' })
+    const response = await fetch('https://app.omie.com.br/api/v1/financas/contasreceber/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    const data = await response.json()
+    if (data.faultstring) throw new Error(data.faultstring)
+    return c.json({ ok: true, boleto_url: data.url_boleto })
   } catch (err: any) {
+    console.error('Erro Omie boleto:', err)
     return c.json({ error: err.message }, 500)
   }
 })
@@ -564,14 +646,37 @@ app.post('/api/omie/boleto/:invoiceId', async (c) => {
 app.post('/api/omie/nfse/:invoiceId', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
+
+  const app_key = c.env.OMIE_APP_KEY
+  const app_secret = c.env.OMIE_APP_SECRET
+  if (!app_key || !app_secret) {
+    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
+  }
+
   const invoiceId = c.req.param('invoiceId')
   const { omie_codigo_lancamento } = await c.req.json()
-  // Emitir NFS-e
+
+  // Exemplo de chamada para emitir NFS-e – ajuste conforme documentação
+  const payload = {
+    call: 'EmitirNFS',
+    app_key,
+    app_secret,
+    param: [{
+      codigo_lancamento_omie: omie_codigo_lancamento
+    }]
+  }
+
   try {
-    // const omie = createOmieClient(...)
-    // const result = await omie.nfse.emitir(omie_codigo_lancamento)
-    return c.json({ ok: true, nfse_numero: '12345', nfse_pdf: 'https://omie.com.br/nfse/12345.pdf' })
+    const response = await fetch('https://app.omie.com.br/api/v1/servicos/nfse/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    const data = await response.json()
+    if (data.faultstring) throw new Error(data.faultstring)
+    return c.json({ ok: true, nfse_numero: data.numero_nfse, nfse_pdf: data.link_pdf })
   } catch (err: any) {
+    console.error('Erro Omie NFS-e:', err)
     return c.json({ error: err.message }, 500)
   }
 })
@@ -579,13 +684,36 @@ app.post('/api/omie/nfse/:invoiceId', async (c) => {
 app.post('/api/omie/sync', async (c) => {
   const auth = await isAuthenticated(c)
   if (!auth) return c.json({ error: 'Unauthorized' }, 401)
-  // Sincronizar contas a receber do Omie com o sistema
+
+  const app_key = c.env.OMIE_APP_KEY
+  const app_secret = c.env.OMIE_APP_SECRET
+  if (!app_key || !app_secret) {
+    return c.json({ error: 'Credenciais Omie não configuradas' }, 500)
+  }
+
+  const payload = {
+    call: 'PesquisarTitulos',
+    app_key,
+    app_secret,
+    param: [{
+      pagina: 1,
+      registros_por_pagina: 100,
+      // filtros opcionais: status, data_inicial, etc.
+    }]
+  }
+
   try {
-    // const omie = createOmieClient(...)
-    // const contas = await omie.contasReceber.listar()
-    // Atualizar dados locais
-    return c.json({ ok: true })
+    const response = await fetch('https://app.omie.com.br/api/v1/geral/financas/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    const data = await response.json()
+    if (data.faultstring) throw new Error(data.faultstring)
+    // Processar os títulos retornados (data.titulos) e atualizar o sistema local
+    return c.json({ ok: true, titulos: data.titulos })
   } catch (err: any) {
+    console.error('Erro Omie sync:', err)
     return c.json({ error: err.message }, 500)
   }
 })
@@ -1194,7 +1322,7 @@ app.get('/', async (c) => {
             <\/tr>
         </thead>
         <tbody id="finTableBody">
-             <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...<\/td><\/tr>
+              <tr><td colspan="9" style="text-align:center;padding:40px;color:#9ca3af;">Carregando...<\/td><\/tr>
         </tbody>
       <\/table>
     </div>
@@ -3020,151 +3148,4 @@ app.get('/', async (c) => {
   return c.html(masterLayout('Master Admin — Painel de Controle', content, auth.name))
 })
 
-// ── Função auxiliar: tabela de usuários master ─────────────────────────────────
-function buildMasterUsersTable(users: typeof masterUsers): string {
-  if (!users.length) {
-    return `<div class="empty-state"><i class="fas fa-user-shield"></i><h3>Nenhum usuário master</h3></div>`
-  }
-  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
-    <thead><tr style="background:#f8f9fa;border-bottom:2px solid #e9ecef;">
-      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Nome</th>
-      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">E-mail</th>
-      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Perfil</th>
-      <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Status</th>
-      <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Último Login</th>
-      <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#6c757d;text-transform:uppercase;">Ações</th>
-     </thead>
-    <tbody>
-      ${users.map(u => {
-        const roleMap: Record<string,{label:string,color:string,bg:string}> = {
-          superadmin: { label:'Super Admin', color:'#7c3aed', bg:'#f5f3ff' },
-          viewer:     { label:'Visualizador', color:'#2980B9', bg:'#e8f4fd' },
-        }
-        const role = roleMap[u.role] || { label: u.role, color:'#6c757d', bg:'#e9ecef' }
-        return `<tr style="border-bottom:1px solid #f1f3f5;">
-          <td style="padding:10px 14px;font-weight:700;color:#1B4F72;">${escapeHtml(u.name)}<\/td>
-          <td style="padding:10px 14px;color:#374151;">${escapeHtml(u.email)}<\/td>
-          <td style="padding:10px 14px;"><span class="mbadge" style="background:${role.bg};color:${role.color};">${role.label}</span><\/td>
-          <td style="padding:10px 14px;text-align:center;">
-            <span class="mbadge" style="background:${u.active?'#f0fdf4':'#fef2f2'};color:${u.active?'#16a34a':'#dc2626'};">
-              ${u.active?'Ativo':'Inativo'}
-            </span>
-           <\/td>
-          <td style="padding:10px 14px;font-size:11px;color:#6c757d;">${u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : 'Nunca'}<\/td>
-          <td style="padding:10px 14px;text-align:center;">
-            <button class="abtn" data-action="toggle-master-user" data-id="${escapeHtml(u.id)}"
-              style="color:${u.active?'#dc2626':'#16a34a'};border-color:${u.active?'#fecaca':'#86efac'};">
-              <i class="fas ${u.active?'fa-ban':'fa-check-circle'}"></i>
-              <span class="tooltip-text">${u.active?'Desativar':'Ativar'}</span>
-            </button>
-           <\/td>
-         <\/tr>`
-      }).join('')}
-    </tbody>
-   <\/table><\/div>`
-}
-
-// ── Página de login ────────────────────────────────────────────────────────────
-function masterLoginPage(errMsg: string = ''): string {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Master Admin — Login</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; padding: 20px; }
-    .login-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 25px 50px rgba(0,0,0,0.5); }
-    .form-control { width: 100%; padding: 11px 14px; border: 1.5px solid rgba(255,255,255,0.15); border-radius: 10px; font-size: 14px; outline: none; transition: border 0.2s; background: rgba(255,255,255,0.08); color: white; }
-    .form-control::placeholder { color: rgba(255,255,255,0.35); }
-    .form-control:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.2); }
-    .btn-login { width: 100%; padding: 13px; background: linear-gradient(135deg, #7c3aed, #5b21b6); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
-    .btn-login:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(124,58,237,0.4); }
-    .btn-login:active { transform: translateY(0); }
-    label { display: block; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.6); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .err-box { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #fca5a5; display: flex; align-items: center; gap: 8px; }
-  </style>
-</head>
-<body>
-  <div class="login-card">
-    <div style="text-align:center;margin-bottom:32px;">
-      <div style="width:56px;height:56px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 8px 24px rgba(124,58,237,0.4);">
-        <i class="fas fa-shield-alt" style="color:white;font-size:24px;"></i>
-      </div>
-      <div style="font-size:22px;font-weight:800;color:white;letter-spacing:-0.5px;">Master Admin</div>
-      <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-top:4px;">Acesso restrito — PCP Planner</div>
-    </div>
-
-    ${errMsg ? `<div class="err-box" style="margin-bottom:20px;"><i class="fas fa-exclamation-circle"></i>${errMsg}</div>` : ''}
-
-    <form method="POST" action="/master/login" style="display:flex;flex-direction:column;gap:18px;">
-      <div>
-        <label for="email"><i class="fas fa-envelope" style="margin-right:5px;"></i>E-mail</label>
-        <input class="form-control" type="email" id="email" name="email" placeholder="master@syncrus.com.br" required autocomplete="email">
-      </div>
-      <div>
-        <label for="pwd"><i class="fas fa-lock" style="margin-right:5px;"></i>Senha</label>
-        <div style="position:relative;">
-          <input class="form-control" type="password" id="pwd" name="pwd" placeholder="••••••••" required autocomplete="current-password" style="padding-right:44px;">
-          <button type="button" id="togglePwd" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.4);padding:0;">
-            <i class="fas fa-eye" id="eyeIcon"></i>
-          </button>
-        </div>
-      </div>
-      <button type="submit" class="btn-login">
-        <i class="fas fa-sign-in-alt" style="margin-right:8px;"></i>Entrar no Master Admin
-      </button>
-    </form>
-
-    <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;">
-      <a href="/" style="font-size:12px;color:rgba(255,255,255,0.3);text-decoration:none;transition:color 0.15s;" onmouseover="this.style.color='rgba(255,255,255,0.6)'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
-        <i class="fas fa-arrow-left" style="margin-right:5px;"></i>Voltar para a plataforma
-      </a>
-    </div>
-
-    <div style="margin-top:16px;text-align:center;">
-      <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.25);border-radius:20px;padding:4px 14px;">
-        <div style="width:6px;height:6px;background:#4ade80;border-radius:50%;animation:pulse 2s infinite;"></div>
-        <span style="font-size:11px;color:rgba(255,255,255,0.5);font-weight:600;">AMBIENTE SEGURO</span>
-      </div>
-    </div>
-  </div>
-
-  <style>
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-  </style>
-
-  <script>
-    document.getElementById('togglePwd').addEventListener('click', function() {
-      const inp = document.getElementById('pwd');
-      const ico = document.getElementById('eyeIcon');
-      if (inp.type === 'password') {
-        inp.type = 'text';
-        ico.className = 'fas fa-eye-slash';
-      } else {
-        inp.type = 'password';
-        ico.className = 'fas fa-eye';
-      }
-    });
-
-    // Auto-focus no campo de e-mail
-    document.getElementById('email').focus();
-
-    // Prevenir duplo submit
-    document.querySelector('form').addEventListener('submit', function() {
-      const btn = document.querySelector('.btn-login');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Verificando...';
-    });
-  </script>
-</body>
-</html>`
-}
-
-// ── Export ─────────────────────────────────────────────────────────────────────
 export default app
