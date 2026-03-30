@@ -64,11 +64,32 @@ function schemaDriftError(c: any, detail: string): Response {
   return c.json({ ok: false, error: message, schemaDrift: true }, 500)
 }
 
+// ── Permission helpers for visibility ────────────────────────────────────────
+
+function canViewInstruction(userInfo: any, instruction: any): boolean {
+  if (!userInfo) return false
+  if (userInfo.role === 'admin') return true
+  const visibility = instruction.visibility || 'creator'
+  if (visibility === 'everyone') return true
+  if (visibility === 'operators') {
+    return userInfo.role === 'operator' || userInfo.id === instruction.created_by
+  }
+  // visibility === 'creator'
+  return userInfo.id === instruction.created_by
+}
+
+function canManageVisibility(userInfo: any, instruction: any): boolean {
+  if (!userInfo) return false
+  if (userInfo.role === 'admin') return true
+  return userInfo.id === instruction.created_by
+}
+
 // ── UI: GET /instrucoes ──
 app.get('/', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-  const instructions = tenant.workInstructions || []
+  const allInstructions = tenant.workInstructions || []
+  const instructions = allInstructions.filter(inst => canViewInstruction(userInfo, inst))
 
   const content = `
   <!-- Header -->
@@ -101,14 +122,17 @@ app.get('/', (c) => {
   <div class="card" style="overflow:hidden;">
     <div class="table-wrapper">
       <table id="instructionsTable">
-        <thead><tr>
-          <th>Código</th>
-          <th>Título</th>
-          <th>Versão</th>
-          <th>Status</th>
-          <th>Atualizado em</th>
-          <th>Ações</th>
-        </tr></thead>
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Título</th>
+            <th>Versão</th>
+            <th>Status</th>
+            <th>Visibilidade</th>
+            <th>Atualizado em</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
         <tbody id="instructionsBody">
           ${instructions.map((inst: any) => `
           <tr data-search="${escapeHtml((inst.title || '').toLowerCase())} ${escapeHtml((inst.code || '').toLowerCase())} ${escapeHtml((inst.description || '').toLowerCase())}">
@@ -119,6 +143,20 @@ app.get('/', (c) => {
             </td>
             <td><span class="badge badge-secondary">v${escapeHtml(inst.current_version || '1.0')}</span></td>
             <td><span class="badge badge-${inst.status === 'active' ? 'success' : 'secondary'}">${escapeHtml(inst.status || 'draft')}</span></td>
+            <td>
+              ${canManageVisibility(userInfo, inst) ? `
+                <select class="form-control form-control-sm" style="width:120px;"
+                        onchange="updateVisibility('${escapeHtml(inst.id)}', this.value)">
+                  <option value="creator" ${(inst.visibility || 'creator') === 'creator' ? 'selected' : ''}>Criador</option>
+                  <option value="operators" ${inst.visibility === 'operators' ? 'selected' : ''}>Operadores</option>
+                  <option value="everyone" ${inst.visibility === 'everyone' ? 'selected' : ''}>Todos</option>
+                </select>
+              ` : `
+                <span class="badge badge-secondary">
+                  ${inst.visibility === 'everyone' ? 'Todos' : inst.visibility === 'operators' ? 'Operadores' : 'Criador'}
+                </span>
+              `}
+            </td>
             <td style="font-size:12px;color:#6c757d;">${inst.updated_at ? new Date(inst.updated_at).toLocaleDateString('pt-BR') : '—'}</td>
             <td>
               <div style="display:flex;gap:4px;">
@@ -223,6 +261,26 @@ app.get('/', (c) => {
   function viewOnlyInstruction(id) {
     window.open('/instrucoes/' + encodeURIComponent(id) + '/view', '_blank')
   }
+
+  async function updateVisibility(instructionId, visibility) {
+    try {
+      const res = await fetch(`/instrucoes/api/instructions/${encodeURIComponent(instructionId)}/visibility`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visibility })
+      })
+      const data = await res.json()
+      if (data && data.ok) {
+        location.reload()
+      } else {
+        alert('Erro ao alterar visibilidade: ' + (data.error || 'desconhecido'))
+        location.reload()
+      }
+    } catch (e) {
+      alert('Erro de conexão')
+      location.reload()
+    }
+  }
   </script>
   `
 
@@ -230,7 +288,7 @@ app.get('/', (c) => {
 })
 
 // ── UI: GET /instrucoes/:id ──
-app.get('/:id', (c) => {
+app.get('/:id', async (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
   const instructionId = c.req.param('id')
@@ -245,6 +303,16 @@ app.get('/:id', (c) => {
       <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar à listagem</a>
     </div>`
     return c.html(layout('Instrução não encontrada', notFound, 'instrucoes', userInfo))
+  }
+  if (!canViewInstruction(userInfo, instruction)) {
+    const forbidden = `
+    <div style="padding:48px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+      <div style="font-size:18px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Acesso negado</div>
+      <div style="font-size:14px;color:#6c757d;margin-bottom:20px;">Você não tem permissão para visualizar esta instrução.</div>
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+    </div>`
+    return c.html(layout('Acesso negado', forbidden, 'instrucoes', userInfo), 403)
   }
 
   const currentVersion = (tenant.workInstructionVersions || []).find(
@@ -648,6 +716,16 @@ app.get('/:id/view', async (c) => {
     </div>`
     return c.html(layout('Instrução não encontrada', notFound, 'instrucoes', userInfo))
   }
+  if (!canViewInstruction(userInfo, instruction)) {
+    const forbidden = `
+    <div style="padding:48px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+      <div style="font-size:18px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Acesso negado</div>
+      <div style="font-size:14px;color:#6c757d;margin-bottom:20px;">Você não tem permissão para visualizar esta instrução.</div>
+      <a href="/instrucoes" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Voltar</a>
+    </div>`
+    return c.html(layout('Acesso negado', forbidden, 'instrucoes', userInfo), 403)
+  }
 
   const currentVersion = (tenant.workInstructionVersions || []).find(
     (v: any) => v.instruction_id === instructionId && v.is_current
@@ -802,7 +880,7 @@ app.post('/api/instructions', async (c) => {
   const id = genId('instr')
   const versionId = genId('instrv')
 
-  // In-memory instruction object (may contain extra fields for frontend compatibility)
+  // In-memory instruction object
   const instruction = {
     id,
     code: body.code || 'INSTR-' + Date.now(),
@@ -810,6 +888,7 @@ app.post('/api/instructions', async (c) => {
     description: body.description || '',
     current_version: '1.0',
     status: 'draft',
+    visibility: 'creator',
     created_at: now,
     updated_at: now,
   }
@@ -826,10 +905,7 @@ app.post('/api/instructions', async (c) => {
     created_by: userId,
   }
 
-  // D1-first (production): only insert columns that exist in work_instructions schema
-  // Schema: id, user_id, empresa_id, code, title, version, status, created_at, updated_at
-  // NOTE: description, current_version, created_by, updated_by are NOT in work_instructions;
-  //       description belongs exclusively in work_instruction_versions.
+  // D1-first (production)
   if (db) {
     console.log(`[INSTRUCOES] Persistindo instrução ${id} (user=${userId}, empresa=${empresaId})`)
     try {
@@ -841,6 +917,7 @@ app.post('/api/instructions', async (c) => {
         title: instruction.title,
         version: '1.0',
         status: instruction.status,
+        visibility: 'creator',
         created_at: now,
         updated_at: now,
       }
@@ -859,7 +936,6 @@ app.post('/api/instructions', async (c) => {
       return err(c, 'Erro ao salvar instrução no banco de dados', 500)
     }
     try {
-      // description is persisted here in work_instruction_versions (normalized model)
       const versionData: Record<string, unknown> = {
         id: versionId,
         user_id: userId,
@@ -880,28 +956,22 @@ app.post('/api/instructions', async (c) => {
       ).bind(...versionVals).run()
     } catch (e: any) {
       const msg = e?.message || String(e)
-      // Compensate: rollback instruction insert to avoid orphaned rows in D1
+      // Compensate: rollback instruction insert
       try {
-        const rollback = await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(id, userId).run()
-        if (rollback.success) {
-          console.log(`[INSTRUCOES][ROLLBACK] Instrução ${id} removida do D1 em compensação pela falha na versão`)
-        } else {
-          console.error(`[INSTRUCOES][ROLLBACK] Rollback de instrução ${id} não removeu nenhuma linha (pode já ter falhado)`)
-        }
+        await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(id, userId).run()
       } catch (rollbackErr: any) {
-        console.error(`[INSTRUCOES][ROLLBACK] Falha ao remover instrução ${id} em compensação: ${rollbackErr?.message}`)
+        console.error(`[INSTRUCOES][ROLLBACK] Falha ao remover instrução ${id}: ${rollbackErr?.message}`)
       }
       if (isSchemaDriftError(msg)) {
-        console.error(`[INSTRUCOES][SCHEMA] Schema drift detectado ao inserir versão ${versionId}: ${msg}`)
         return schemaDriftError(c, msg)
       }
-      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir versão ${versionId} em D1: ${msg}`)
+      console.error(`[INSTRUCOES][CRÍTICO] Falha ao persistir versão ${versionId}: ${msg}`)
       return err(c, 'Erro ao salvar versão no banco de dados', 500)
     }
     console.log(`[INSTRUCOES] Instrução ${id} e versão ${versionId} persistidas em D1 com sucesso`)
   }
 
-  // Memória (after D1 success or in demo/no-db mode)
+  // Memória
   if (!tenant.workInstructions) tenant.workInstructions = []
   if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
   tenant.workInstructions.push(instruction)
@@ -926,6 +996,7 @@ app.post('/api/instructions/:id/steps', async (c) => {
 
   const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
   if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
 
   const currentVersion = (tenant.workInstructionVersions || []).find((v: any) => v.instruction_id === instructionId && v.is_current)
   if (!currentVersion) return err(c, 'Versão atual não encontrada', 404)
@@ -942,17 +1013,14 @@ app.post('/api/instructions/:id/steps', async (c) => {
     created_by: userId,
   }
 
-  // D1-first (production)
   if (db && userId !== 'demo-tenant') {
     const saved = await dbInsert(db, 'work_instruction_steps', { ...step, user_id: userId, empresa_id: empresaId })
     if (!saved) {
       console.error(`[INSTRUCOES][ETAPAS][CRÍTICO] Falha ao persistir etapa ${stepId} em D1`)
       return err(c, 'Erro ao salvar etapa no banco de dados', 500)
     }
-    console.log(`[INSTRUCOES][ETAPAS] Etapa ${stepId} persistida em D1 com sucesso`)
   }
 
-  // Memória (after D1 success or in demo/no-db mode)
   if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
   tenant.workInstructionSteps.push(step)
   markTenantModified(userId)
@@ -971,9 +1039,9 @@ app.get('/api/instructions/:id/steps/:stepId', async (c) => {
   const instructionId = c.req.param('id')
   const stepId = c.req.param('stepId')
 
-  // (Opcional) valida instrução existe
   const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
   if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
 
   const step = (tenant.workInstructionSteps || []).find((s: any) => s.id === stepId)
   if (!step) return err(c, 'Etapa não encontrada', 404)
@@ -993,13 +1061,15 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
 
   if (!body) return err(c, 'Dados inválidos')
 
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
+
   if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
   let stepIdx = tenant.workInstructionSteps.findIndex((s: any) => s.id === stepId)
-  // Fallback to D1 if not in memory
   if (stepIdx === -1 && db && userId !== 'demo-tenant') {
     const row = await db.prepare('SELECT * FROM work_instruction_steps WHERE id = ? AND user_id = ?')
       .bind(stepId, userId).first()
-
     if (row) {
       tenant.workInstructionSteps.push(row as any)
       stepIdx = tenant.workInstructionSteps.length - 1
@@ -1023,7 +1093,6 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
     observation: body.observation !== undefined ? body.observation : oldStep.observation,
   }
 
-  // D1-first (production)
   if (db && userId !== 'demo-tenant') {
     const updated = await dbUpdate(db, 'work_instruction_steps', stepId, userId, {
       step_number: updatedStep.step_number,
@@ -1035,10 +1104,8 @@ app.put('/api/instructions/:id/steps/:stepId', async (c) => {
       console.error(`[INSTRUCOES][ETAPAS][CRÍTICO] Falha ao atualizar etapa ${stepId} em D1`)
       return err(c, 'Erro ao salvar etapa no banco de dados', 500)
     }
-    console.log(`[INSTRUCOES][ETAPAS] Etapa ${stepId} atualizada em D1 com sucesso`)
   }
 
-  // Update memory only after D1 success (or demo/no-db mode)
   tenant.workInstructionSteps[stepIdx] = updatedStep
   markTenantModified(userId)
 
@@ -1059,13 +1126,15 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
   const instructionId = c.req.param('id')
   const stepId = c.req.param('stepId')
 
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
+
   if (!tenant.workInstructionSteps) tenant.workInstructionSteps = []
   let stepIdx = tenant.workInstructionSteps.findIndex((s: any) => s.id === stepId)
-  // Fallback to D1 if not in memory
   if (stepIdx === -1 && db && userId !== 'demo-tenant') {
     const row = await db.prepare('SELECT * FROM work_instruction_steps WHERE id = ? AND user_id = ?')
       .bind(stepId, userId).first()
-
     if (row) {
       tenant.workInstructionSteps.push(row as any)
       stepIdx = tenant.workInstructionSteps.length - 1
@@ -1076,7 +1145,6 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
 
   const step = tenant.workInstructionSteps[stepIdx]
 
-  // D1 first
   if (db && userId !== 'demo-tenant') {
     const deleted = await dbDelete(db, 'work_instruction_steps', stepId, userId)
     if (!deleted) {
@@ -1089,10 +1157,7 @@ app.delete('/api/instructions/:id/steps/:stepId', async (c) => {
     }
   }
 
-  // Memória (after D1 success or demo/no-db mode)
   tenant.workInstructionSteps.splice(stepIdx, 1)
-
-  // Remover fotos associadas
   tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => p.step_id !== stepId)
   markTenantModified(userId)
 
@@ -1116,6 +1181,10 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
   const tenant = getCtxTenant(c)
   const instructionId = c.req.param('id')
 
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
+
   const formData = await c.req.formData().catch(() => null)
   if (!formData) return err(c, 'Dados inválidos')
 
@@ -1125,15 +1194,12 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
   if (!stepId || typeof stepId !== 'string') return err(c, 'step_id obrigatório')
   if (!file || !(file instanceof File)) return err(c, 'Arquivo obrigatório')
 
-  // Validate step exists
   const stepExists = (tenant.workInstructionSteps || []).find((s: any) => s.id === stepId)
   if (!stepExists) return err(c, 'Etapa não encontrada', 404)
 
-  // Validate file type
   const resolvedContentType = guessImageContentType(file.name, file.type)
   if (!resolvedContentType) return err(c, 'Tipo de arquivo não permitido. Use jpg, jpeg ou png.')
 
-  // Validate file size (~8MB)
   if (file.size > 8 * 1024 * 1024) return err(c, 'Arquivo muito grande. Limite: 8MB')
 
   const photoId = genId('photo')
@@ -1141,7 +1207,6 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
   const safeFileName = sanitizeFileName(file.name)
   const objectKey = `work-instructions/${instructionId}/steps/${stepId}/${photoId}.${ext}`
 
-  // Upload to R2
   const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
   if (!bucket) return err(c, 'Upload de fotos indisponível: configure o binding INSTR_PHOTOS_BUCKET no Cloudflare R2.', 503)
 
@@ -1159,16 +1224,14 @@ app.post('/api/instructions/:id/photos/upload', async (c) => {
     content_type: resolvedContentType,
   }
 
-  // D1 first
   if (db && userId !== 'demo-tenant') {
     const saved = await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
     if (!saved) {
-      console.error(`[INSTRUCOES][FOTO][CRÍTICO] Falha ao persistir foto ${photoId} (upload R2) em D1`)
+      console.error(`[INSTRUCOES][FOTO][CRÍTICO] Falha ao persistir foto ${photoId} em D1`)
       return err(c, 'Erro ao salvar foto no banco de dados', 500)
     }
   }
 
-  // Memória (after D1 success or demo/no-db mode)
   if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
   tenant.workInstructionPhotos.push(photo)
   markTenantModified(userId)
@@ -1193,10 +1256,7 @@ app.get('/api/photos/:photoId', async (c) => {
   const tenant = getCtxTenant(c)
   const photoId = c.req.param('photoId')
 
-  // Lookup photo in memory first
   let photo: any = (tenant.workInstructionPhotos || []).find((p: any) => p.id === photoId)
-
-  // Fallback to D1 if not in memory
   if (!photo && db && userId !== 'demo-tenant') {
     try {
       const row = await db.prepare('SELECT * FROM work_instruction_photos WHERE id = ? AND user_id = ?')
@@ -1210,8 +1270,6 @@ app.get('/api/photos/:photoId', async (c) => {
   if (!photo) return err(c, 'Foto não encontrada', 404)
 
   const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
-
-  // Serve from R2 if object_key exists and bucket is configured
   if (photo.object_key && bucket) {
     const obj = await bucket.get(photo.object_key)
     if (!obj) return err(c, 'Objeto não encontrado no storage', 404)
@@ -1222,7 +1280,6 @@ app.get('/api/photos/:photoId', async (c) => {
     })
   }
 
-  // Fallback: redirect to photo_url for legacy data
   if (photo.photo_url) {
     return c.redirect(photo.photo_url, 302)
   }
@@ -1238,6 +1295,10 @@ app.post('/api/instructions/:id/photos', async (c) => {
   const tenant = getCtxTenant(c)
   const instructionId = c.req.param('id')
   const body = await c.req.json().catch(() => null)
+
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
 
   if (!body || !body.step_id || (!body.photo_url && !body.object_key)) return err(c, 'step_id e (photo_url ou object_key) são obrigatórios')
 
@@ -1256,7 +1317,6 @@ app.post('/api/instructions/:id/photos', async (c) => {
     content_type: body.content_type || '',
   }
 
-  // D1 first
   if (db && userId !== 'demo-tenant') {
     const saved = await dbInsert(db, 'work_instruction_photos', { ...photo, user_id: userId, empresa_id: empresaId })
     if (!saved) {
@@ -1265,7 +1325,6 @@ app.post('/api/instructions/:id/photos', async (c) => {
     }
   }
 
-  // Memória (after D1 success or demo/no-db mode)
   if (!tenant.workInstructionPhotos) tenant.workInstructionPhotos = []
   tenant.workInstructionPhotos.push(photo)
   markTenantModified(userId)
@@ -1287,13 +1346,16 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
   const instructionId = c.req.param('id')
   const photoId = c.req.param('photoId')
 
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
+
   const photosArr = tenant.workInstructionPhotos || []
   const photoIdx = photosArr.findIndex((p: any) => p.id === photoId)
   if (photoIdx === -1) return err(c, 'Foto não encontrada', 404)
 
   const photo = photosArr[photoIdx]
 
-  // D1 first
   if (db && userId !== 'demo-tenant') {
     const deleted = await dbDelete(db, 'work_instruction_photos', photoId, userId)
     if (!deleted) {
@@ -1302,7 +1364,6 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
     }
   }
 
-  // Delete from R2 if object_key exists
   const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
   if (photo.object_key && bucket) {
     try {
@@ -1312,7 +1373,6 @@ app.delete('/api/instructions/:id/photos/:photoId', async (c) => {
     }
   }
 
-  // Memory (after D1 success or demo/no-db mode)
   photosArr.splice(photoIdx, 1)
   markTenantModified(userId)
   await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'PHOTO_DELETED', {
@@ -1336,11 +1396,11 @@ app.post('/api/instructions/:id/versions', async (c) => {
 
   const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
   if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
 
   const currentVersion = (tenant.workInstructionVersions || []).find((v: any) => v.instruction_id === instructionId && v.is_current)
   if (!currentVersion) return err(c, 'Versão atual não encontrada', 404)
 
-  // Criar nova versão
   const newVersionId = genId('instrv')
   const newVersion = {
     id: newVersionId,
@@ -1355,7 +1415,6 @@ app.post('/api/instructions/:id/versions', async (c) => {
   }
   const updatedAt = new Date().toISOString()
 
-  // D1 first
   if (db && userId !== 'demo-tenant') {
     const prevUpdated = await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 0 })
     if (!prevUpdated) {
@@ -1364,13 +1423,8 @@ app.post('/api/instructions/:id/versions', async (c) => {
     }
     const inserted = await dbInsert(db, 'work_instruction_versions', { ...newVersion, is_current: 1, user_id: userId, empresa_id: empresaId })
     if (!inserted) {
-      // Compensate: restore previous version as current
-      const restored = await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 1 })
-      if (!restored) {
-        console.error(`[INSTRUCOES][VERSION][CRÍTICO] Compensação falhou: não foi possível restaurar is_current da versão ${currentVersion.id}`)
-      } else {
-        console.log(`[INSTRUCOES][VERSION][ROLLBACK] Versão anterior ${currentVersion.id} restaurada como is_current em compensação`)
-      }
+      // Compensate
+      await dbUpdate(db, 'work_instruction_versions', currentVersion.id, userId, { is_current: 1 })
       console.error(`[INSTRUCOES][VERSION][CRÍTICO] Falha ao inserir nova versão ${newVersionId} em D1`)
       return err(c, 'Erro ao salvar nova versão no banco de dados', 500)
     }
@@ -1381,7 +1435,6 @@ app.post('/api/instructions/:id/versions', async (c) => {
     })
   }
 
-  // Memory (after D1 success or demo/no-db mode)
   currentVersion.is_current = false
   if (!tenant.workInstructionVersions) tenant.workInstructionVersions = []
   tenant.workInstructionVersions.push(newVersion)
@@ -1410,6 +1463,7 @@ app.put('/api/instructions/:id/status', async (c) => {
 
   const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
   if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
 
   const ALLOWED_TRANSITIONS: Record<string, string[]> = {
     draft: ['active'],
@@ -1428,12 +1482,10 @@ app.put('/api/instructions/:id/status', async (c) => {
   const oldStatus = instruction.status
   const updatedAt = new Date().toISOString()
 
-  // Also look up current version for sync
   const currentVersion = (tenant.workInstructionVersions || []).find(
     (v: any) => v.instruction_id === instructionId && v.is_current
   )
 
-  // D1 first
   if (db && userId !== 'demo-tenant') {
     const saved = await dbUpdate(db, 'work_instructions', instructionId, userId, {
       status: newStatus,
@@ -1448,7 +1500,6 @@ app.put('/api/instructions/:id/status', async (c) => {
     }
   }
 
-  // Memory (after D1 success or demo/no-db mode)
   instruction.status = newStatus
   instruction.updated_at = updatedAt
   instruction.updated_by = userId
@@ -1474,10 +1525,10 @@ app.delete('/api/instructions/:id', async (c) => {
 
   const idx = (tenant.workInstructions || []).findIndex((i: any) => i.id === instructionId)
   if (idx === -1) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), tenant.workInstructions[idx])) return err(c, 'Acesso negado', 403)
 
   const instruction = tenant.workInstructions[idx]
 
-  // Collect version/step IDs before removal for cascade cleanup
   const versionIds = (tenant.workInstructionVersions || [])
     .filter((v: any) => v.instruction_id === instructionId)
     .map((v: any) => v.id)
@@ -1485,10 +1536,8 @@ app.delete('/api/instructions/:id', async (c) => {
     .filter((s: any) => versionIds.includes(s.version_id))
     .map((s: any) => s.id)
 
-  // Collect photos to delete from R2 before any mutations
   const photosToDelete = (tenant.workInstructionPhotos || []).filter((p: any) => stepIds.includes(p.step_id))
 
-  // D1 first (cascade delete — use IN clauses to reduce round trips)
   if (db && userId !== 'demo-tenant') {
     if (stepIds.length > 0) {
       const stepPlaceholders = stepIds.map(() => '?').join(', ')
@@ -1505,7 +1554,6 @@ app.delete('/api/instructions/:id', async (c) => {
     await db.prepare('DELETE FROM work_instructions WHERE id = ? AND user_id = ?').bind(instructionId, userId).run()
   }
 
-  // Delete R2 objects for photos that have object_key
   const bucket = (c.env as any)?.INSTR_PHOTOS_BUCKET
   if (bucket) {
     for (const p of photosToDelete) {
@@ -1519,7 +1567,6 @@ app.delete('/api/instructions/:id', async (c) => {
     }
   }
 
-  // Memory (after D1 success or demo/no-db mode)
   tenant.workInstructionPhotos = (tenant.workInstructionPhotos || []).filter((p: any) => !stepIds.includes(p.step_id))
   tenant.workInstructionSteps = (tenant.workInstructionSteps || []).filter((s: any) => !versionIds.includes(s.version_id))
   tenant.workInstructionVersions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id !== instructionId)
@@ -1535,6 +1582,10 @@ app.get('/api/instructions/:id/audit-log', async (c) => {
   const tenant = getCtxTenant(c)
   const instructionId = c.req.param('id')
 
+  const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(getCtxUserInfo(c), instruction)) return err(c, 'Acesso negado', 403)
+
   const auditLog = (tenant.workInstructionAuditLog || [])
     .filter((a: any) => a.instruction_id === instructionId)
     .sort((a: any, b: any) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime())
@@ -1545,17 +1596,21 @@ app.get('/api/instructions/:id/audit-log', async (c) => {
 // ── API: GET /api/instructions (Listar todas) ──
 app.get('/api/instructions', async (c) => {
   const tenant = getCtxTenant(c)
-  const instructions = tenant.workInstructions || []
+  const userInfo = getCtxUserInfo(c)
+  const allInstructions = tenant.workInstructions || []
+  const instructions = allInstructions.filter(inst => canViewInstruction(userInfo, inst))
   return ok(c, { instructions })
 })
 
 // ── API: GET /api/instructions/:id (Obter detalhes) ──
 app.get('/api/instructions/:id', async (c) => {
   const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
   const instructionId = c.req.param('id')
 
   const instruction = (tenant.workInstructions || []).find((i: any) => i.id === instructionId)
   if (!instruction) return err(c, 'Instrução não encontrada', 404)
+  if (!canViewInstruction(userInfo, instruction)) return err(c, 'Acesso negado', 403)
 
   const versions = (tenant.workInstructionVersions || []).filter((v: any) => v.instruction_id === instructionId)
   const currentVersion = versions.find((v: any) => v.is_current)
@@ -1567,12 +1622,66 @@ app.get('/api/instructions/:id', async (c) => {
   return ok(c, { instruction, currentVersion, versions, steps, photos })
 })
 
+// ── API: PUT /api/instructions/:id/visibility (Alterar Visibilidade) ──
+app.put('/api/instructions/:id/visibility', async (c) => {
+  const authErr = await ensureAuthenticatedOr401(c)
+  if (authErr) return authErr
+
+  const db = getCtxDB(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const tenant = getCtxTenant(c)
+  const instructionId = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+
+  if (!body || !body.visibility) return err(c, 'Visibilidade é obrigatória', 400)
+  const visibility = body.visibility
+  if (!['everyone', 'operators', 'creator'].includes(visibility)) {
+    return err(c, 'Valor de visibilidade inválido', 400)
+  }
+
+  const instruction = (tenant.workInstructions || []).find(i => i.id === instructionId)
+  if (!instruction) return err(c, 'Instrução não encontrada', 404)
+
+  const userInfo = getCtxUserInfo(c)
+  if (!canManageVisibility(userInfo, instruction)) {
+    return err(c, 'Você não tem permissão para alterar a visibilidade desta instrução', 403)
+  }
+
+  const oldVisibility = instruction.visibility || 'creator'
+  const updatedAt = new Date().toISOString()
+
+  if (db && userId !== 'demo-tenant') {
+    const updated = await dbUpdate(db, 'work_instructions', instructionId, userId, {
+      visibility,
+      updated_at: updatedAt,
+    })
+    if (!updated) {
+      console.error(`[INSTRUCOES][VISIBILITY] Falha ao atualizar visibilidade em D1`)
+      return err(c, 'Erro ao salvar visibilidade no banco de dados', 500)
+    }
+  }
+
+  instruction.visibility = visibility
+  instruction.updated_at = updatedAt
+  instruction.updated_by = userId
+  markTenantModified(userId)
+
+  await logWorkInstructionEvent(db, userId, empresaId, instructionId, 'VISIBILITY_CHANGED', {
+    from: oldVisibility,
+    to: visibility,
+  }, tenant)
+
+  return ok(c, { instruction })
+})
+
 // ── UI: GET /api/report (Printable list of all work instructions) ─────────────
 app.get('/api/report', (c) => {
   const tenant = getCtxTenant(c)
   const userInfo = getCtxUserInfo(c)
-
-  const instructions = (tenant.workInstructions || [])
+  const allInstructions = tenant.workInstructions || []
+  const instructions = allInstructions
+    .filter(inst => canViewInstruction(userInfo, inst))
     .slice()
     .sort((a: any, b: any) => (a.code || '').localeCompare(b.code || ''))
 
