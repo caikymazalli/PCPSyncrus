@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS work_instructions (
   description TEXT,
   current_version TEXT,
   status TEXT,
+  visibility TEXT DEFAULT 'creator',
   created_at TEXT,
   created_by TEXT,
   updated_at TEXT,
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS work_instruction_photos (
   step_id TEXT NOT NULL,
   photo_url TEXT,
   file_name TEXT,
+  object_key TEXT,
+  content_type TEXT,
   uploaded_at TEXT,
   uploaded_by TEXT,
   FOREIGN KEY (step_id) REFERENCES work_instruction_steps(id)
@@ -75,6 +78,7 @@ CREATE TABLE IF NOT EXISTS work_instruction_audit_log (
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_work_instructions_user ON work_instructions(user_id);
 CREATE INDEX IF NOT EXISTS idx_work_instructions_empresa ON work_instructions(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_work_instructions_visibility ON work_instructions(visibility);
 CREATE INDEX IF NOT EXISTS idx_work_instruction_versions_instruction ON work_instruction_versions(instruction_id);
 CREATE INDEX IF NOT EXISTS idx_work_instruction_steps_version ON work_instruction_steps(version_id);
 CREATE INDEX IF NOT EXISTS idx_work_instruction_photos_step ON work_instruction_photos(step_id);
