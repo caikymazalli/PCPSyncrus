@@ -14,27 +14,11 @@
  * What it does (all steps are idempotent / safe to re-run):
  *
  *   Step 1 — Ensure work_instructions has empresa_id column
- *     Uses PRAGMA table_info to check. If absent, runs ALTER TABLE to add it,
- *     then fills NULL/empty values from registered_users.
- *
- *   Step 2 — Ensure normalized tables exist
- *     Runs CREATE TABLE IF NOT EXISTS for work_instruction_versions,
- *     work_instruction_steps, work_instruction_photos,
- *     work_instruction_audit_log.
- *
- *   Step 3 — Seed version rows for instructions without a current version
- *     Uses INSERT OR IGNORE with deterministic IDs ('wiv_' + instruction.id).
- *
- *   Step 4 — Convert legacy JSON steps
- *     If work_instructions has a `steps` column containing a JSON array,
- *     parses each element and inserts step rows using INSERT OR IGNORE with
- *     deterministic IDs ('wis_' + instruction.id + '_' + index).
- *     Steps are linked to the version row created/confirmed in Step 3.
- *
- *   Step 5 — Propagate empresa_id to dependent tables
- *     Updates work_instruction_versions, work_instruction_steps,
- *     work_instruction_photos, work_instruction_audit_log where empresa_id
- *     is NULL or empty.
+ *   Step 2 — Ensure visibility column exists
+ *   Step 3 — Ensure normalized tables exist
+ *   Step 4 — Seed version rows for instructions without a current version
+ *   Step 5 — Convert legacy JSON steps
+ *   Step 6 — Propagate empresa_id to dependent tables
  *
  * Exit codes:
  *   0  — completed successfully (even if no changes were needed)
@@ -130,6 +114,7 @@ if (!tableExists('work_instructions')) {
       description TEXT,
       current_version TEXT,
       status TEXT,
+      visibility TEXT DEFAULT 'creator',
       created_at TEXT,
       created_by TEXT,
       updated_at TEXT,
@@ -162,9 +147,23 @@ if (!tableExists('work_instructions')) {
   console.log('  ✅  empresa_id fill done.')
 }
 
-// ── Step 2: Ensure normalized tables exist ───────────────────────────────────
+// ── Step 2: Ensure visibility column in work_instructions ────────────────────
 
-console.log('\nStep 2 — Ensuring normalized tables exist ...')
+console.log('\nStep 2 — Ensuring visibility column in work_instructions ...')
+const wiCols = getTableColumns('work_instructions')
+if (!wiCols.includes('visibility')) {
+  console.log('  ⚠️  visibility missing — adding column ...')
+  wranglerExecSilent(
+    `ALTER TABLE work_instructions ADD COLUMN visibility TEXT DEFAULT 'creator'`
+  )
+  console.log('  ✅  visibility column added.')
+} else {
+  console.log('  ✓  visibility already present')
+}
+
+// ── Step 3: Ensure normalized tables exist ───────────────────────────────────
+
+console.log('\nStep 3 — Ensuring normalized tables exist ...')
 
 const normalizedTables: { name: string; ddl: string }[] = [
   {
@@ -239,9 +238,9 @@ for (const t of normalizedTables) {
   console.log('✅')
 }
 
-// ── Step 3: Seed version rows for instructions without a current version ──────
+// ── Step 4: Seed version rows for instructions without a current version ──────
 
-console.log('\nStep 3 — Seeding version rows for instructions without versions ...')
+console.log('\nStep 4 — Seeding version rows for instructions without versions ...')
 
 wranglerExecSilent(`
   INSERT OR IGNORE INTO work_instruction_versions
@@ -267,12 +266,12 @@ wranglerExecSilent(`
 `)
 console.log('  ✅  Version rows seeded (INSERT OR IGNORE).')
 
-// ── Step 4: Convert legacy JSON steps ────────────────────────────────────────
+// ── Step 5: Convert legacy JSON steps ────────────────────────────────────────
 
-console.log('\nStep 4 — Checking for legacy JSON steps column ...')
+console.log('\nStep 5 — Checking for legacy JSON steps column ...')
 
-const wiCols = getTableColumns('work_instructions')
-if (!wiCols.includes('steps')) {
+const wiColsAfter = getTableColumns('work_instructions')
+if (!wiColsAfter.includes('steps')) {
   console.log('  ✓  No legacy `steps` column — nothing to convert.')
 } else {
   console.log('  ⚠️  Legacy `steps` column found — fetching rows with JSON steps ...')
@@ -314,7 +313,7 @@ if (!wiCols.includes('steps')) {
       const createdBy = sqlEscape(s.created_by ?? s.createdBy ?? instr.user_id ?? '')
       const userId = sqlEscape(instr.user_id)
       const empresaId = sqlEscape(instr.empresa_id ?? '')
-      const versionId = sqlEscape(`wiv_${instr.id}`)
+      const versionIdEscaped = sqlEscape(`wiv_${instr.id}`)
       const escapedStepId = sqlEscape(stepId)
 
       try {
@@ -326,7 +325,7 @@ if (!wiCols.includes('steps')) {
             '${escapedStepId}',
             '${userId}',
             '${empresaId}',
-            '${versionId}',
+            '${versionIdEscaped}',
             ${Number(stepNumber)},
             '${title}',
             '${description}',
@@ -348,9 +347,9 @@ if (!wiCols.includes('steps')) {
   console.log(`  ✅  Converted: ${converted} steps | Skipped (empty): ${skipped} | Errors: ${errors}`)
 }
 
-// ── Step 5: Propagate empresa_id to dependent tables ─────────────────────────
+// ── Step 6: Propagate empresa_id to dependent tables ─────────────────────────
 
-console.log('\nStep 5 — Propagating empresa_id to dependent tables ...')
+console.log('\nStep 6 — Propagating empresa_id to dependent tables ...')
 
 const propagateQueries: { label: string; sql: string }[] = [
   {
