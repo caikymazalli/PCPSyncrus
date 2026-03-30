@@ -264,21 +264,22 @@ app.get('/', (c) => {
 
   async function updateVisibility(instructionId, visibility) {
     try {
-      const res = await fetch(`/instrucoes/api/instructions/${encodeURIComponent(instructionId)}/visibility`, {
+      const url = '/instrucoes/api/instructions/' + encodeURIComponent(instructionId) + '/visibility';
+      const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ visibility })
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (data && data.ok) {
-        location.reload()
+        location.reload();
       } else {
-        alert('Erro ao alterar visibilidade: ' + (data.error || 'desconhecido'))
-        location.reload()
+        alert('Erro ao alterar visibilidade: ' + (data.error || 'desconhecido'));
+        location.reload();
       }
     } catch (e) {
-      alert('Erro de conexão')
-      location.reload()
+      alert('Erro de conexão');
+      location.reload();
     }
   }
   </script>
