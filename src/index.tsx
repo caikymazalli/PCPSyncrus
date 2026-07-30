@@ -10,6 +10,7 @@ import apontamentoApp from './routes/apontamento'
 import instrucoesApp from './routes/instrucoes'
 import produtosApp from './routes/produtos'
 import adminApp from './routes/admin'
+import serialConfigApp from './routes/serial-config'
 import assinaturaApp from './routes/assinatura'
 import qualidadeApp from './routes/qualidade'
 import estoqueApp from './routes/estoque'
@@ -22,6 +23,8 @@ import masterApp from './routes/master'
 import authApp from './routes/auth'
 import testApp from './routes/test'
 import suporteApp from './routes/suporte'
+import exportacaoApp from './routes/exportacao'
+import roteirizacaoApp from './routes/roteirizacao'
 import { newUserDashboard } from './newuser'
 import { loginUser, registerUser, getSession, getSessionAsync, sessions, loadTenantFromDB, getTenantData, getEffectiveTenantId, resetTenantHydrationCache } from './userStore'
 
@@ -74,7 +77,7 @@ app.use('*', async (c, next) => {
 // Routes that require authentication (non-demo access)
 const PROTECTED_ROUTES = ['/', '/ordens', '/recursos', '/engenharia', '/planejamento',
   '/apontamento', '/instrucoes', '/produtos', '/admin', '/assinatura', '/qualidade',
-  '/estoque', '/cadastros', '/suprimentos', '/suporte']
+  '/estoque', '/cadastros', '/suprimentos', '/suporte', '/exportacao', '/roteirizacao']
 
 // Paths within protected routes that are publicly accessible (no login required)
 // /suprimentos/quote-response: supplier quotation response form (new format)
@@ -263,6 +266,7 @@ app.route('/apontamento', apontamentoApp)
 app.route('/instrucoes', instrucoesApp)
 app.route('/produtos', produtosApp)
 app.route('/admin', adminApp)
+app.route('/admin/serial-config', serialConfigApp)
 app.route('/assinatura', assinaturaApp)
 app.route('/qualidade', qualidadeApp)
 app.route('/estoque', estoqueApp)
@@ -271,6 +275,8 @@ app.route('/suprimentos', suprimentosApp)
 app.route('/master', masterApp)
 app.route('/test', testApp)
 app.route('/suporte', suporteApp)
+app.route('/exportacao', exportacaoApp)
+app.route('/roteirizacao', roteirizacaoApp)
 app.route('/', authApp)
 
 // ── 404 ────────────────────────────────────────────────────────────────────────
