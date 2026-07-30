@@ -3,6 +3,7 @@ import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId, getCtxSession } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { requireModuleWriteAccess } from '../moduleAccess'
+import { completeSerialsForOrder } from '../lib/serialNumbering'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -260,6 +261,27 @@ app.get('/', (c) => {
           <button class="btn btn-secondary" onclick="closeModal('ncFormModal')">Pular NC por Agora</button>
           <button class="btn btn-danger" onclick="saveNC()"><i class="fas fa-save"></i> Registrar NC</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: solicitação de impressão de etiqueta de S/N ao concluir a OP -->
+  <div id="etiquetaOpModal" class="modal-overlay">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-print" style="margin-right:8px;color:#7c3aed;"></i>Imprimir etiquetas de série</h3>
+        <button onclick="pularEtiquetasOP()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="font-size:14px;color:#374151;margin-bottom:12px;">A ordem <b id="etiquetaOpOrderCode"></b> foi concluída (todas as etapas apontadas) com <b id="etiquetaOpCount"></b> número(s) de série. Imprima as etiquetas agora antes de enviar para o estoque.</p>
+        <div id="etiquetaOpList" style="max-height:180px;overflow:auto;padding:8px;background:#f9fafb;border-radius:8px;margin-bottom:16px;"></div>
+        <div style="font-size:12px;color:#9ca3af;background:#eff6ff;border:1px solid #bfdbfe;padding:10px 12px;border-radius:8px;">
+          <i class="fas fa-circle-info" style="margin-right:5px;"></i>Após a impressão, os itens já contam como estoque disponível, ficando pendente apenas o <b>endereçamento</b> e a <b>etiqueta do endereço</b> no módulo de Estoque.
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" onclick="pularEtiquetasOP()">Pular por agora</button>
+        <button class="btn btn-primary" onclick="imprimirEtiquetasOP()"><i class="fas fa-print"></i> Imprimir etiquetas</button>
       </div>
     </div>
   </div>
@@ -805,7 +827,11 @@ app.get('/', (c) => {
         showToast('✅ Apontamento registrado com sucesso!');
         closeModal('novoApontamentoModal');
         resetApontamentoForm();
-        setTimeout(() => location.reload(), 800);
+        if (data.orderAutoCompleted && data.serialsToLabel && data.serialsToLabel.length) {
+          promptImprimirEtiquetasSN(data.serialsToLabel, orderCode);
+        } else {
+          setTimeout(() => location.reload(), 800);
+        }
       }
     } catch(e) { console.error('[saveApontamento]', e); showToast('Erro de conexão', 'error'); }
     closeModal('ncAlertModal');
@@ -873,6 +899,49 @@ app.get('/', (c) => {
     document.getElementById('ncWarningInline').style.display = 'none';
     document.getElementById('imagePreviewGrid').innerHTML = '';
     selectedImages = [];
+  }
+
+  // ── Etiqueta de S/N ao concluir a OP ────────────────────────────────────
+  // A OP concluída deixa os seriais como 'pendente_enderecamento': o item já
+  // conta como estoque disponível, mas falta endereçar fisicamente. Antes
+  // disso, pedimos a impressão da etiqueta do número de série.
+  function promptImprimirEtiquetasSN(serials, orderCode) {
+    document.getElementById('etiquetaOpCount').textContent = serials.length;
+    document.getElementById('etiquetaOpOrderCode').textContent = orderCode;
+    document.getElementById('etiquetaOpList').innerHTML = serials.map(s =>
+      '<span style="font-family:monospace;font-size:12px;background:#fff;border:1px solid #c4b5fd;color:#5b21b6;padding:3px 8px;border-radius:5px;margin:2px;display:inline-block;">' + s.number + '</span>'
+    ).join('');
+    window._serialsParaEtiqueta = serials;
+    openModal('etiquetaOpModal');
+  }
+
+  function imprimirEtiquetasOP() {
+    const serials = window._serialsParaEtiqueta || [];
+    if (!serials.length) return;
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) { showToast('Bloqueio de popup — permita popups para imprimir', 'error'); return; }
+    const largMm = 60, altMm = 30;
+    const etqCss = 'width:' + largMm + 'mm;height:' + altMm + 'mm;border:1px solid #333;padding:3mm 4mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;page-break-after:always;page-break-inside:avoid;overflow:hidden;';
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Etiquetas S/N</title>' +
+      '<style>@page{size:' + largMm + 'mm ' + altMm + 'mm;margin:0;}body{margin:0;padding:0;}</style></head><body>' +
+      serials.map(function(s) {
+        return '<div style="' + etqCss + '">' +
+          '<div style="font-size:8pt;color:#555;font-family:monospace;">' + (s.itemCode||'') + '</div>' +
+          '<div style="font-size:9pt;font-weight:700;color:#1B4F72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (s.itemName||'') + '</div>' +
+          '<div style="font-size:11pt;font-weight:800;color:#7c3aed;font-family:monospace;letter-spacing:1px;">' + s.number + '</div>' +
+        '</div>';
+      }).join('') +
+      '<scr' + 'ipt>window.onload=function(){window.print();}<' + '/scr' + 'ipt></body></html>';
+    win.document.write(html);
+    win.document.close();
+    closeModal('etiquetaOpModal');
+    showToast('Ordem concluída — pendente apenas endereçamento no Estoque.');
+    setTimeout(() => location.reload(), 900);
+  }
+
+  function pularEtiquetasOP() {
+    closeModal('etiquetaOpModal');
+    setTimeout(() => location.reload(), 300);
   }
 
   async function deleteApontamento(id) {
@@ -999,6 +1068,7 @@ app.post('/api/create', async (c) => {
 
   // ── Auto-complete: mark OP as completed when all route steps are done ─────
   let orderAutoCompleted = false
+  let serialsToLabel: any[] = []
   if (entry.orderId) {
     const orderIdx = (tenant.productionOrders || []).findIndex((o: any) => o.id === entry.orderId)
     if (orderIdx !== -1) {
@@ -1022,13 +1092,22 @@ app.post('/api/create', async (c) => {
             tenant.productionOrders[orderIdx] = { ...order, status: 'completed' }
             orderAutoCompleted = true
             console.log(`[APONTAMENTO] OP ${order.code} marcada como concluída — todas as etapas apontadas.`)
+
+            // Seriais nascidos com a OP passam de 'em_producao' para
+            // 'pendente_enderecamento' — já contam como estoque, mas ainda
+            // precisam de endereçamento físico. Sinaliza ao front para
+            // solicitar a impressão da etiqueta do número de série.
+            const empresaId = getCtxEmpresaId(c)
+            serialsToLabel = await completeSerialsForOrder(
+              db, userId, empresaId, tenant, order.code, order.productCode || ''
+            )
           }
         }
       }
     }
   }
 
-  return ok(c, { entry, orderAutoCompleted })
+  return ok(c, { entry, orderAutoCompleted, serialsToLabel })
 })
 
 // ── API: POST /apontamento/api/upload-image ───────────────────────────────────
