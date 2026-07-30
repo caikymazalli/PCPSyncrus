@@ -3,6 +3,7 @@ import { layout } from '../layout'
 import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
 import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
 import { requireModuleWriteAccess } from '../moduleAccess'
+import { generateSerials, SERIAL_STATUS, completeSerialsForOrder } from '../lib/serialNumbering'
 
 const app = new Hono()
 
@@ -178,10 +179,11 @@ app.get('/', (c) => {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="form-group" style="grid-column:span 2;">
             <label class="form-label">Produto *</label>
-            <input class="form-control" id="novaOrdemProduct" type="text" placeholder="Nome do produto" list="productsList">
-            <datalist id="productsList">
-              ${mockData.products.map(p => `<option value="${p.name}">${p.name} (${p.code || ''})</option>`).join('')}
-            </datalist>
+            <select class="form-control" id="novaOrdemProduct">
+              <option value="">Selecione o produto...</option>
+              ${mockData.products.map((p: any) => `<option value="${escA(p.code || '')}" data-name="${escA(p.name || '')}">${escA(p.name)} (${escA(p.code || '')})${p.serialControlled ? ' — série automática' : ''}</option>`).join('')}
+            </select>
+            <div style="font-size:12px;color:#9ca3af;margin-top:4px;">Selecione um produto cadastrado. Se ele for controlado por série, os números são gerados automaticamente ao criar a ordem.</div>
           </div>
           <div class="form-group">
             <label class="form-label">Código da Ordem *</label>
@@ -255,6 +257,27 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- Modal: solicitação de impressão de etiqueta de S/N ao concluir a OP -->
+  <div class="modal-overlay" id="etiquetaOpModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-print" style="margin-right:8px;color:#7c3aed;"></i>Imprimir etiquetas de série</h3>
+        <button onclick="pularEtiquetasOP()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <p style="font-size:14px;color:#374151;margin-bottom:12px;">A ordem <b id="etiquetaOpOrderCode"></b> foi concluída com <b id="etiquetaOpCount"></b> número(s) de série. Imprima as etiquetas agora antes de enviar para o estoque.</p>
+        <div id="etiquetaOpList" style="max-height:180px;overflow:auto;padding:8px;background:#f9fafb;border-radius:8px;margin-bottom:16px;"></div>
+        <div style="font-size:12px;color:#9ca3af;background:#eff6ff;border:1px solid #bfdbfe;padding:10px 12px;border-radius:8px;">
+          <i class="fas fa-circle-info" style="margin-right:5px;"></i>Após a impressão, os itens já contam como estoque disponível, ficando pendente apenas o <b>endereçamento</b> e a <b>etiqueta do endereço</b> no módulo de Estoque.
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" onclick="pularEtiquetasOP()">Pular por agora</button>
+        <button class="btn btn-primary" onclick="imprimirEtiquetasOP()"><i class="fas fa-print"></i> Imprimir etiquetas</button>
+      </div>
+    </div>
+  </div>
+
   <script>
   const orders = ${JSON.stringify(productionOrders).replace(/</g,'\\u003c').replace(/>/g,'\\u003e')};
   let _editOrdemId = null;
@@ -283,7 +306,15 @@ app.get('/', (c) => {
     if (!o) { showToast('Ordem não encontrada', 'error'); return; }
     _editOrdemId = id;
     document.getElementById('novaOrdemCode').value = o.code || '';
-    document.getElementById('novaOrdemProduct').value = o.productName || '';
+    const productSel = document.getElementById('novaOrdemProduct');
+    if (productSel) {
+      // Prioriza o código salvo; ordens antigas (sem productCode) tentam casar pelo nome
+      productSel.value = o.productCode || '';
+      if (!productSel.value && o.productName) {
+        const match = Array.from(productSel.options).find(opt => opt.dataset && opt.dataset.name === o.productName);
+        if (match) productSel.value = match.value;
+      }
+    }
     document.getElementById('novaOrdemQty').value = o.quantity || '';
     document.getElementById('novaOrdemStart').value = o.startDate || '';
     document.getElementById('novaOrdemEnd').value = o.endDate || '';
@@ -341,6 +372,13 @@ app.get('/', (c) => {
         <div><span style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;">Início</span><div style="font-size:15px;font-weight:700;">\${new Date(o.startDate + 'T12:00:00').toLocaleDateString('pt-BR')}</div></div>
         <div><span style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;">Entrega</span><div style="font-size:15px;font-weight:700;">\${new Date(o.endDate + 'T12:00:00').toLocaleDateString('pt-BR')}</div></div>
       </div>
+      \${(o.serials && o.serials.length) ? (
+        '<div style="margin-bottom:16px;padding:12px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;">' +
+        '<span style="font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;"><i class="fas fa-barcode" style="margin-right:5px;"></i>Números de série gerados automaticamente (' + o.serials.length + ')</span>' +
+        '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">' +
+        o.serials.map(s => '<span style="font-family:monospace;font-size:12px;background:#fff;border:1px solid #c4b5fd;color:#5b21b6;padding:3px 8px;border-radius:5px;">' + s + '</span>').join('') +
+        '</div></div>'
+      ) : ''}
       <div style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
           <span style="font-size:13px;font-weight:600;">Progresso da Ordem</span>
@@ -367,7 +405,11 @@ app.get('/', (c) => {
       const data = await res.json();
       if (data.ok) {
         showToast('✅ Ordem ' + code + ' ' + (labels[newStatus] || newStatus) + '!');
-        setTimeout(() => location.reload(), 800);
+        if (data.serialsToLabel && data.serialsToLabel.length) {
+          promptImprimirEtiquetasSN(data.serialsToLabel, code);
+        } else {
+          setTimeout(() => location.reload(), 800);
+        }
       } else {
         showToast(data.error || 'Erro ao atualizar ordem', 'error');
       }
@@ -376,9 +418,56 @@ app.get('/', (c) => {
     }
   }
 
+  // ── Etiqueta de S/N ao concluir a OP ────────────────────────────────────
+  // A OP concluída deixa os seriais como 'pendente_enderecamento': o item já
+  // conta como estoque, mas falta endereçar fisicamente. Antes disso, pedimos
+  // a impressão da etiqueta do número de série (rastreabilidade física do item).
+  function promptImprimirEtiquetasSN(serials, orderCode) {
+    const modal = document.getElementById('etiquetaOpModal');
+    document.getElementById('etiquetaOpCount').textContent = serials.length;
+    document.getElementById('etiquetaOpOrderCode').textContent = orderCode;
+    document.getElementById('etiquetaOpList').innerHTML = serials.map(s =>
+      '<span style="font-family:monospace;font-size:12px;background:#fff;border:1px solid #c4b5fd;color:#5b21b6;padding:3px 8px;border-radius:5px;margin:2px;display:inline-block;">' + s.number + '</span>'
+    ).join('');
+    window._serialsParaEtiqueta = serials;
+    window._orderRecemConcluida = orderCode;
+    openModal('etiquetaOpModal');
+  }
+
+  function imprimirEtiquetasOP() {
+    const serials = window._serialsParaEtiqueta || [];
+    if (!serials.length) return;
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) { showToast('Bloqueio de popup — permita popups para imprimir', 'error'); return; }
+    const largMm = 60, altMm = 30;
+    const etqCss = 'width:' + largMm + 'mm;height:' + altMm + 'mm;border:1px solid #333;padding:3mm 4mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;page-break-after:always;page-break-inside:avoid;overflow:hidden;';
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Etiquetas S/N</title>' +
+      '<style>@page{size:' + largMm + 'mm ' + altMm + 'mm;margin:0;}body{margin:0;padding:0;}</style></head><body>' +
+      serials.map(function(s) {
+        return '<div style="' + etqCss + '">' +
+          '<div style="font-size:8pt;color:#555;font-family:monospace;">' + (s.itemCode||'') + '</div>' +
+          '<div style="font-size:9pt;font-weight:700;color:#1B4F72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (s.itemName||'') + '</div>' +
+          '<div style="font-size:11pt;font-weight:800;color:#7c3aed;font-family:monospace;letter-spacing:1px;">' + s.number + '</div>' +
+        '</div>';
+      }).join('') +
+      '<scr' + 'ipt>window.onload=function(){window.print();}<' + '/scr' + 'ipt></body></html>';
+    win.document.write(html);
+    win.document.close();
+    closeModal('etiquetaOpModal');
+    showToast('Ordem concluída — pendente apenas endereçamento no Estoque.');
+    setTimeout(() => location.reload(), 900);
+  }
+
+  function pularEtiquetasOP() {
+    closeModal('etiquetaOpModal');
+    setTimeout(() => location.reload(), 300);
+  }
+
   async function salvarOrdem() {
     const code = document.getElementById('novaOrdemCode')?.value?.trim() || '';
-    const productName = document.getElementById('novaOrdemProduct')?.value?.trim() || '';
+    const productSel = document.getElementById('novaOrdemProduct');
+    const productCode = productSel?.value || '';
+    const productName = productSel?.options[productSel.selectedIndex]?.dataset?.name || '';
     const quantity = parseInt(document.getElementById('novaOrdemQty')?.value || '1') || 1;
     const startDate = document.getElementById('novaOrdemStart')?.value || '';
     const endDate = document.getElementById('novaOrdemEnd')?.value || '';
@@ -391,9 +480,9 @@ app.get('/', (c) => {
     const plantId = plantSel?.value || '';
     const plantName = plantSel?.options[plantSel.selectedIndex]?.text || '';
 
-    if (!productName) { showToast('Informe o produto!', 'error'); return; }
+    if (!productCode) { showToast('Selecione o produto!', 'error'); return; }
 
-    const payload = { code, productName, quantity, startDate, endDate, priority, status, cliente, pedido, notes, plantId, plantName };
+    const payload = { code, productCode, productName, quantity, startDate, endDate, priority, status, cliente, pedido, notes, plantId, plantName };
 
     try {
       let res;
@@ -412,9 +501,10 @@ app.get('/', (c) => {
       }
       const data = await res.json();
       if (data.ok) {
-        showToast(_editOrdemId ? '✅ Ordem atualizada com sucesso!' : '✅ Ordem criada com sucesso!');
+        const serialMsg = (data.serials && data.serials.length) ? (' — ' + data.serials.length + ' série(s) geradas automaticamente') : '';
+        showToast((_editOrdemId ? '✅ Ordem atualizada com sucesso!' : '✅ Ordem criada com sucesso!') + serialMsg);
         closeModal('novaOrdemModal');
-        setTimeout(() => location.reload(), 800);
+        setTimeout(() => location.reload(), 900);
       } else {
         showToast(data.error || 'Erro ao salvar ordem', 'error');
       }
@@ -464,11 +554,13 @@ app.post('/api/create', async (c) => {
   if (!body) return err(c, 'Dados inválidos')
 
   const id = genId('op')
-  const order = {
+  const productCode = body.productCode || ''
+  const order: any = {
     id,
     code: body.code || `OP-${Date.now().toString().slice(-6)}`,
     productName: body.productName || '',
     productId: body.productId || '',
+    productCode,
     quantity: parseInt(body.quantity) || 1,
     completedQuantity: 0,
     status: body.status || 'planned',
@@ -487,7 +579,7 @@ app.post('/api/create', async (c) => {
   if (db && userId !== 'demo-tenant') {
     await dbInsert(db, 'production_orders', {
       id, user_id: userId, empresa_id: empresaId,
-      code: order.code, product_name: order.productName,
+      code: order.code, product_code: order.productCode, product_name: order.productName,
       quantity: order.quantity, quantity_produced: 0, completed_quantity: 0,
       status: order.status, priority: order.priority,
       start_date: order.startDate, end_date: order.endDate,
@@ -498,7 +590,48 @@ app.post('/api/create', async (c) => {
   // Add to in-memory tenant after D1 (or in demo/no-db mode)
   tenant.productionOrders.push(order)
 
-  return ok(c, { order })
+  // ── Geração automática de número de série ─────────────────────────────────
+  // Se o produto da OP for controlado por série, os números "nascem" com a
+  // ordem: reservados aqui (status 'em_producao'), rastreáveis pelo order_code.
+  // Isso NÃO se aplica à carga em massa via planilha (produtos.ts), que segue
+  // com liberação manual — este fluxo é só para OPs criadas após o go-live.
+  let generatedSerials: string[] = []
+  if (productCode) {
+    const product = (tenant.products || []).find((p: any) => p.code === productCode)
+    if (product && product.serialControlled && (product.controlType === 'serie')) {
+      try {
+        const { serials, rule } = await generateSerials(db, empresaId, productCode, order.quantity)
+        generatedSerials = serials
+        const nowIso = new Date().toISOString()
+
+        for (const number of serials) {
+          const serialId = genId('sn')
+          const serialRecord = {
+            id: serialId, itemCode: productCode, itemName: order.productName,
+            number, type: 'serie', quantity: 1, status: SERIAL_STATUS.EM_PRODUCAO,
+            origin: 'producao', orderCode: order.code, createdAt: nowIso,
+          }
+          tenant.serialNumbers.push(serialRecord)
+
+          if (db && userId !== 'demo-tenant') {
+            await dbInsert(db, 'serial_numbers', {
+              id: serialId, user_id: userId, empresa_id: empresaId,
+              item_code: productCode, item_name: order.productName,
+              number, type: 'serie', quantity: 1, status: SERIAL_STATUS.EM_PRODUCAO,
+              origin: 'producao', order_code: order.code, rule_id: rule.id,
+            })
+          }
+        }
+        order.serials = generatedSerials
+      } catch (e) {
+        console.error('[ordens] Falha ao gerar seriais automáticos para', productCode, e)
+        // A ordem já foi criada; a falha na geração de série não deve bloquear o fluxo,
+        // mas fica registrada no log para o operador liberar manualmente se preciso.
+      }
+    }
+  }
+
+  return ok(c, { order, serials: generatedSerials })
 })
 
 // ── API: PUT /ordens/api/:id ─────────────────────────────────────────────────
@@ -519,6 +652,7 @@ app.put('/api/:id', async (c) => {
     if (body.priority !== undefined) updateData.priority = body.priority
     if (body.completedQuantity !== undefined) updateData.quantity_produced = body.completedQuantity; updateData.completed_quantity = body.completedQuantity
     if (body.code !== undefined) updateData.code = body.code
+    if (body.productCode !== undefined) updateData.product_code = body.productCode
     if (body.productName !== undefined) updateData.product_name = body.productName
     if (body.quantity !== undefined) updateData.quantity = body.quantity
     if (body.startDate !== undefined) updateData.start_date = body.startDate
@@ -531,8 +665,20 @@ app.put('/api/:id', async (c) => {
   }
 
   Object.assign(tenant.productionOrders[idx], body)
+  const updatedOrder = tenant.productionOrders[idx]
 
-  return ok(c, { order: tenant.productionOrders[idx] })
+  // Se a OP foi (ou já estava) marcada como concluída agora, transiciona os
+  // seriais 'em_producao' vinculados para 'pendente_enderecamento' e sinaliza
+  // ao front que a etiqueta do número de série deve ser solicitada.
+  let serialsToLabel: any[] = []
+  if (body.status === 'completed') {
+    const empresaId = getCtxEmpresaId(c)
+    serialsToLabel = await completeSerialsForOrder(
+      db, userId, empresaId, tenant, updatedOrder.code, updatedOrder.productCode || ''
+    )
+  }
+
+  return ok(c, { order: updatedOrder, serialsToLabel })
 })
 
 // ── API: DELETE /ordens/api/:id ──────────────────────────────────────────────
