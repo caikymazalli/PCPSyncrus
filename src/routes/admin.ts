@@ -552,6 +552,16 @@ app.get('/', async (c) => {
 
         <!-- Aba: Configurações -->
         <div class="tab-content" id="tabConfig">
+          ${userRole === 'admin' ? `
+          <div class="card" style="padding:24px;margin-bottom:16px;border-left:4px solid #7c3aed;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+              <div>
+                <h4 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0 0 4px;"><i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Numeração Automática de Série</h4>
+                <div style="font-size:12px;color:#6c757d;">Configure como os números de série nascem automaticamente junto com cada nova Ordem de Produção.</div>
+              </div>
+              <a href="/admin/serial-config" class="btn btn-primary"><i class="fas fa-sliders-h"></i> Configurar</a>
+            </div>
+          </div>` : ''}
           <div class="card" style="padding:24px;">
             <h4 style="font-size:15px;font-weight:700;color:#1B4F72;margin:0 0 20px;">Configurações da Empresa</h4>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
