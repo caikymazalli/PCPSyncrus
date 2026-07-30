@@ -144,11 +144,149 @@ app.get('/', (c) => {
           </div>
         </div>
       </div>
-      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;">
-        <button id="serialListReleaseBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openSerialReleaseFromList()">
-          <i class="fas fa-barcode"></i> Liberar S/N
-        </button>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="serialListReleaseBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openSerialReleaseFromList()">
+            <i class="fas fa-barcode"></i> Liberar S/N
+          </button>
+          <button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;" onclick="openEtiquetaModal('serialList')" title="Imprimir etiquetas dos S/N listados">
+            <i class="fas fa-print"></i> Imprimir Etiquetas
+          </button>
+        </div>
         <button onclick="closeModal('serialListModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Impressão de Etiquetas S/N -->
+  <div class="modal-overlay" id="etiquetaSnModal" style="z-index:1200;">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-print" style="margin-right:8px;color:#16a34a;"></i>Imprimir Etiquetas de S/N
+        </h3>
+        <button onclick="closeModal('etiquetaSnModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <!-- Configuração de tamanho -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:16px;border:1px solid #e9ecef;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-ruler-combined" style="margin-right:5px;color:#6c757d;"></i>Tamanho da Etiqueta</span>
+            <button onclick="salvarTamanhoEtiqueta()" class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-size:11px;">
+              <i class="fas fa-save"></i> Salvar como Padrão
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Largura (mm)</label>
+              <input class="form-control" type="number" id="etq_largura" value="60" min="30" max="200" style="font-size:13px;" oninput="atualizarPreviewEtq()">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Altura (mm)</label>
+              <input class="form-control" type="number" id="etq_altura" value="30" min="15" max="150" style="font-size:13px;" oninput="atualizarPreviewEtq()">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6c757d;margin-bottom:3px;">Pré-visualização</div>
+              <div id="etqSizePreview" style="background:white;border:2px solid #7c3aed;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#7c3aed;font-weight:700;height:36px;">60×30mm</div>
+            </div>
+          </div>
+        </div>
+        <!-- Preview em tabela: Cod | Descrição | Número de Série -->
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-tags" style="margin-right:5px;color:#7c3aed;"></i>Etiquetas a Imprimir (<span id="etqCount">0</span>)</span>
+          </div>
+          <div style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#f5f3ff;">
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;width:20%;">Código</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;">Descrição</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;width:28%;">Número de Série</th>
+                </tr>
+              </thead>
+            </table>
+            <div style="max-height:200px;overflow-y:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <tbody id="etqPreviewList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('etiquetaSnModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="executarImpressaoEtiquetas()" class="btn btn-primary">
+          <i class="fas fa-print"></i> Imprimir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Impressão de Etiquetas Faturamento -->
+  <div class="modal-overlay" id="etiquetaFatModal" style="z-index:1200;">
+    <div class="modal" style="max-width:640px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-print" style="margin-right:8px;color:#27AE60;"></i>Imprimir Etiquetas de Faturamento
+        </h3>
+        <button onclick="closeModal('etiquetaFatModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <!-- Configuração de tamanho -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:14px;border:1px solid #e9ecef;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-ruler-combined" style="margin-right:5px;color:#6c757d;"></i>Tamanho da Etiqueta</span>
+            <button onclick="salvarTamanhoEtiquetaFat()" class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-size:11px;">
+              <i class="fas fa-save"></i> Salvar como Padrão
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Largura (mm)</label>
+              <input class="form-control" type="number" id="etqf_largura" value="80" min="30" max="200" style="font-size:13px;" oninput="atualizarPreviewEtqFat()">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Altura (mm)</label>
+              <input class="form-control" type="number" id="etqf_altura" value="40" min="15" max="150" style="font-size:13px;" oninput="atualizarPreviewEtqFat()">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6c757d;margin-bottom:3px;">Pré-visualização</div>
+              <div id="etqfSizePreview" style="background:white;border:2px solid #27AE60;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#27AE60;font-weight:700;height:36px;">80×40mm</div>
+            </div>
+          </div>
+        </div>
+        <!-- Info da baixa -->
+        <div id="etqfBaixaInfo" style="margin-bottom:12px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;font-size:12px;color:#374151;"></div>
+        <!-- Preview em tabela: Cod | Descrição | S/N | NF -->
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-tags" style="margin-right:5px;color:#27AE60;"></i>Etiquetas a Imprimir (<span id="etqfCount">0</span>)</span>
+          </div>
+          <div style="border:1px solid #bbf7d0;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#f0fdf4;">
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;width:18%;">Código</th>
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;">Descrição</th>
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;width:24%;">Número de Série</th>
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;width:18%;">NF</th>
+                </tr>
+              </thead>
+            </table>
+            <div style="max-height:200px;overflow-y:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <tbody id="etqfPreviewList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('etiquetaFatModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="executarImpressaoEtiquetasFat()" class="btn btn-primary" style="background:#27AE60;border-color:#27AE60;">
+          <i class="fas fa-print"></i> Imprimir
+        </button>
       </div>
     </div>
   </div>
@@ -435,6 +573,33 @@ app.get('/', (c) => {
             <tbody>
               ${stockExits.map((ex: any) => {
                 const ti = exitTypeInfo[ex.type] || exitTypeInfo.requisicao
+                // Montar lista de seriais (pode ser array ou string única)
+                const snList: string[] = ex.serialNumbers
+                  ? (Array.isArray(ex.serialNumbers) ? ex.serialNumbers : [ex.serialNumbers])
+                  : (ex.serialNumber ? [ex.serialNumber] : [])
+                const isFaturamento = ex.type === 'faturamento'
+                // Para faturamento: montar dados de etiqueta mesmo sem serials (usa placeholder)
+                const etqItemsForFat = isFaturamento
+                  ? (ex.items || []).flatMap((it: any) => {
+                      const qty = it.quantity || 1
+                      if (snList.length > 0) {
+                        // Usar S/Ns registrados (um por item)
+                        return snList.slice(0, qty).map((sn: string) => ({
+                          code: it.code || '', name: it.name || '',
+                          serial: sn, nf: ex.nf || '—'
+                        }))
+                      } else {
+                        // Sem serial: criar entradas com serial em branco para cada unidade
+                        return Array.from({ length: qty }, (_, qi) => ({
+                          code: it.code || '', name: it.name || '',
+                          serial: '—', nf: ex.nf || '—'
+                        }))
+                      }
+                    })
+                  : []
+                const etqData = isFaturamento
+                  ? JSON.stringify(etqItemsForFat).replace(/'/g, '&#39;')
+                  : '[]'
                 return `
                 <tr>
                   <td style="font-weight:700;color:#1B4F72;">${ex.code}</td>
@@ -445,15 +610,20 @@ app.get('/', (c) => {
                   </td>
                   <td>
                     <div style="font-size:12px;font-weight:600;color:#2980B9;">${ex.pedido}</div>
+                    ${ex.nf ? `<div style="font-size:11px;color:#27AE60;font-weight:600;"><i class="fas fa-file-invoice" style="font-size:9px;"></i> NF: ${ex.nf}</div>` : ''}
                   </td>
                   <td>
                     ${ex.items.map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.code}</span> ${it.name} <strong>(${it.quantity})</strong></div>`).join('')}
+                    ${snList.length > 0 ? `<div style="font-size:11px;color:#7c3aed;margin-top:2px;"><i class="fas fa-barcode" style="font-size:9px;"></i> S/N: ${snList.join(', ')}</div>` : ''}
                   </td>
                   <td style="font-size:12px;color:#6c757d;">${new Date(ex.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                   <td style="font-size:12px;color:#6c757d;">${ex.responsavel}</td>
                   <td style="font-size:12px;color:#6c757d;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ex.notes}">${ex.notes}</td>
                   <td>
-                    <div class="tooltip-wrap" data-tooltip="Ver comprovante"><button class="btn btn-secondary btn-sm" onclick="alert('Comprovante da baixa ${ex.code}')"><i class="fas fa-eye"></i></button></div>
+                    <div style="display:flex;gap:4px;">
+                      ${isFaturamento ? `<div class="tooltip-wrap" data-tooltip="Imprimir etiquetas de faturamento"><button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;" onclick="openEtiquetaFatModal('${ex.code}','${ex.nf||''}',JSON.parse(this.getAttribute('data-etq')))" data-etq='${etqData}'><i class="fas fa-print"></i> Etiquetas</button></div>` : ''}
+                      <div class="tooltip-wrap" data-tooltip="Ver comprovante"><button class="btn btn-secondary btn-sm" onclick="alert('Comprovante da baixa ${ex.code}')"><i class="fas fa-eye"></i></button></div>
+                    </div>
                   </td>
                 </tr>`
               }).join('')}
@@ -1125,15 +1295,15 @@ app.get('/', (c) => {
 
   <!-- Nova Baixa Modal -->
   <div class="modal-overlay" id="novaBaixaModal">
-    <div class="modal" style="max-width:520px;">
+    <div class="modal" style="max-width:560px;">
       <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
         <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-minus-circle" style="margin-right:8px;"></i>Registrar Baixa de Estoque</h3>
         <button onclick="closeModal('novaBaixaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
       </div>
-      <div style="padding:24px;">
+      <div style="padding:20px 24px;max-height:80vh;overflow-y:auto;">
         <div class="form-group">
           <label class="form-label">Tipo de Baixa *</label>
-          <select class="form-control" id="baixa_tipo">
+          <select class="form-control" id="baixa_tipo" onchange="onBaixaTipoChange()">
             <option value="faturamento">Faturamento (saída com NF-e)</option>
             <option value="requisicao">Requisição Interna (outra área)</option>
             <option value="descarte">Descarte / Perda</option>
@@ -1143,40 +1313,41 @@ app.get('/', (c) => {
           <label class="form-label">Pedido / Referência</label>
           <input class="form-control" id="baixa_pedido" type="text" placeholder="PV-2024-XXXX ou REQ-ENG-XXX">
         </div>
-        <div class="form-group">
-          <label class="form-label">Número NF-e (quando faturamento)</label>
+        <div class="form-group" id="baixa_nf_group">
+          <label class="form-label"><i class="fas fa-file-invoice" style="margin-right:4px;color:#27AE60;"></i>Número NF-e</label>
           <input class="form-control" id="baixa_nf" type="text" placeholder="NF-00000">
         </div>
         <div class="form-group">
           <label class="form-label">Item *</label>
           <select class="form-control" id="baixa_item" onchange="updateBaixaSerialField()">
             <option value="">Selecionar item...</option>
-            ${stockItems.map((s: any) => `<option value="${s.code}" data-serial="${s.serialControlled ? '1' : '0'}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
-            ${products.map((p: any) => `<option value="${p.code}" data-serial="${p.serialControlled ? '1' : '0'}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
+            ${stockItems.map((s: any) => `<option value="${s.code}" data-serial="${s.serialControlled ? '1' : '0'}" data-control="${s.controlType||'serie'}" data-name="${s.name}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
+            ${products.map((p: any) => `<option value="${p.code}" data-serial="${p.serialControlled ? '1' : '0'}" data-control="${p.controlType||'serie'}" data-name="${p.name}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
           </select>
-        </div>
-        <!-- Campo de Número de Série — aparece apenas para itens com controle serial -->
-        <div class="form-group" id="baixa_serial_group" style="display:none;">
-          <label class="form-label"><i class="fas fa-barcode" style="margin-right:5px;color:#7c3aed;"></i>Número de Série *</label>
-          <select class="form-control" id="baixa_serial">
-            <option value="">Selecionar S/N disponível...</option>
-          </select>
-          <div style="font-size:11px;color:#7c3aed;margin-top:4px;"><i class="fas fa-info-circle"></i> Item com controle serial — selecione o S/N que será baixado. Quantidade fixada em 1.</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
             <label class="form-label">Quantidade *</label>
-            <input class="form-control" id="baixa_qty" type="number" min="1" placeholder="0">
+            <input class="form-control" id="baixa_qty" type="number" min="1" placeholder="0" oninput="updateBaixaSerialLines()">
           </div>
           <div class="form-group">
             <label class="form-label">Data</label>
             <input class="form-control" id="baixa_data" type="date">
           </div>
         </div>
+        <!-- Linhas de Número de Série — aparece para itens controlados por série/lote -->
+        <div id="baixa_seriais_group" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <label class="form-label" style="margin:0;"><i class="fas fa-barcode" style="margin-right:5px;color:#7c3aed;"></i>Números de Série *</label>
+            <span id="baixa_seriais_badge" style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:10px;font-weight:700;"></span>
+          </div>
+          <div id="baixa_seriais_lines" style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;padding-right:2px;"></div>
+          <div style="font-size:11px;color:#7c3aed;margin-top:6px;"><i class="fas fa-info-circle"></i> Informe um S/N por unidade baixada. Itens não controlados por série/lote não exigem preenchimento.</div>
+        </div>
         <div class="form-group">
           <label class="form-label">Responsável</label>
           <select class="form-control" id="baixa_responsavel">
-            ${mockData.users.map(u => `<option>${u.name}</option>`).join('')}
+            ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -1240,6 +1411,191 @@ app.get('/', (c) => {
     });
   }
 
+  // ── Tamanho de etiqueta (padrão salvo em localStorage) ──────────────
+  function _loadEtqSize(prefix, defW, defH) {
+    const saved = JSON.parse(localStorage.getItem('etq_size_' + prefix) || 'null');
+    return saved || { w: defW, h: defH };
+  }
+  function salvarTamanhoEtiqueta() {
+    const w = document.getElementById('etq_largura').value;
+    const h = document.getElementById('etq_altura').value;
+    localStorage.setItem('etq_size_sn', JSON.stringify({ w: parseInt(w), h: parseInt(h) }));
+    showEstoqueToast('✅ Tamanho padrão salvo: ' + w + 'mm × ' + h + 'mm');
+  }
+  function salvarTamanhoEtiquetaFat() {
+    const w = document.getElementById('etqf_largura').value;
+    const h = document.getElementById('etqf_altura').value;
+    localStorage.setItem('etq_size_fat', JSON.stringify({ w: parseInt(w), h: parseInt(h) }));
+    showEstoqueToast('✅ Tamanho padrão salvo: ' + w + 'mm × ' + h + 'mm');
+  }
+
+  // ── Modal de etiquetas S/N ───────────────────────────────────────────
+  let _etqSnData = [];   // [{code, name, serial}]
+  let _etqFatData = [];  // [{code, name, serial, nf}]
+  let _etqSnCurrentCode = null;
+  let _etqSnCurrentName = null;
+
+  function openEtiquetaModal(source) {
+    // Carregar tamanho padrão salvo
+    const sz = _loadEtqSize('sn', 60, 30);
+    document.getElementById('etq_largura').value = sz.w;
+    document.getElementById('etq_altura').value = sz.h;
+
+    // Usar dados estruturados armazenados em openSerialList
+    const itemCode = _etqSnCurrentCode || '';
+    const itemName = _etqSnCurrentName || '';
+
+    // Pegar seriais exibidos no serialListBody (apenas S/Ns em estoque visíveis)
+    const tbody = document.getElementById('serialListBody');
+    const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+    _etqSnData = [];
+    rows.forEach(function(row) {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 1) {
+        const num = cells[0].textContent.trim();
+        if (num) {
+          _etqSnData.push({
+            code: itemCode,
+            name: itemName,
+            serial: num
+          });
+        }
+      }
+    });
+
+    // Fallback: se nenhuma linha visível, usar todos os S/Ns do item
+    if (_etqSnData.length === 0 && itemCode) {
+      const snData = serialNumbersData.filter(function(sn) { return sn.itemCode === itemCode; });
+      snData.forEach(function(sn) {
+        _etqSnData.push({ code: itemCode, name: itemName, serial: sn.number });
+      });
+    }
+
+    document.getElementById('etqCount').textContent = _etqSnData.length;
+    _renderEtqSnPreview();
+    atualizarPreviewEtq();
+    openModal('etiquetaSnModal');
+  }
+
+  function _renderEtqSnPreview() {
+    const preview = document.getElementById('etqPreviewList');
+    if (_etqSnData.length === 0) {
+      preview.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:#9ca3af;"><i class="fas fa-barcode" style="font-size:24px;margin-bottom:8px;opacity:0.3;display:block;"></i>Nenhum número de série disponível para este item.</td></tr>';
+    } else {
+      preview.innerHTML = _etqSnData.slice(0, 50).map(function(e, i) {
+        const bg = i % 2 === 0 ? 'white' : '#faf5ff';
+        return '<tr style="background:' + bg + ';">' +
+          '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#374151;font-weight:700;border-bottom:1px solid #f3e8ff;">' + (e.code||'—') + '</td>' +
+          '<td style="padding:7px 10px;font-size:12px;color:#374151;border-bottom:1px solid #f3e8ff;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (e.name||'—') + '</td>' +
+          '<td style="padding:7px 10px;font-family:monospace;font-size:12px;color:#7c3aed;font-weight:700;border-bottom:1px solid #f3e8ff;">' + (e.serial||'—') + '</td>' +
+        '</tr>';
+      }).join('') + (_etqSnData.length > 50 ? '<tr><td colspan="3" style="text-align:center;color:#9ca3af;font-size:11px;padding:6px;">…e mais ' + (_etqSnData.length-50) + ' etiqueta(s)</td></tr>' : '');
+    }
+  }
+
+  function atualizarPreviewEtq() {
+    const w = parseInt(document.getElementById('etq_largura').value) || 60;
+    const h = parseInt(document.getElementById('etq_altura').value) || 30;
+    const el = document.getElementById('etqSizePreview');
+    if (el) el.textContent = w + '×' + h + 'mm';
+  }
+
+  function executarImpressaoEtiquetas() {
+    const w = parseInt(document.getElementById('etq_largura').value) || 60;
+    const h = parseInt(document.getElementById('etq_altura').value) || 30;
+    if (_etqSnData.length === 0) { showEstoqueToast('Nenhuma etiqueta para imprimir', 'error'); return; }
+    _imprimirEtiquetas(_etqSnData.map(function(e) {
+      return { linhas: [e.code, e.name, e.serial], tipo: 'sn' };
+    }), w, h);
+    closeModal('etiquetaSnModal');
+  }
+
+  // ── Modal de etiquetas Faturamento ───────────────────────────────────
+  function openEtiquetaFatModal(exitCode, exitNf, serialItems) {
+    const sz = _loadEtqSize('fat', 80, 40);
+    document.getElementById('etqf_largura').value = sz.w;
+    document.getElementById('etqf_altura').value = sz.h;
+
+    _etqFatData = serialItems || [];
+    const nfDisplay = exitNf || '—';
+    document.getElementById('etqfBaixaInfo').innerHTML =
+      '<i class="fas fa-file-invoice" style="color:#27AE60;margin-right:6px;"></i>' +
+      '<strong>Baixa:</strong> ' + (exitCode||'—') + ' &nbsp;|&nbsp; ' +
+      '<strong>NF:</strong> ' + nfDisplay + ' &nbsp;|&nbsp; ' +
+      '<strong>' + _etqFatData.length + ' etiqueta(s)</strong>';
+
+    document.getElementById('etqfCount').textContent = _etqFatData.length;
+    _renderEtqFatPreview();
+    atualizarPreviewEtqFat();
+    openModal('etiquetaFatModal');
+  }
+
+  function _renderEtqFatPreview() {
+    const preview = document.getElementById('etqfPreviewList');
+    preview.innerHTML = _etqFatData.slice(0, 50).map(function(e, i) {
+      const bg = i % 2 === 0 ? 'white' : '#f0fdf4';
+      return '<tr style="background:' + bg + ';">' +
+        '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#374151;font-weight:700;border-bottom:1px solid #d1fae5;">' + (e.code||'—') + '</td>' +
+        '<td style="padding:7px 10px;font-size:12px;color:#374151;border-bottom:1px solid #d1fae5;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (e.name||'—') + '</td>' +
+        '<td style="padding:7px 10px;font-family:monospace;font-size:12px;color:#7c3aed;font-weight:700;border-bottom:1px solid #d1fae5;">' + (e.serial||'—') + '</td>' +
+        '<td style="padding:7px 10px;font-size:12px;color:#16a34a;font-weight:700;border-bottom:1px solid #d1fae5;">' + (e.nf||'—') + '</td>' +
+      '</tr>';
+    }).join('') + (_etqFatData.length > 50 ? '<tr><td colspan="4" style="text-align:center;color:#9ca3af;font-size:11px;padding:6px;">…e mais ' + (_etqFatData.length-50) + ' etiqueta(s)</td></tr>' : '');
+    // Fallback vazio
+    if (_etqFatData.length === 0) {
+      preview.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#9ca3af;">Nenhuma etiqueta.</td></tr>';
+    }
+  }
+
+  function atualizarPreviewEtqFat() {
+    const w = parseInt(document.getElementById('etqf_largura').value) || 80;
+    const h = parseInt(document.getElementById('etqf_altura').value) || 40;
+    const el = document.getElementById('etqfSizePreview');
+    if (el) el.textContent = w + '×' + h + 'mm';
+  }
+
+  function executarImpressaoEtiquetasFat() {
+    const w = parseInt(document.getElementById('etqf_largura').value) || 80;
+    const h = parseInt(document.getElementById('etqf_altura').value) || 40;
+    if (_etqFatData.length === 0) { showEstoqueToast('Nenhuma etiqueta para imprimir', 'error'); return; }
+    _imprimirEtiquetas(_etqFatData.map(function(e) {
+      return { linhas: [e.code, e.name, 'S/N: ' + (e.serial||'—'), 'NF: ' + (e.nf||'—')], tipo: 'fat' };
+    }), w, h);
+    closeModal('etiquetaFatModal');
+  }
+
+  // ── Motor de impressão de etiquetas ─────────────────────────────────
+  function _imprimirEtiquetas(etiquetas, largMm, altMm) {
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) { showEstoqueToast('Bloqueio de popup — permita popups para imprimir', 'error'); return; }
+    const etqCss = 'width:' + largMm + 'mm;height:' + altMm + 'mm;border:1px solid #333;padding:3mm 4mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;page-break-after:always;page-break-inside:avoid;overflow:hidden;';
+    const linhasCss = ['font-size:8pt;color:#555;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+      'font-size:9pt;font-weight:700;color:#1B4F72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+      'font-size:10pt;font-weight:800;color:#7c3aed;font-family:monospace;letter-spacing:1px;',
+      'font-size:9pt;font-weight:700;color:#27AE60;font-family:monospace;'];
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Etiquetas</title>' +
+      '<style>@page{size:' + largMm + 'mm ' + altMm + 'mm;margin:0;}body{margin:0;padding:0;}</style></head><body>' +
+      etiquetas.map(function(etq) {
+        return '<div style="' + etqCss + '">' +
+          etq.linhas.map(function(l, i) {
+            return '<div style="' + (linhasCss[i] || linhasCss[2]) + '">' + (l||'') + '</div>';
+          }).join('') +
+        '</div>';
+      }).join('') +
+      '<scr' + 'ipt>window.onload=function(){window.print();}<' + '/scr' + 'ipt></body></html>';
+    win.document.write(html);
+    win.document.close();
+  }
+
+  // ── Baixa Modal ──────────────────────────────────────────────────────
+  function onBaixaTipoChange() {
+    const tipo = document.getElementById('baixa_tipo').value;
+    const nfGroup = document.getElementById('baixa_nf_group');
+    if (nfGroup) nfGroup.style.display = tipo === 'faturamento' ? '' : 'none';
+  }
+  // Inicializar visibilidade NF
+  onBaixaTipoChange();
+
   function openBaixaModal(code, name) {
     const sel = document.getElementById('baixa_item');
     for (let i = 0; i < sel.options.length; i++) {
@@ -1253,42 +1609,68 @@ app.get('/', (c) => {
     const sel = document.getElementById('baixa_item');
     const opt = sel.options[sel.selectedIndex];
     const isSerial = opt && opt.getAttribute('data-serial') === '1';
-    const group = document.getElementById('baixa_serial_group');
-    const snSel = document.getElementById('baixa_serial');
+    const group = document.getElementById('baixa_seriais_group');
     const qtyInput = document.getElementById('baixa_qty');
 
     if (isSerial) {
-      const itemCode = opt.value;
-      // Populate serial dropdown with SNs em_estoque for this item
-      const available = serialNumbersData.filter(function(sn) {
-        return sn.itemCode === itemCode && sn.status === 'em_estoque';
-      });
-      snSel.innerHTML = '<option value="">Selecionar S/N disponível...</option>';
+      group.style.display = 'block';
+      updateBaixaSerialLines();
+    } else {
+      group.style.display = 'none';
+      qtyInput.readOnly = false;
+      qtyInput.style.background = '';
+    }
+  }
+
+  function updateBaixaSerialLines() {
+    const sel = document.getElementById('baixa_item');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const isSerial = opt && opt.getAttribute('data-serial') === '1';
+    if (!isSerial) return;
+
+    const qty = parseInt(document.getElementById('baixa_qty').value) || 1;
+    const itemCode = opt.value;
+    const badge = document.getElementById('baixa_seriais_badge');
+    const container = document.getElementById('baixa_seriais_lines');
+    if (badge) badge.textContent = qty + ' S/N necessário' + (qty !== 1 ? 's' : '');
+
+    // Obter S/Ns disponíveis para este item
+    const available = serialNumbersData.filter(function(sn) {
+      return sn.itemCode === itemCode && sn.status === 'em_estoque';
+    });
+
+    // Rebuildar linhas conforme quantidade
+    const existing = container.querySelectorAll('.baixa-sn-line');
+    const existingVals = Array.from(existing).map(function(el) {
+      const s = el.querySelector('select'); return s ? s.value : '';
+    });
+
+    container.innerHTML = '';
+    for (let i = 0; i < qty; i++) {
+      const div = document.createElement('div');
+      div.className = 'baixa-sn-line';
+      div.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;';
+      const badge2 = document.createElement('span');
+      badge2.style.cssText = 'width:22px;height:22px;background:#7c3aed;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;';
+      badge2.textContent = String(i + 1);
+      const sel2 = document.createElement('select');
+      sel2.className = 'form-control';
+      sel2.style.fontSize = '12px';
+      sel2.innerHTML = '<option value="">— S/N #' + (i+1) + ' (selecione ou deixe em branco se não controlado) —</option>';
       available.forEach(function(sn) {
         const o = document.createElement('option');
         o.value = sn.id;
-        o.textContent = sn.number + (sn.location ? ' — ' + sn.location : '');
+        o.textContent = sn.number + (sn.location ? ' [' + sn.location + ']' : '');
         o.setAttribute('data-number', sn.number);
-        snSel.appendChild(o);
+        if (existingVals[i] && sn.id === existingVals[i]) o.selected = true;
+        sel2.appendChild(o);
       });
       if (available.length === 0) {
-        const o = document.createElement('option');
-        o.value = '';
-        o.textContent = '— Nenhum S/N disponível para este item —';
-        snSel.appendChild(o);
+        const o = document.createElement('option'); o.value = ''; o.textContent = '— Nenhum S/N disponível —'; sel2.appendChild(o);
       }
-      group.style.display = 'block';
-      // Lock qty to 1 for serial items
-      qtyInput.value = '1';
-      qtyInput.readOnly = true;
-      qtyInput.style.background = '#f1f5f9';
-      qtyInput.title = 'Quantidade fixada em 1 para itens com controle de número de série';
-    } else {
-      group.style.display = 'none';
-      snSel.innerHTML = '';
-      qtyInput.readOnly = false;
-      qtyInput.style.background = '';
-      qtyInput.title = '';
+      div.appendChild(badge2);
+      div.appendChild(sel2);
+      container.appendChild(div);
     }
   }
 
@@ -1352,24 +1734,26 @@ app.get('/', (c) => {
   }
 
   async function saveBaixa() {
-    const item = document.getElementById('baixa_item').value;
+    const itemSel = document.getElementById('baixa_item');
+    const item = itemSel.value;
     const qty = parseInt(document.getElementById('baixa_qty').value) || 0;
     if (!item || qty <= 0) { showEstoqueToast('Selecione o item e informe a quantidade!', 'error'); return; }
 
-    // Serial number validation
-    const serialGroup = document.getElementById('baixa_serial_group');
+    // Coletar S/Ns das linhas (se item controlado)
+    const serialGroup = document.getElementById('baixa_seriais_group');
     const isSerialItem = serialGroup && serialGroup.style.display !== 'none';
-    let serialId = null;
-    let serialNumber = null;
+    let serialIds = [];
+    let serialNumbers = [];
     if (isSerialItem) {
-      const snSel = document.getElementById('baixa_serial');
-      serialId = snSel.value;
-      const snOpt = snSel.options[snSel.selectedIndex];
-      serialNumber = snOpt ? snOpt.getAttribute('data-number') : null;
-      if (!serialId) {
-        showEstoqueToast('Selecione o número de série para registrar a baixa!', 'error');
-        return;
-      }
+      const lines = document.querySelectorAll('#baixa_seriais_lines .baixa-sn-line select');
+      lines.forEach(function(sel) {
+        const opt = sel.options[sel.selectedIndex];
+        if (sel.value) {
+          serialIds.push(sel.value);
+          serialNumbers.push(opt ? opt.getAttribute('data-number') : sel.value);
+        }
+      });
+      // Não bloquear se S/N em branco — alguns itens podem ter controle parcial
     }
 
     const tipo = document.getElementById('baixa_tipo').value;
@@ -1378,6 +1762,9 @@ app.get('/', (c) => {
     const data_b = document.getElementById('baixa_data').value;
     const responsavel = document.getElementById('baixa_responsavel')?.value || '';
     const notes = document.getElementById('baixa_obs').value;
+    const itemOpt = itemSel.options[itemSel.selectedIndex];
+    const itemName = itemOpt ? (itemOpt.getAttribute('data-name') || itemOpt.textContent.split(' (')[0]) : item;
+
     try {
       const res = await fetch('/estoque/api/exit/create', {
         method: 'POST',
@@ -1385,15 +1772,28 @@ app.get('/', (c) => {
         body: JSON.stringify({
           type: tipo, pedido, nf, dataBaixa: data_b, responsavel, notes,
           items: [{ code: item, quantity: qty }],
-          serialId: serialId || undefined,
-          serialNumber: serialNumber || undefined
+          serialId:     serialIds[0]     || undefined,
+          serialNumber: serialNumbers[0] || undefined,
+          serialIds:     serialIds.length > 0 ? serialIds : undefined,
+          serialNumbers: serialNumbers.length > 0 ? serialNumbers : undefined
         })
       });
       const d = await res.json();
       if (d.ok) {
-        showEstoqueToast('\u2705 Baixa ' + d.exit.code + ' registrada!' + (serialNumber ? ' S/N: ' + serialNumber : ''));
+        const exitCode = d.exit?.code || '';
+        const snList = serialNumbers.filter(Boolean);
+        showEstoqueToast('✅ Baixa ' + exitCode + ' registrada!' + (snList.length ? ' S/Ns: ' + snList.join(', ') : ''));
         closeModal('novaBaixaModal');
-        setTimeout(() => location.reload(), 900);
+
+        // Se faturamento com S/Ns, abrir modal de etiquetas
+        if (tipo === 'faturamento' && snList.length > 0) {
+          const etqItems = snList.map(function(sn) {
+            return { code: item, name: itemName, serial: sn, nf: nf || '—' };
+          });
+          setTimeout(function() { openEtiquetaFatModal(exitCode, nf || '—', etqItems); }, 400);
+        } else {
+          setTimeout(() => location.reload(), 900);
+        }
       } else {
         showEstoqueToast(d.error || 'Erro ao registrar baixa', 'error');
       }
@@ -2050,6 +2450,8 @@ app.get('/', (c) => {
 
   function openSerialList(itemCode, itemName, controlType) {
     _serialListCurrentCode = itemCode;
+    _etqSnCurrentCode = itemCode;
+    _etqSnCurrentName = itemName;
     const serials = serialNumbersData.filter(sn => sn.itemCode === itemCode);
     document.getElementById('serialListTitle').innerHTML =
       '<i class="fas ' + (controlType==='lote'?'fa-layer-group':'fa-barcode') + '" style="margin-right:8px;color:#7c3aed;"></i>' +
@@ -2096,8 +2498,14 @@ app.get('/', (c) => {
       empty.style.display = 'block';
     } else {
       empty.style.display = 'none';
-      const statusLabel = { em_estoque: '<span class="badge badge-success">Em Estoque</span>', separado: '<span class="badge badge-warning">Separado</span>', baixado: '<span class="badge badge-danger">Baixado</span>' };
-      const originLabel = { apontamento: '🔧 Apontamento', planilha: '📋 Planilha' };
+      const statusLabel = {
+        em_estoque: '<span class="badge badge-success">Em Estoque</span>',
+        separado: '<span class="badge badge-warning">Separado</span>',
+        baixado: '<span class="badge badge-danger">Baixado</span>',
+        em_producao: '<span class="badge" style="background:#eff6ff;color:#2563eb;">Em Produção</span>',
+        pendente_enderecamento: '<span class="badge" style="background:#fffbeb;color:#d97706;" title="Item já em estoque, falta apenas endereçar"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>Pendente Endereçamento</span>',
+      };
+      const originLabel = { apontamento: '🔧 Apontamento', planilha: '📋 Planilha', producao: '⚙️ Produção (OP)' };
       tbody.innerHTML = serials.map(sn => {
         const dt = new Date(sn.createdAt + 'T00:00:00').toLocaleDateString('pt-BR');
         return '<tr>' +
@@ -2492,30 +2900,92 @@ app.post('/api/item/create', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body || !body.name) return err(c, 'Nome obrigatório')
   const id = genId('stk')
+  const currentQty = parseFloat(body.currentQty) || 0
+  const minQty     = parseFloat(body.minQty) || 0
+  const maxQty     = parseFloat(body.maxQty) || 0
+
   const item = {
     id, name: body.name, code: body.code || id.slice(-6).toUpperCase(),
     unit: body.unit || 'un', category: body.category || '',
-    currentQty: parseFloat(body.currentQty) || 0,
-    minQty: parseFloat(body.minQty) || 0,
-    maxQty: parseFloat(body.maxQty) || 0,
-    location: body.location || '', stockStatus: 'normal',
+    quantity: currentQty,     // coluna canônica do schema original
+    currentQty,               // alias mantido em memória para compatibilidade
+    minQty,
+    maxQty,
+    min_quantity: minQty,     // coluna canônica do schema original
+    location: body.location || '',
+    status: 'normal',
+    stockStatus: 'normal',
     almoxarifadoId: body.almoxarifadoId || '',
     createdAt: new Date().toISOString(),
   }
+
   // D1-first: inserir antes de atualizar memória (produção)
   if (db && userId !== 'demo-tenant') {
-    const inserted = await dbInsert(db, 'stock_items', {
-      id, user_id: userId, empresa_id: empresaId, name: item.name, code: item.code,
-      unit: item.unit, category: item.category,
-      current_qty: item.currentQty, min_qty: item.minQty, max_qty: item.maxQty,
-      location: item.location,
-    })
+    // ── Auto-migração defensiva: garante colunas que o código precisa ──────
+    // Lê as colunas existentes e adiciona as faltantes, retornando o set atual
+    let existingCols: Set<string> = new Set()
+    try {
+      const tableInfo = await db.prepare('PRAGMA table_info(stock_items)').all()
+      const colsList = ((tableInfo.results ?? []) as any[]).map((r: any) => r.name as string)
+      existingCols = new Set(colsList)
+
+      const colsToAdd: [string, string][] = [
+        ['user_id',     'TEXT'],
+        ['current_qty', 'REAL DEFAULT 0'],
+        ['min_qty',     'REAL DEFAULT 0'],
+        ['max_qty',     'REAL DEFAULT 0'],
+      ]
+      for (const [col, def] of colsToAdd) {
+        if (!existingCols.has(col)) {
+          try {
+            await db.prepare(`ALTER TABLE stock_items ADD COLUMN ${col} ${def}`).run()
+            existingCols.add(col)
+            console.log(`[ESTOQUE][ITEMS] Coluna ${col} adicionada à stock_items`)
+          } catch (ae: any) {
+            if (ae.message?.includes('duplicate column')) {
+              existingCols.add(col) // já existia, ignorar
+            } else {
+              console.warn(`[ESTOQUE][ITEMS] Aviso ao adicionar ${col}:`, ae.message)
+            }
+          }
+        }
+      }
+    } catch (migrErr: any) {
+      console.warn('[ESTOQUE][ITEMS] Auto-migração falhou (continuando):', migrErr.message)
+    }
+
+    // ── Montar payload de INSERT apenas com colunas que existem no schema ─
+    // Sempre inclui as colunas do schema original (0001):
+    //   id, empresa_id, name, code, unit, category, location, status, quantity, min_quantity
+    // Inclui colunas extras apenas se confirmadas na tabela:
+    const insertData: Record<string, any> = {
+      id,
+      empresa_id:   empresaId,
+      name:         item.name,
+      code:         item.code,
+      unit:         item.unit,
+      category:     item.category,
+      location:     item.location,
+      status:       'normal',
+      // Colunas canônicas (schema original migration 0001)
+      quantity:     currentQty,
+      min_quantity: minQty,
+    }
+    // Colunas opcionais — incluir somente se existirem
+    if (existingCols.has('user_id'))     insertData['user_id']     = userId
+    if (existingCols.has('current_qty')) insertData['current_qty'] = currentQty
+    if (existingCols.has('min_qty'))     insertData['min_qty']     = minQty
+    if (existingCols.has('max_qty'))     insertData['max_qty']     = maxQty
+
+    const inserted = await dbInsert(db, 'stock_items', insertData)
+
     if (!inserted) {
       console.error(`[ESTOQUE][ITEMS][CRÍTICO] Falha ao persistir item ${id} em D1`)
-      return err(c, 'Erro ao salvar item de estoque no banco de dados', 500)
+      return err(c, 'Erro ao salvar item de estoque no banco de dados.', 500)
     }
     console.log(`[ESTOQUE][ITEMS] Item ${id} persistido em D1 com sucesso`)
   }
+
   // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
   tenant.stockItems.push(item)
   markTenantModified(userId)
@@ -2529,9 +2999,27 @@ app.put('/api/item/:id', async (c) => {
   const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
   if (idx === -1) return err(c, 'Item não encontrado', 404)
   if (db && userId !== 'demo-tenant') {
+    const currentQty = body.currentQty !== undefined ? parseFloat(body.currentQty) : undefined
+    const minQty     = body.minQty     !== undefined ? parseFloat(body.minQty)     : undefined
+    const maxQty     = body.maxQty     !== undefined ? parseFloat(body.maxQty)     : undefined
+
+    // Verificar colunas existentes antes de atualizar (resiliente a schema drift)
+    let existingCols: Set<string> = new Set()
+    try {
+      const tableInfo = await db.prepare('PRAGMA table_info(stock_items)').all()
+      existingCols = new Set(((tableInfo.results ?? []) as any[]).map((r: any) => r.name as string))
+    } catch { /* ignorar — dbUpdate filtra undefined */ }
+
     await dbUpdate(db, 'stock_items', id, userId, {
-      name: body.name, current_qty: body.currentQty,
-      min_qty: body.minQty, max_qty: body.maxQty, location: body.location,
+      name:         body.name,
+      location:     body.location,
+      // Colunas canônicas — sempre existem
+      quantity:     currentQty,
+      min_quantity: minQty,
+      // Colunas alias — incluir somente se existirem
+      current_qty:  existingCols.has('current_qty') ? currentQty : undefined,
+      min_qty:      existingCols.has('min_qty')     ? minQty     : undefined,
+      max_qty:      existingCols.has('max_qty')     ? maxQty     : undefined,
     })
   }
   Object.assign(tenant.stockItems[idx], body)
@@ -2764,15 +3252,29 @@ app.post('/api/serial-location/update', async (c) => {
   const sn = serialNumbers.find((s: any) => s.id === body.snId)
   if (!sn) return err(c, 'Número de série não encontrado')
   sn.location = locationCode
+
+  // Serial nascido em produção: ao receber endereço, sai de "pendente_enderecamento"
+  // (já contava como estoque) e passa a "em_estoque" — endereçamento concluído.
+  let statusChanged = false
+  if (locationCode && sn.status === 'pendente_enderecamento') {
+    sn.status = 'em_estoque'
+    statusChanged = true
+  }
+
   if (db && userId !== 'demo-tenant') {
     try {
-      await db.prepare(`UPDATE serial_numbers SET location = ? WHERE id = ? AND user_id = ?`)
-        .bind(locationCode, body.snId, userId).run()
+      if (statusChanged) {
+        await db.prepare(`UPDATE serial_numbers SET location = ?, status = 'em_estoque' WHERE id = ? AND user_id = ?`)
+          .bind(locationCode, body.snId, userId).run()
+      } else {
+        await db.prepare(`UPDATE serial_numbers SET location = ? WHERE id = ? AND user_id = ?`)
+          .bind(locationCode, body.snId, userId).run()
+      }
     } catch (e) {
       console.warn('[ESTOQUE][SERIAL-LOCATION] D1 update failed:', (e as any).message)
     }
   }
-  return ok(c, { location: locationCode })
+  return ok(c, { location: locationCode, status: sn.status })
 })
 
 // ── API: POST /estoque/api/transferencia/create ──────────────────────────────
