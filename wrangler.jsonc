@@ -1,11 +1,9 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "pcpsyncrus",
-  "compatibility_date": "2026-02-21",
-  "pages_build_output_dir": "./dist",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "pcpsyncrus-support-consumer",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-09",
+
   "d1_databases": [
     {
       "binding": "DB",
@@ -13,17 +11,13 @@
       "database_id": "449d62b1-b4f4-4a6f-93c8-ac4954a2d03f"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "INSTR_PHOTOS_BUCKET",
-      "bucket_name": "pcpsyncrus-instr-photos"
-    }
-  ],
+
   "queues": {
-    "producers": [
+    "consumers": [
       {
-        "binding": "pcpsyncrus",
-        "queue": "pcpsyncrus"
+        "queue": "pcpsyncrus",
+        "max_batch_size": 10,
+        "dead_letter_queue": "pcpsyncrus-support-dlq"
       }
     ]
   }
