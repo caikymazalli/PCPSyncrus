@@ -1,0 +1,3517 @@
+import { Hono } from 'hono'
+import { layout } from '../layout'
+import { getCtxTenant, getCtxUserInfo, getCtxDB, getCtxUserId, getCtxEmpresaId } from '../sessionHelper'
+import { genId, dbInsert, dbUpdate, dbDelete, ok, err } from '../dbHelpers'
+import { markTenantModified } from '../userStore'
+import { requireModuleWriteAccess } from '../moduleAccess'
+
+const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
+    const blocked = await requireModuleWriteAccess(c, 'estoque')
+    if (blocked) return blocked
+  }
+  return next()
+})
+
+app.get('/', (c) => {
+  const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const mockData = tenant  // per-session data
+  const stockItems       = (mockData as any).stockItems        || []
+  const separationOrders = (mockData as any).separationOrders  || []
+  const stockExits       = (mockData as any).stockExits        || []
+  const products         = (mockData as any).products          || []
+  const serialNumbers    = (mockData as any).serialNumbers     || []
+  const kardexMovements  = (mockData as any).kardexMovements   || []
+  const transferencias   = (mockData as any).transferencias    || []
+  const serialPendingItems = (mockData as any).serialPendingItems || []
+  const warehouses    = (mockData as any).warehouses || []
+  const almoxarifadoLocations = (mockData as any).almoxarifadoLocations || []
+
+  // Build allAlm once (default + tenant-created), reused in tabs and modals
+  const defaultAlm = { id: 'alm1', name: 'Almoxarifado Principal', code: 'ALM-001', empresa: userInfo.empresa, city: '', state: '', responsible: userInfo.nome, custodian: userInfo.nome, active: true }
+  const allAlm: any[] = [defaultAlm, ...warehouses]
+
+  // Badge de liberação pendente
+  const pendingSerialCount = serialPendingItems.filter((p: any) => p.status === 'pending' || p.status === 'partial').length
+
+  // Contadores de transferências (baseados em dados reais)
+  const transfPendentes   = transferencias.filter((t: any) => t.status === 'pendente').length
+  const transfEmTransito  = transferencias.filter((t: any) => t.status === 'em_transito').length
+  const transfConcluidas  = transferencias.filter((t: any) => t.status === 'concluida').length
+
+  const stockStatusInfo: Record<string, { label: string, color: string, bg: string, icon: string }> = {
+    critical:          { label: 'Crítico',         color: '#dc2626', bg: '#fef2f2', icon: 'fa-exclamation-circle' },
+    normal:            { label: 'Normal',           color: '#16a34a', bg: '#f0fdf4', icon: 'fa-check-circle' },
+    purchase_needed:   { label: 'Nec. Compra',      color: '#d97706', bg: '#fffbeb', icon: 'fa-shopping-cart' },
+    manufacture_needed:{ label: 'Nec. Manufatura',  color: '#7c3aed', bg: '#f5f3ff', icon: 'fa-industry' },
+  }
+
+  const sepStatusInfo: Record<string, { label: string, badge: string }> = {
+    pending:   { label: 'Pendente',  badge: 'badge-warning' },
+    completed: { label: 'Concluída', badge: 'badge-success' },
+    cancelled: { label: 'Cancelada', badge: 'badge-danger' },
+  }
+
+  const exitTypeInfo: Record<string, { label: string, icon: string, color: string }> = {
+    faturamento: { label: 'Faturamento',  icon: 'fa-file-invoice-dollar', color: '#27AE60' },
+    requisicao:  { label: 'Requisição',   icon: 'fa-exchange-alt',        color: '#3498DB' },
+    descarte:    { label: 'Descarte',     icon: 'fa-trash-alt',           color: '#E74C3C' },
+  }
+
+  const critCount = stockItems.filter((s: any) => s.status === 'critical').length
+  const normalCount = stockItems.filter((s: any) => s.status === 'normal').length
+  const purchaseCount = stockItems.filter((s: any) => s.status === 'purchase_needed').length
+
+  // Merge all items (stockItems + products) for serial number lookup
+  const allSerialItems = [
+    ...stockItems.map((s: any) => ({ code: s.code, name: s.name, serialControlled: s.serialControlled, controlType: s.controlType })),
+    ...products.map((p: any) => ({ code: p.code, name: p.name, serialControlled: p.serialControlled, controlType: p.controlType }))
+  ]
+
+  // Kardex: sort by date desc
+  const sortedKardex = [...kardexMovements].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  // Items that have serials
+  const serialItemCodes = [...new Set(serialNumbers.map((sn: any) => sn.itemCode))]
+
+  const content = `
+  <!-- Modal: Novo Item de Estoque -->
+  <div class="modal-overlay" id="novoItemModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-plus" style="margin-right:8px;"></i>Novo Item de Estoque</h3>
+        <button onclick="closeModal('novoItemModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Item *</label><input class="form-control" id="item_nome" type="text" placeholder="Ex: Barra Aço SAE 1045"></div>
+          <div class="form-group"><label class="form-label">Código</label><input class="form-control" id="item_codigo" type="text" placeholder="Ex: MAT-001"></div>
+          <div class="form-group"><label class="form-label">Unidade</label>
+            <select class="form-control" id="item_unidade">
+              <option value="un">un (unidade)</option><option value="kg">kg</option><option value="m">m (metro)</option><option value="l">l (litro)</option><option value="pç">pç (peça)</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Categoria</label>
+            <select class="form-control" id="item_categoria">
+              <option value="Matéria-Prima">Matéria-Prima</option><option value="Componente">Componente</option><option value="Fixador">Fixador</option><option value="Embalagem">Embalagem</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Qtd Atual</label><input class="form-control" id="item_qty_atual" type="number" min="0" placeholder="0"></div>
+          <div class="form-group"><label class="form-label">Qtd Mínima</label><input class="form-control" id="item_qty_min" type="number" min="0" placeholder="0"></div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Localização</label><input class="form-control" id="item_localizacao" type="text" placeholder="Ex: Armazém A - Prateleira 3"></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novoItemModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarItemEstoque()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Item</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Lista de Números de Série/Lote -->
+  <div class="modal-overlay" id="serialListModal">
+    <div class="modal" style="max-width:740px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="serialListTitle">
+          <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Lista de Números de Série/Lote
+        </h3>
+        <button onclick="closeModal('serialListModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:16px 24px;max-height:70vh;overflow-y:auto;">
+        <div id="serialListSubtitle" style="font-size:13px;color:#6c757d;margin-bottom:14px;"></div>
+        <!-- Pending items section (release queue) -->
+        <div id="serialListPendingSection" style="display:none;margin-bottom:18px;">
+          <div style="font-size:12px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <i class="fas fa-clock"></i> Aguardando Liberação
+          </div>
+          <div id="serialListPendingBody"></div>
+        </div>
+        <!-- Released serials section -->
+        <div id="serialListReleasedSection">
+          <div class="table-wrapper" style="max-height:280px;overflow-y:auto;">
+            <table id="serialListTable">
+              <thead><tr>
+                <th>Número</th><th>Tipo</th><th>Qtd</th><th>Status</th><th>Origem</th><th>OP / Ref.</th><th>Criado em</th><th>Usuário</th>
+              </tr></thead>
+              <tbody id="serialListBody"></tbody>
+            </table>
+          </div>
+          <div id="serialListEmpty" style="display:none;text-align:center;padding:32px;color:#9ca3af;">
+            <i class="fas fa-barcode" style="font-size:32px;margin-bottom:8px;"></i><div>Nenhum número de série/lote liberado para este item.</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="serialListReleaseBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="openSerialReleaseFromList()">
+            <i class="fas fa-barcode"></i> Liberar S/N
+          </button>
+          <button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;" onclick="openEtiquetaModal('serialList')" title="Imprimir etiquetas dos S/N listados">
+            <i class="fas fa-print"></i> Imprimir Etiquetas
+          </button>
+        </div>
+        <button onclick="closeModal('serialListModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Impressão de Etiquetas S/N -->
+  <div class="modal-overlay" id="etiquetaSnModal" style="z-index:1200;">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-print" style="margin-right:8px;color:#16a34a;"></i>Imprimir Etiquetas de S/N
+        </h3>
+        <button onclick="closeModal('etiquetaSnModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <!-- Configuração de tamanho -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:16px;border:1px solid #e9ecef;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-ruler-combined" style="margin-right:5px;color:#6c757d;"></i>Tamanho da Etiqueta</span>
+            <button onclick="salvarTamanhoEtiqueta()" class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-size:11px;">
+              <i class="fas fa-save"></i> Salvar como Padrão
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Largura (mm)</label>
+              <input class="form-control" type="number" id="etq_largura" value="60" min="30" max="200" style="font-size:13px;" oninput="atualizarPreviewEtq()">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Altura (mm)</label>
+              <input class="form-control" type="number" id="etq_altura" value="30" min="15" max="150" style="font-size:13px;" oninput="atualizarPreviewEtq()">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6c757d;margin-bottom:3px;">Pré-visualização</div>
+              <div id="etqSizePreview" style="background:white;border:2px solid #7c3aed;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#7c3aed;font-weight:700;height:36px;">60×30mm</div>
+            </div>
+          </div>
+        </div>
+        <!-- Preview em tabela: Cod | Descrição | Número de Série -->
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-tags" style="margin-right:5px;color:#7c3aed;"></i>Etiquetas a Imprimir (<span id="etqCount">0</span>)</span>
+          </div>
+          <div style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#f5f3ff;">
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;width:20%;">Código</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;">Descrição</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#6d28d9;border-bottom:1px solid #ddd6fe;width:28%;">Número de Série</th>
+                </tr>
+              </thead>
+            </table>
+            <div style="max-height:200px;overflow-y:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <tbody id="etqPreviewList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('etiquetaSnModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="executarImpressaoEtiquetas()" class="btn btn-primary">
+          <i class="fas fa-print"></i> Imprimir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Impressão de Etiquetas Faturamento -->
+  <div class="modal-overlay" id="etiquetaFatModal" style="z-index:1200;">
+    <div class="modal" style="max-width:640px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-print" style="margin-right:8px;color:#27AE60;"></i>Imprimir Etiquetas de Faturamento
+        </h3>
+        <button onclick="closeModal('etiquetaFatModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <!-- Configuração de tamanho -->
+        <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:14px;border:1px solid #e9ecef;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-ruler-combined" style="margin-right:5px;color:#6c757d;"></i>Tamanho da Etiqueta</span>
+            <button onclick="salvarTamanhoEtiquetaFat()" class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-size:11px;">
+              <i class="fas fa-save"></i> Salvar como Padrão
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Largura (mm)</label>
+              <input class="form-control" type="number" id="etqf_largura" value="80" min="30" max="200" style="font-size:13px;" oninput="atualizarPreviewEtqFat()">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#6c757d;display:block;margin-bottom:3px;">Altura (mm)</label>
+              <input class="form-control" type="number" id="etqf_altura" value="40" min="15" max="150" style="font-size:13px;" oninput="atualizarPreviewEtqFat()">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#6c757d;margin-bottom:3px;">Pré-visualização</div>
+              <div id="etqfSizePreview" style="background:white;border:2px solid #27AE60;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#27AE60;font-weight:700;height:36px;">80×40mm</div>
+            </div>
+          </div>
+        </div>
+        <!-- Info da baixa -->
+        <div id="etqfBaixaInfo" style="margin-bottom:12px;padding:10px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;font-size:12px;color:#374151;"></div>
+        <!-- Preview em tabela: Cod | Descrição | S/N | NF -->
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-tags" style="margin-right:5px;color:#27AE60;"></i>Etiquetas a Imprimir (<span id="etqfCount">0</span>)</span>
+          </div>
+          <div style="border:1px solid #bbf7d0;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#f0fdf4;">
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;width:18%;">Código</th>
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;">Descrição</th>
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;width:24%;">Número de Série</th>
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:#16a34a;border-bottom:1px solid #bbf7d0;width:18%;">NF</th>
+                </tr>
+              </thead>
+            </table>
+            <div style="max-height:200px;overflow-y:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <tbody id="etqfPreviewList"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('etiquetaFatModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="executarImpressaoEtiquetasFat()" class="btn btn-primary" style="background:#27AE60;border-color:#27AE60;">
+          <i class="fas fa-print"></i> Imprimir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Detalhe Kardex -->
+  <div class="modal-overlay" id="kardexDetailModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-history" style="margin-right:8px;color:#2980B9;"></i>Detalhe da Movimentação
+        </h3>
+        <button onclick="closeModal('kardexDetailModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;" id="kardexDetailBody"></div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('kardexDetailModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="section-header">
+    <div>
+      <div style="font-size:14px;color:#6c757d;">Gestão de Estoque — Materiais e Produtos Acabados</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        ${critCount > 0 ? `<span class="badge" style="background:#fef2f2;color:#dc2626;"><i class="fas fa-exclamation-circle" style="font-size:9px;"></i> ${critCount} Crítico</span>` : ''}
+        <span class="badge" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-check-circle" style="font-size:9px;"></i> ${normalCount} Normal</span>
+        ${purchaseCount > 0 ? `<span class="badge" style="background:#fffbeb;color:#d97706;"><i class="fas fa-shopping-cart" style="font-size:9px;"></i> ${purchaseCount} Nec. Compra</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="window.location.href='/produtos'" title="Cadastrar e importar produtos via planilha">
+        <i class="fas fa-file-upload"></i> Import. Produtos
+      </button>
+      <button class="btn btn-secondary" onclick="alert('Exportando relatório de estoque...')" title="Exportar relatório">
+        <i class="fas fa-download"></i> Exportar
+      </button>
+      <button class="btn btn-primary" onclick="openModal('novoItemModal')" title="Adicionar novo item de estoque">
+        <i class="fas fa-plus"></i> Novo Item
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div data-tab-group="estoque">
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('tabEstoqueGeral','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Estoque Geral</button>
+      <button class="tab-btn" onclick="switchTab('tabProdutosAcabados','estoque')"><i class="fas fa-box-open" style="margin-right:6px;"></i>Produtos Acabados</button>
+      <button class="tab-btn" onclick="switchTab('tabSeparacao','estoque')"><i class="fas fa-dolly" style="margin-right:6px;"></i>Separação
+        ${separationOrders.filter((s: any) => s.status === 'pending').length > 0 ? `<span style="background:#E67E22;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${separationOrders.filter((s: any) => s.status === 'pending').length}</span>` : ''}
+      </button>
+      <button class="tab-btn" onclick="switchTab('tabBaixas','estoque')"><i class="fas fa-minus-circle" style="margin-right:6px;"></i>Baixas</button>
+      <button class="tab-btn" onclick="switchTab('tabKardex','estoque')"><i class="fas fa-history" style="margin-right:6px;"></i>Kardex
+        ${kardexMovements.length > 0 ? `<span style="background:#2980B9;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${kardexMovements.length}</span>` : ''}
+      </button>
+      <button class="tab-btn" onclick="switchTab('tabAlmoxarifados','estoque')"><i class="fas fa-warehouse" style="margin-right:6px;"></i>Almoxarifados</button>
+      <button class="tab-btn" onclick="switchTab('tabTransferencias','estoque')"><i class="fas fa-exchange-alt" style="margin-right:6px;"></i>Transferências
+      </button>
+      <button class="tab-btn" onclick="switchTab('tabLiberacaoSerial','estoque')" id="tabLiberacaoSerialBtn">
+        <i class="fas fa-barcode" style="margin-right:6px;"></i>Liberação S/N
+        ${pendingSerialCount > 0 ? `<span style="background:#7c3aed;color:white;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;">${pendingSerialCount}</span>` : ''}
+      </button>
+    </div>
+
+    <!-- ESTOQUE GERAL TAB -->
+    <div class="tab-content active" id="tabEstoqueGeral">
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card">
+          <div style="font-size:24px;font-weight:800;color:#1B4F72;">${stockItems.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Total de Itens</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #dc2626;">
+          <div style="font-size:24px;font-weight:800;color:#dc2626;">${critCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> Críticos</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #d97706;">
+          <div style="font-size:24px;font-weight:800;color:#d97706;">${purchaseCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-shopping-cart" style="color:#d97706;"></i> Nec. Compra</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #16a34a;">
+          <div style="font-size:24px;font-weight:800;color:#16a34a;">${normalCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-check-circle" style="color:#16a34a;"></i> Normais</div>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="card" style="padding:12px 16px;margin-bottom:14px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div class="search-box" style="flex:1;min-width:180px;">
+            <i class="fas fa-search icon"></i>
+            <input class="form-control" type="text" id="estoqueSearch" placeholder="Código, nome, localização..." oninput="filterEstoque()">
+          </div>
+          <select class="form-control" id="estoqueStatusFilter" style="width:auto;" onchange="filterEstoque()">
+            <option value="">Todos os status</option>
+            <option value="critical">Crítico</option>
+            <option value="normal">Normal</option>
+            <option value="purchase_needed">Nec. Compra</option>
+          </select>
+          <select class="form-control" style="width:auto;">
+            <option>Todas as categorias</option>
+            <option>Matéria-Prima</option>
+            <option>Componente</option>
+            <option>Fixador</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código</th><th>Item</th><th>Categoria</th><th>Qtd Atual</th><th>Qtd Mínima</th><th>% Cobertura</th><th>Localização</th><th>Última Atualiz.</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="estoqueBody">
+              ${stockItems.map((s: any) => {
+                const si = stockStatusInfo[s.status] || stockStatusInfo.normal
+                const pct = s.minQuantity > 0 ? Math.min(100, Math.round((s.quantity / s.minQuantity) * 100)) : 100
+                const hasSerial = s.serialControlled === true
+                const snCount = serialNumbers.filter((sn: any) => sn.itemCode === s.code).length
+                return `
+                <tr data-status="${s.status}" data-search="${s.code.toLowerCase()} ${s.name.toLowerCase()} ${s.location.toLowerCase()}">
+                  <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${s.code}</span>
+                      ${hasSerial ? `<span class="badge" style="background:${s.controlType==='serie'?'#ede9fe':'#fef3c7'};color:${s.controlType==='serie'?'#7c3aed':'#d97706'};font-size:9px;padding:2px 5px;">
+                        <i class="fas ${s.controlType==='serie'?'fa-barcode':'fa-layer-group'}" style="font-size:8px;"></i> ${s.controlType==='serie'?'S/N':'Lote'}
+                      </span>` : ''}
+                    </div>
+                  </td>
+                  <td>
+                    <div style="font-weight:600;color:#374151;">${s.name}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${s.unit}</div>
+                  </td>
+                  <td><span class="chip" style="background:#f1f5f9;color:#374151;">${s.category}</span></td>
+                  <td style="font-weight:700;color:${si.color};">${s.quantity.toLocaleString('pt-BR')}</td>
+                  <td style="color:#6c757d;">${s.minQuantity.toLocaleString('pt-BR')}</td>
+                  <td style="min-width:100px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <div class="progress-bar" style="flex:1;height:6px;">
+                        <div class="progress-fill" style="width:${pct}%;background:${si.color};"></div>
+                      </div>
+                      <span style="font-size:11px;font-weight:700;color:${si.color};width:36px;text-align:right;">${pct}%</span>
+                    </div>
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${s.location}</td>
+                  <td style="font-size:12px;color:#9ca3af;">${new Date(s.lastUpdate + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td><span class="badge" style="background:${si.bg};color:${si.color};"><i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}</span></td>
+                  <td>
+                    <div style="display:flex;gap:4px;">
+                      ${hasSerial ? `<div class="tooltip-wrap" data-tooltip="Ver lista de Nº de Série/Lote (${snCount})">
+                        <button class="btn btn-sm" style="background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="openSerialList('${s.code}','${s.name}','${s.controlType||'serie'}')">
+                          <i class="fas ${s.controlType==='lote'?'fa-layer-group':'fa-barcode'}"></i> ${snCount}
+                        </button>
+                      </div>` : ''}
+                      <div class="tooltip-wrap" data-tooltip="Ajustar quantidade"><button class="btn btn-secondary btn-sm" onclick="openModal('ajusteModal')"><i class="fas fa-edit"></i></button></div>
+                      <div class="tooltip-wrap" data-tooltip="Registrar baixa"><button class="btn btn-warning btn-sm" onclick="openBaixaModal('${s.code}','${s.name}')"><i class="fas fa-minus"></i></button></div>
+                      <div class="tooltip-wrap" data-tooltip="Ver Kardex deste item"><button class="btn btn-secondary btn-sm" onclick="filterKardexByItem('${s.code}','${s.name}')"><i class="fas fa-history"></i></button></div>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUTOS ACABADOS TAB -->
+    <div class="tab-content" id="tabProdutosAcabados">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+        ${products.map((p: any) => {
+          const si = stockStatusInfo[p.stockStatus] || stockStatusInfo.normal
+          const pct = p.stockMin > 0 ? Math.min(100, Math.round((p.stockCurrent / p.stockMin) * 100)) : 100
+          const hasSerial = p.serialControlled === true
+          const snCount = serialNumbers.filter((sn: any) => sn.itemCode === p.code).length
+          return `
+          <div class="card" style="padding:16px;border-top:3px solid ${si.color};">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+              <div style="flex:1;padding-right:8px;">
+                <div style="font-size:14px;font-weight:700;color:#1B4F72;">${p.name}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
+                  <span style="font-family:monospace;font-size:11px;color:#9ca3af;">${p.code}</span>
+                  ${hasSerial ? `<span class="badge" style="background:${p.controlType==='serie'?'#ede9fe':'#fef3c7'};color:${p.controlType==='serie'?'#7c3aed':'#d97706'};font-size:9px;">
+                    <i class="fas ${p.controlType==='serie'?'fa-barcode':'fa-layer-group'}" style="font-size:8px;"></i> ${p.controlType==='serie'?'Série':'Lote'}
+                  </span>` : ''}
+                </div>
+              </div>
+              <span class="badge" style="background:${si.bg};color:${si.color};white-space:nowrap;">
+                <i class="fas ${si.icon}" style="font-size:9px;"></i> ${si.label}
+              </span>
+            </div>
+            <div style="background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:11px;color:#6c757d;">Estoque Atual</span>
+                <span style="font-size:11px;color:#6c757d;">Mínimo: ${p.stockMin} ${p.unit}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="progress-bar" style="flex:1;height:6px;">
+                  <div class="progress-fill" style="width:${pct}%;background:${si.color};"></div>
+                </div>
+                <span style="font-size:16px;font-weight:800;color:${si.color};">${p.stockCurrent} <span style="font-size:10px;font-weight:400;color:#9ca3af;">${p.unit}</span></span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-success btn-sm" style="flex:1;" onclick="openSeparacaoModal('${p.code}','${p.name}','${p.unit}')" title="Criar ordem de separação">
+                <i class="fas fa-dolly"></i> Separar
+              </button>
+              ${hasSerial ? `<div class="tooltip-wrap" data-tooltip="Ver lista de Série/Lote (${snCount})"><button class="btn btn-sm" style="background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;" onclick="openSerialList('${p.code}','${p.name}','${p.controlType||'serie'}')"><i class="fas fa-barcode"></i> ${snCount}</button></div>` : ''}
+              <div class="tooltip-wrap" data-tooltip="Registrar baixa"><button class="btn btn-warning btn-sm" onclick="openBaixaModal('${p.code}','${p.name}')"><i class="fas fa-minus"></i></button></div>
+            </div>
+          </div>`
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- SEPARAÇÃO TAB -->
+    <div class="tab-content" id="tabSeparacao">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:14px;color:#6c757d;">Ordens de separação de produtos acabados</div>
+        <button class="btn btn-primary" onclick="openModal('novaSeparacaoModal')" title="Nova ordem de separação">
+          <i class="fas fa-plus"></i> Nova Separação
+        </button>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código OS</th><th>Pedido Venda</th><th>Cliente</th><th>Produtos</th><th>Nº Série/Lote</th><th>Data Sep.</th><th>Responsável</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody>
+              ${separationOrders.map((so: any) => {
+                const si = sepStatusInfo[so.status]
+                return `
+                <tr>
+                  <td style="font-weight:700;color:#1B4F72;">${so.code}</td>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:#2980B9;">${so.pedido}</div>
+                  </td>
+                  <td style="font-size:12px;color:#374151;">${so.cliente}</td>
+                  <td>
+                    ${so.items.map((it: any) => `
+                    <div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;color:#1B4F72;">${it.productCode}</span> ${it.productName} <strong style="color:#374151;">(${it.quantity} un)</strong></div>`).join('')}
+                  </td>
+                  <td>
+                    ${so.items.map((it: any) => `<div style="font-family:monospace;font-size:11px;color:#7c3aed;font-weight:600;">${it.serialNumber || '—'}</div>`).join('')}
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${new Date(so.dataSeparacao + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td style="font-size:12px;color:#6c757d;">${so.responsavel}</td>
+                  <td><span class="badge ${si.badge}">${si.label}</span></td>
+                  <td>
+                    <div style="display:flex;gap:4px;">
+                      <div class="tooltip-wrap" data-tooltip="Ver detalhes"><button class="btn btn-secondary btn-sm" onclick="alert('Detalhes da OS: ${so.code}')"><i class="fas fa-eye"></i></button></div>
+                      ${so.status === 'pending' ? `
+                      <div class="tooltip-wrap" data-tooltip="Confirmar separação"><button class="btn btn-success btn-sm" onclick="alert('Separação ${so.code} confirmada!')"><i class="fas fa-check"></i></button></div>
+                      <div class="tooltip-wrap" data-tooltip="Cancelar separação"><button class="btn btn-danger btn-sm" onclick="alert('Cancelar ${so.code}?')"><i class="fas fa-times"></i></button></div>` : ''}
+                      <div class="tooltip-wrap" data-tooltip="Imprimir romaneio"><button class="btn btn-secondary btn-sm" onclick="alert('Imprimindo romaneio...')"><i class="fas fa-print"></i></button></div>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- BAIXAS TAB -->
+    <div class="tab-content" id="tabBaixas">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:14px;color:#6c757d;">Registro de baixas de itens do estoque</div>
+        <button class="btn btn-primary" onclick="openModal('novaBaixaModal')" title="Registrar nova baixa">
+          <i class="fas fa-minus-circle"></i> Nova Baixa
+        </button>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código</th><th>Tipo</th><th>Pedido/Ref.</th><th>Itens</th><th>Data</th><th>Responsável</th><th>Observações</th><th>Ações</th>
+            </tr></thead>
+            <tbody>
+              ${stockExits.map((ex: any) => {
+                const ti = exitTypeInfo[ex.type] || exitTypeInfo.requisicao
+                // Montar lista de seriais (pode ser array ou string única)
+                const snList: string[] = ex.serialNumbers
+                  ? (Array.isArray(ex.serialNumbers) ? ex.serialNumbers : [ex.serialNumbers])
+                  : (ex.serialNumber ? [ex.serialNumber] : [])
+                const isFaturamento = ex.type === 'faturamento'
+                // Para faturamento: montar dados de etiqueta mesmo sem serials (usa placeholder)
+                const etqItemsForFat = isFaturamento
+                  ? (ex.items || []).flatMap((it: any) => {
+                      const qty = it.quantity || 1
+                      if (snList.length > 0) {
+                        // Usar S/Ns registrados (um por item)
+                        return snList.slice(0, qty).map((sn: string) => ({
+                          code: it.code || '', name: it.name || '',
+                          serial: sn, nf: ex.nf || '—'
+                        }))
+                      } else {
+                        // Sem serial: criar entradas com serial em branco para cada unidade
+                        return Array.from({ length: qty }, (_, qi) => ({
+                          code: it.code || '', name: it.name || '',
+                          serial: '—', nf: ex.nf || '—'
+                        }))
+                      }
+                    })
+                  : []
+                const etqData = isFaturamento
+                  ? JSON.stringify(etqItemsForFat).replace(/'/g, '&#39;')
+                  : '[]'
+                return `
+                <tr>
+                  <td style="font-weight:700;color:#1B4F72;">${ex.code}</td>
+                  <td>
+                    <span class="badge" style="background:${ti.color}18;color:${ti.color};">
+                      <i class="fas ${ti.icon}" style="font-size:9px;"></i> ${ti.label}
+                    </span>
+                  </td>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:#2980B9;">${ex.pedido}</div>
+                    ${ex.nf ? `<div style="font-size:11px;color:#27AE60;font-weight:600;"><i class="fas fa-file-invoice" style="font-size:9px;"></i> NF: ${ex.nf}</div>` : ''}
+                  </td>
+                  <td>
+                    ${ex.items.map((it: any) => `<div style="font-size:12px;"><span style="font-family:monospace;font-size:10px;background:#e8f4fd;padding:1px 5px;border-radius:3px;">${it.code}</span> ${it.name} <strong>(${it.quantity})</strong></div>`).join('')}
+                    ${snList.length > 0 ? `<div style="font-size:11px;color:#7c3aed;margin-top:2px;"><i class="fas fa-barcode" style="font-size:9px;"></i> S/N: ${snList.join(', ')}</div>` : ''}
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${new Date(ex.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  <td style="font-size:12px;color:#6c757d;">${ex.responsavel}</td>
+                  <td style="font-size:12px;color:#6c757d;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ex.notes}">${ex.notes}</td>
+                  <td>
+                    <div style="display:flex;gap:4px;">
+                      ${isFaturamento ? `<div class="tooltip-wrap" data-tooltip="Imprimir etiquetas de faturamento"><button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;" onclick="openEtiquetaFatModal('${ex.code}','${ex.nf||''}',JSON.parse(this.getAttribute('data-etq')))" data-etq='${etqData}'><i class="fas fa-print"></i> Etiquetas</button></div>` : ''}
+                      <div class="tooltip-wrap" data-tooltip="Ver comprovante"><button class="btn btn-secondary btn-sm" onclick="alert('Comprovante da baixa ${ex.code}')"><i class="fas fa-eye"></i></button></div>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- KARDEX TAB -->
+    <div class="tab-content" id="tabKardex">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:#1B4F72;"><i class="fas fa-history" style="margin-right:8px;color:#2980B9;"></i>Kardex — Rastreabilidade de Série/Lote</div>
+          <div style="font-size:13px;color:#6c757d;margin-top:3px;">Registro completo de todas as movimentações por número de série ou lote</div>
+        </div>
+      </div>
+
+      <!-- KPIs Kardex -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card">
+          <div style="font-size:24px;font-weight:800;color:#2980B9;">${kardexMovements.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Total Movimentações</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #27AE60;">
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">${kardexMovements.filter((k: any) => k.movType === 'entrada').length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-arrow-down" style="color:#27AE60;"></i> Entradas</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #E74C3C;">
+          <div style="font-size:24px;font-weight:800;color:#E74C3C;">${kardexMovements.filter((k: any) => k.movType === 'saida').length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-arrow-up" style="color:#E74C3C;"></i> Saídas</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #7c3aed;">
+          <div style="font-size:24px;font-weight:800;color:#7c3aed;">${serialItemCodes.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-barcode" style="color:#7c3aed;"></i> Itens Rastreados</div>
+        </div>
+      </div>
+
+      <!-- Filtros Kardex -->
+      <div class="card" style="padding:12px 16px;margin-bottom:14px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div class="search-box" style="flex:1;min-width:180px;">
+            <i class="fas fa-search icon"></i>
+            <input class="form-control" type="text" id="kardexSearch" placeholder="Nº de série, código do item, pedido..." oninput="filterKardex()">
+          </div>
+          <select class="form-control" id="kardexTypeFilter" style="width:auto;" onchange="filterKardex()">
+            <option value="">Todos os tipos</option>
+            <option value="entrada">Entradas</option>
+            <option value="saida">Saídas</option>
+          </select>
+          <select class="form-control" id="kardexItemFilter" style="width:auto;" onchange="filterKardex()">
+            <option value="">Todos os itens</option>
+            ${[...new Set([...stockItems, ...products].map((i: any) => i.code))].map((code: any) => {
+              const item = [...stockItems, ...products].find((i: any) => i.code === code)
+              return `<option value="${code}">${code} — ${item?.name||''}</option>`
+            }).join('')}
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="clearKardexFilters()">
+            <i class="fas fa-times"></i> Limpar
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Kardex -->
+      <div class="card" id="kardexFilterBanner" style="display:none;padding:10px 16px;margin-bottom:10px;background:#e8f4fd;border-left:4px solid #2980B9;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:13px;color:#1B4F72;"><i class="fas fa-filter" style="margin-right:6px;"></i>Filtrando por item: <strong id="kardexFilterLabel"></strong></span>
+          <button class="btn btn-secondary btn-sm" onclick="clearKardexFilters()"><i class="fas fa-times"></i> Remover filtro</button>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Data/Hora</th><th>Nº Série / Lote</th><th>Item</th><th>Tipo</th><th>Qtd</th><th>Descrição</th><th>OP / Referência</th><th>Pedido</th><th>NF</th><th>Usuário</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="kardexBody">
+              ${sortedKardex.map((k: any) => {
+                const isEntrada = k.movType === 'entrada'
+                const dt = new Date(k.date)
+                const dtStr = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                return `
+                <tr data-movtype="${k.movType}" data-itemcode="${k.itemCode}" data-search="${k.serialNumber.toLowerCase()} ${k.itemCode.toLowerCase()} ${(k.pedido||'').toLowerCase()} ${(k.orderCode||'').toLowerCase()}">
+                  <td style="font-size:12px;color:#6c757d;white-space:nowrap;">${dtStr}</td>
+                  <td>
+                    <span style="font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:2px 8px;border-radius:4px;">${k.serialNumber}</span>
+                  </td>
+                  <td>
+                    <div style="font-size:12px;font-weight:600;color:#374151;">${k.itemName}</div>
+                    <div style="font-family:monospace;font-size:10px;color:#9ca3af;">${k.itemCode}</div>
+                  </td>
+                  <td>
+                    <span class="badge" style="background:${isEntrada?'#f0fdf4':'#fef2f2'};color:${isEntrada?'#16a34a':'#dc2626'};">
+                      <i class="fas ${isEntrada?'fa-arrow-down':'fa-arrow-up'}" style="font-size:9px;"></i> ${isEntrada?'Entrada':'Saída'}
+                    </span>
+                  </td>
+                  <td style="font-weight:700;color:${isEntrada?'#16a34a':'#dc2626'};">${isEntrada?'+':'−'}${k.quantity}</td>
+                  <td style="font-size:12px;color:#374151;max-width:160px;">${k.description}</td>
+                  <td style="font-size:12px;">
+                    ${k.orderCode ? `<span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:1px 6px;border-radius:3px;color:#1B4F72;">${k.orderCode}</span>` : '<span style="color:#9ca3af;">—</span>'}
+                  </td>
+                  <td style="font-size:12px;">
+                    ${k.pedido ? `<span style="font-weight:600;color:#2980B9;">${k.pedido}</span>` : '<span style="color:#9ca3af;">—</span>'}
+                  </td>
+                  <td style="font-size:12px;">
+                    ${k.nf ? `<span style="font-weight:600;color:#27AE60;">${k.nf}</span>` : '<span style="color:#9ca3af;">—</span>'}
+                  </td>
+                  <td style="font-size:12px;color:#6c757d;">${k.user}</td>
+                  <td>
+                    <div class="tooltip-wrap" data-tooltip="Ver detalhes da movimentação">
+                      <button class="btn btn-secondary btn-sm" onclick="openKardexDetail(${JSON.stringify(JSON.stringify(k)).replace(/</g,'\\u003c')})">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALMOXARIFADOS TAB -->
+    <div class="tab-content" id="tabAlmoxarifados">
+      ${(() => {
+        // allAlm defined at top of handler (defaultAlm + tenant warehouses)
+        const activeCount = allAlm.filter(a => a.active !== false).length
+        const maintCount = allAlm.filter((a: any) => a.status === 'manutencao').length
+        return `
+      <!-- KPIs Almoxarifados -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card" style="border-left:3px solid #1B4F72;">
+          <div style="font-size:24px;font-weight:800;color:#1B4F72;">${allAlm.length}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-warehouse" style="color:#1B4F72;"></i> Almoxarifados</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #27AE60;">
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">${activeCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-check-circle" style="color:#27AE60;"></i> Ativos</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #E67E22;">
+          <div style="font-size:24px;font-weight:800;color:#E67E22;">${maintCount}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-tools" style="color:#E67E22;"></i> Em Manutenção</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #7c3aed;">
+          <div style="font-size:24px;font-weight:800;color:#7c3aed;">R$ 0,00</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;"><i class="fas fa-box" style="color:#7c3aed;"></i> Valor Total em Estoque</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="openModal('novoAlmoxarifadoModal')"><i class="fas fa-plus"></i> Novo Almoxarifado</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
+        ${allAlm.map((alm: any) => {
+          const color = alm.status === 'manutencao' ? '#E67E22' : '#27AE60'
+          const statusLabel = alm.status === 'manutencao' ? 'Manutenção' : 'Ativo'
+          const statusBg = alm.status === 'manutencao' ? '#fffbeb' : '#f0fdf4'
+          const itemCount = alm.id === 'alm1' ? stockItems.length : 0
+          const locCount = almoxarifadoLocations.filter((l: any) => l.almoxarifadoId === alm.id).length
+          return `
+        <div class="card" style="padding:0;overflow:hidden;border-left:4px solid ${color};">
+          <div style="padding:16px 20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:44px;height:44px;border-radius:10px;background:${statusBg};display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-warehouse" style="color:${color};font-size:18px;"></i>
+                </div>
+                <div>
+                  <div style="font-size:14px;font-weight:800;color:#1B4F72;">${alm.name}</div>
+                  <div style="font-size:11px;color:#9ca3af;">${alm.code || '—'} · ${alm.city || ''}${alm.state ? '/'+alm.state : ''}</div>
+                </div>
+              </div>
+              <span class="badge" style="background:${statusBg};color:${color};">${statusLabel}</span>
+            </div>
+            <div style="font-size:12px;color:#6c757d;margin-bottom:10px;"><i class="fas fa-building" style="margin-right:4px;"></i>${alm.empresa || userInfo.empresa}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+              <div style="background:#f8f9fa;border-radius:8px;padding:8px;">
+                <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Responsável</div>
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.responsible || alm.responsavel || '—'}</div>
+              </div>
+              <div style="background:#f8f9fa;border-radius:8px;padding:8px;">
+                <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:700;">Custodiante</div>
+                <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">${alm.custodian || alm.custodio || '—'}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;gap:10px;align-items:center;">
+                <span style="font-size:13px;font-weight:700;color:#1B4F72;"><i class="fas fa-boxes" style="margin-right:6px;"></i>${itemCount} itens</span>
+                <button class="btn btn-sm" style="background:none;border:none;padding:0;font-size:12px;color:#7c3aed;font-weight:600;cursor:pointer;" onclick="openAlmLocationsModal('${alm.id}','${alm.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')\" title="Gerenciar endereços"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>${locCount} endereços</button>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-secondary btn-sm" onclick="viewAlmoxarifadoEstoque('${alm.id}','${alm.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${(alm.code||'ALM').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')\" title="Ver estoque"><i class="fas fa-eye"></i> Estoque</button>
+                <button class="btn btn-secondary btn-sm" onclick="editarAlmoxarifado('${alm.id}')"><i class="fas fa-edit"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>`
+        }).join('')}
+      </div>`
+      })()}
+    </div>
+
+    <!-- TRANSFERÊNCIAS TAB -->
+    <div class="tab-content" id="tabTransferencias">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1B4F72;">Transferências entre Almoxarifados / Filiais</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:2px;">Movimentações internas de materiais entre unidades do grupo</div>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('novaTransferenciaModal')"><i class="fas fa-exchange-alt"></i> Nova Transferência</button>
+      </div>
+
+      <!-- KPIs Transferências -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="kpi-card" style="border-left:3px solid #E67E22;">
+          <div style="font-size:24px;font-weight:800;color:#E67E22;">${transfPendentes}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Pendentes</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #2980B9;">
+          <div style="font-size:24px;font-weight:800;color:#2980B9;">${transfEmTransito}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Em Trânsito</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #27AE60;">
+          <div style="font-size:24px;font-weight:800;color:#27AE60;">${transfConcluidas}</div>
+          <div style="font-size:12px;color:#6c757d;margin-top:4px;">Concluídas</div>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden;">
+        ${transferencias.length === 0 ? `
+        <div style="padding:48px 20px;text-align:center;color:#9ca3af;">
+          <i class="fas fa-exchange-alt" style="font-size:36px;margin-bottom:14px;display:block;opacity:0.25;"></i>
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px;color:#6c757d;">Nenhuma transferência registrada</div>
+          <div style="font-size:13px;margin-bottom:16px;">Crie uma transferência para movimentar itens entre almoxarifados.</div>
+          <button class="btn btn-primary btn-sm" onclick="openModal('novaTransferenciaModal')">
+            <i class="fas fa-plus"></i> Nova Transferência
+          </button>
+        </div>` : `
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Nº Transfer.</th><th>Item</th><th>Qtd</th><th>Origem</th><th>Destino</th><th>Solicitante</th><th>Separador</th><th>Custodiante</th><th>Data</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody>
+              ${transferencias.map((t: any) => `
+              <tr>
+                <td><span style="font-family:monospace;font-size:11px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;font-weight:700;">${t.id}</span></td>
+                <td>
+                  <div style="font-weight:600;font-size:13px;color:#374151;">${t.item}</div>
+                  <div style="font-size:11px;color:#9ca3af;font-family:monospace;">${t.code}</div>
+                </td>
+                <td style="font-weight:700;color:#1B4F72;">${t.qty.toLocaleString('pt-BR')} ${t.unit}</td>
+                <td style="font-size:12px;"><i class="fas fa-arrow-right" style="color:#6c757d;margin-right:4px;"></i>${t.origem}</td>
+                <td style="font-size:12px;"><i class="fas fa-map-marker-alt" style="color:#27AE60;margin-right:4px;"></i>${t.destino}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-user" style="color:#9ca3af;margin-right:4px;"></i>${t.solicitante}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-user-cog" style="color:#9ca3af;margin-right:4px;"></i>${t.separador || '—'}</td>
+                <td style="font-size:12px;color:#374151;"><i class="fas fa-shield-alt" style="color:#9ca3af;margin-right:4px;"></i>${t.custodio || '—'}</td>
+                <td style="font-size:12px;color:#9ca3af;">${new Date(t.date+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                <td><span class="badge" style="background:${t.sb||'#fff7ed'};color:${t.sc||'#d97706'};">${t.status==='pendente'?'Pendente':t.status==='em_transito'?'Em Trânsito':'Concluída'}</span></td>
+                <td>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn btn-secondary btn-sm" onclick="openTransfDetail('${t.id}')"><i class="fas fa-eye"></i></button>
+                    ${t.status==='pendente'?`<button class="btn btn-success btn-sm" onclick="alert('Transferência ${t.id} confirmada!')"><i class="fas fa-check"></i></button>`:''}
+                  </div>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`}
+      </div>
+    </div>
+
+    <!-- LIBERAÇÃO DE SÉRIE/LOTE TAB — Lista de S/N liberados -->
+    <div class="tab-content" id="tabLiberacaoSerial">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1B4F72;">
+            <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Números de Série / Lote Liberados
+          </div>
+          <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+            Consulte aqui os números de série e lote já identificados e registrados no estoque.
+            Para liberar novos, acesse o card do produto em <strong>Produtos Acabados</strong> ou <strong>Estoque Geral</strong> e clique no botão <i class="fas fa-barcode"></i>.
+          </div>
+        </div>
+      </div>
+
+      ${(serialNumbers as any[]).length === 0 ? `
+      <!-- Estado vazio -->
+      <div class="card" style="padding:56px 20px;text-align:center;">
+        <div style="width:64px;height:64px;background:#f5f3ff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fas fa-barcode" style="font-size:28px;color:#7c3aed;opacity:0.5;"></i>
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#6c757d;margin-bottom:6px;">Nenhum S/N liberado ainda</div>
+        <div style="font-size:13px;color:#9ca3af;max-width:380px;margin:0 auto 20px;">
+          Quando você liberar um número de série ou lote a partir do card do produto, ele aparecerá aqui.
+        </div>
+      </div>` : `
+      <!-- Tabela de S/N liberados -->
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8f9fa;border-bottom:2px solid #e5e7eb;">
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Cod.</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Descrição</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">S/N</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Almoxarifado</th>
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">Endereço no Estoque <span style="font-size:9px;color:#9ca3af;font-weight:500;text-transform:none;">(duplo clique para editar)</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(serialNumbers as any[]).map((sn: any, idx: number) => {
+              const relatedProduct = [...products, ...stockItems].find((p: any) => p.code === sn.itemCode)
+              const itemName = relatedProduct?.name || sn.itemCode
+              const snAlmId = sn.almoxarifadoId || 'alm1'
+              const almObj = allAlm.find((a: any) => a.id === snAlmId)
+              const almName = almObj?.name || '—'
+              const almCode = almObj?.code || ''
+              // Show almoxarifado code prefix when there is more than one warehouse
+              const locationDisplay = sn.location
+                ? (allAlm.length > 1 ? `${almCode} - ${sn.location}` : sn.location)
+                : '—'
+              return `
+            <tr data-sn-id="${sn.id}" data-alm-id="${snAlmId}" style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fafafa;' : ''}">
+              <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">${sn.itemCode}</td>
+              <td style="padding:12px 16px;font-size:13px;color:#374151;">${itemName}</td>
+              <td style="padding:12px 16px;font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">${sn.number}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#374151;">${almName}</td>
+              <td style="padding:12px 16px;font-size:12px;color:#6c757d;cursor:pointer;" ondblclick="startSnLocationEdit(this)" title="Duplo clique para editar o endereço">${locationDisplay}</td>
+            </tr>`
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`}
+
+    </div>
+
+  </div>
+
+  <!-- Modal: Liberação de Série/Lote -->
+  <div class="modal-overlay" id="serialReleaseModal">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="srModalTitle">
+          <i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Identificar Números de Série/Lote
+        </h3>
+        <button onclick="closeModal('serialReleaseModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;" id="srModalBody">
+        <!-- Preenchido por JS -->
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;">
+        <!-- Progresso -->
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:12px;color:#6c757d;" id="srProgressLabel">0 / 0 identificados</span>
+            <span style="font-size:12px;font-weight:700;color:#7c3aed;" id="srProgressPct">0%</span>
+          </div>
+          <div style="background:#f1f5f9;border-radius:6px;height:8px;overflow:hidden;">
+            <div id="srProgressBar" style="width:0%;background:#7c3aed;height:100%;border-radius:6px;transition:width 0.3s;"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button onclick="closeModal('serialReleaseModal')" class="btn btn-secondary">Cancelar</button>
+          <button id="srSaveBtn" onclick="salvarLiberacao()" class="btn btn-primary">
+            <i class="fas fa-save"></i> Salvar Identificações
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="novoAlmoxarifadoModal">
+    <div class="modal" style="max-width:560px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-warehouse" style="margin-right:8px;"></i>Novo Almoxarifado</h3>
+        <button onclick="closeModal('novoAlmoxarifadoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Nome do Almoxarifado *</label><input class="form-control" id="alm_nome" type="text" placeholder="Ex: Almoxarifado Filial Sul"></div>
+          <div class="form-group"><label class="form-label">Código *</label><input class="form-control" id="alm_codigo" type="text" placeholder="Ex: ALM-004"></div>
+          <div class="form-group"><label class="form-label">Empresa / Filial *</label>
+            <select class="form-control" id="alm_empresa">
+              <option>${userInfo.empresa}</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Cidade</label><input class="form-control" id="alm_cidade" type="text" placeholder="Ex: Curitiba"></div>
+          <div class="form-group"><label class="form-label">Estado</label><input class="form-control" id="alm_estado" type="text" placeholder="Ex: PR"></div>
+          <div class="form-group"><label class="form-label">Responsável *</label>
+            <select class="form-control" id="alm_responsavel">
+              ${mockData.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Custodiante *</label>
+            <select class="form-control" id="alm_custodiante">
+              ${mockData.users.map((u: any) => `<option value="${u.name}">${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><textarea class="form-control" id="alm_obs" rows="2" placeholder="Instruções especiais, localização física, etc."></textarea></div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novoAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="salvarAlmoxarifado()" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Transferência -->
+  <div class="modal-overlay" id="novaTransferenciaModal">
+    <div class="modal" style="max-width:660px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-exchange-alt" style="margin-right:8px;"></i>Nova Transferência entre Almoxarifados</h3>
+        <button onclick="closeModal('novaTransferenciaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;max-height:75vh;overflow-y:auto;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group"><label class="form-label">Almoxarifado Origem *</label>
+            <select class="form-control" id="trfOrigem" onchange="loadTrfAddresses('origem')">
+              <option value="">Selecionar...</option>
+              ${allAlm.map((a: any) => `<option value="${a.id}">${a.code ? a.code + ' — ' : ''}${a.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Almoxarifado Destino *</label>
+            <select class="form-control" id="trfDestino" onchange="loadTrfAddresses('destino')">
+              <option value="">Selecionar...</option>
+              ${allAlm.map((a: any) => `<option value="${a.id}">${a.code ? a.code + ' — ' : ''}${a.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Endereço de Origem</label>
+            <select class="form-control" id="trfEnderecoOrigem">
+              <option value="">— Selecione o almoxarifado primeiro —</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Endereço de Destino</label>
+            <select class="form-control" id="trfEnderecoDestino">
+              <option value="">— Selecione o almoxarifado primeiro —</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Solicitante *</label>
+            <select class="form-control" id="trfSolicitante">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Separador *</label>
+            <select class="form-control" id="trfSeparador">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Custodiante (Destino) *</label>
+            <select class="form-control" id="trfCustodio">
+              ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Data Prevista</label>
+            <input class="form-control" type="date" id="trfDataPrevista">
+          </div>
+          <div class="form-group" style="grid-column:span 2;"><label class="form-label">Observações</label><input class="form-control" id="trfObs" type="text" placeholder="Motivo da transferência, urgência, etc."></div>
+        </div>
+
+        <!-- Itens a transferir -->
+        <div style="border-top:1px solid #f1f3f5;padding-top:16px;margin-top:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <label class="form-label" style="margin:0;font-size:14px;font-weight:700;">Itens a Transferir *</label>
+            <button class="btn btn-secondary btn-sm" onclick="addTrfItem()"><i class="fas fa-plus"></i> Adicionar Item</button>
+          </div>
+          <div id="trfItemsList">
+            <div class="trf-item" style="display:grid;grid-template-columns:3fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;">
+              <select class="form-control" style="font-size:12px;">
+                <option value="">Selecionar item...</option>
+                ${stockItems.map((s: any) => `<option value="${s.code}">${s.name} (${s.code}) — Qtd: ${s.quantity || s.currentQty || 0} ${s.unit}</option>`).join('')}
+              </select>
+              <input class="form-control" type="number" placeholder="Qtd" min="1">
+              <input class="form-control" type="text" placeholder="Nº Série / Lote">
+              <button class="btn btn-danger btn-sm" onclick="this.closest('.trf-item').remove()"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaTransferenciaModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveTransferencia()" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Solicitar Transferência</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Editar Almoxarifado -->
+  <div class="modal-overlay" id="editAlmoxarifadoModal">
+    <div class="modal" style="max-width:480px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-edit" style="margin-right:8px;"></i>Editar Almoxarifado</h3>
+        <button onclick="closeModal('editAlmoxarifadoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div class="form-group"><label class="form-label">Nome</label><input class="form-control" type="text" value="Almoxarifado Central"></div>
+        <div class="form-group"><label class="form-label">Responsável</label>
+          <select class="form-control">${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Custodiante</label>
+          <select class="form-control">${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-control"><option>Ativo</option><option>Manutenção</option><option>Inativo</option></select>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('editAlmoxarifadoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="showToast('✅ Almoxarifado atualizado!');closeModal('editAlmoxarifadoModal')" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Estoque do Almoxarifado -->
+  <div class="modal-overlay" id="almoxarifadoEstoqueModal">
+    <div class="modal" style="max-width:760px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="almEstoqueTitle">
+          <i class="fas fa-warehouse" style="margin-right:8px;color:#1B4F72;"></i>Estoque do Almoxarifado
+        </h3>
+        <button onclick="closeModal('almoxarifadoEstoqueModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:16px 24px;max-height:65vh;overflow-y:auto;">
+        <div id="almEstoqueSubtitle" style="font-size:13px;color:#6c757d;margin-bottom:14px;"></div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Código</th><th>Descrição</th><th>Unid.</th><th>Qty Atual</th><th>Qty Mín.</th><th>Status</th><th>S/N</th>
+            </tr></thead>
+            <tbody id="almEstoqueBody"></tbody>
+          </table>
+        </div>
+        <div id="almEstoqueEmpty" style="display:none;text-align:center;padding:32px;color:#9ca3af;">
+          <i class="fas fa-boxes" style="font-size:32px;margin-bottom:8px;opacity:0.3;"></i>
+          <div>Nenhum item de estoque neste almoxarifado.</div>
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('almoxarifadoEstoqueModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Endereços do Almoxarifado -->
+  <div class="modal-overlay" id="almLocationsModal">
+    <div class="modal" style="max-width:600px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;" id="almLocationsTitle">
+          <i class="fas fa-map-marker-alt" style="margin-right:8px;color:#7c3aed;"></i>Endereços do Almoxarifado
+        </h3>
+        <button onclick="closeModal('almLocationsModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:16px 24px;max-height:60vh;overflow-y:auto;">
+        <!-- Add new location form -->
+        <div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:16px;border:1px solid #ddd6fe;">
+          <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">
+            <i class="fas fa-plus-circle" style="margin-right:4px;"></i> Novo Endereço
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Código *</label>
+              <input class="form-control" id="newLocCode" type="text" placeholder="Ex: A-01-01" style="font-family:monospace;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Descrição</label>
+              <input class="form-control" id="newLocDesc" type="text" placeholder="Ex: Prateleira A, coluna 1, posição 1">
+            </div>
+            <button class="btn btn-primary" onclick="salvarAlmLocation()">
+              <i class="fas fa-plus"></i> Adicionar
+            </button>
+          </div>
+        </div>
+        <!-- Locations list -->
+        <div id="almLocationsList"></div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;">
+        <button onclick="closeModal('almLocationsModal')" class="btn btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Planilha Modal — redireciona para Cadastro de Produtos (fonte principal) -->
+  <div class="modal-overlay" id="uploadPlanilhaModal">
+    <div class="modal" style="max-width:480px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;">
+          <i class="fas fa-file-upload" style="margin-right:8px;color:#2980B9;"></i>Importação de Estoque via Planilha
+        </h3>
+        <button onclick="closeModal('uploadPlanilhaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:28px 24px;text-align:center;">
+        <div style="width:64px;height:64px;background:#e8f4fd;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fas fa-boxes" style="font-size:26px;color:#2980B9;"></i>
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#1B4F72;margin-bottom:8px;">Importação centralizada em Produtos</div>
+        <div style="font-size:13px;color:#6c757d;margin-bottom:20px;line-height:1.6;">
+          A importação de planilha é realizada na área de <strong>Cadastro de Produtos</strong>.<br>
+          Ao importar, os produtos são criados ou atualizados e, para itens com controle de <strong>Série ou Lote</strong>, a fila de liberação é gerada automaticamente aqui no Estoque.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button onclick="closeModal('uploadPlanilhaModal')" class="btn btn-secondary">Fechar</button>
+          <a href="/produtos" class="btn btn-primary">
+            <i class="fas fa-file-upload"></i> Ir para Cadastro de Produtos
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nova Separação Modal -->
+  <div class="modal-overlay" id="novaSeparacaoModal">
+    <div class="modal" style="max-width:640px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-dolly" style="margin-right:8px;"></i>Nova Ordem de Separação</h3>
+        <button onclick="closeModal('novaSeparacaoModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-file-invoice" style="margin-right:5px;color:#2980B9;"></i>Pedido de Venda *</label>
+            <input class="form-control" type="text" placeholder="PV-2024-XXXX" id="sep_pedido">
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-calendar" style="margin-right:5px;color:#2980B9;"></i>Data de Separação *</label>
+            <input class="form-control" type="date" id="sep_data">
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label"><i class="fas fa-building" style="margin-right:5px;color:#2980B9;"></i>Nome do Cliente *</label>
+            <input class="form-control" type="text" placeholder="Razão social do cliente" id="sep_cliente">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Responsável pela Separação</label>
+            <select class="form-control" id="sep_responsavel">
+              ${mockData.users.map(u => `<option>${u.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Código da OS</label>
+            <input class="form-control" type="text" value="OS-2024-003" readonly style="background:#f8f9fa;">
+          </div>
+        </div>
+
+        <!-- Itens de separação -->
+        <div style="border-top:1px solid #f1f3f5;padding-top:16px;margin-top:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <label class="form-label" style="margin:0;">Produtos a Separar *</label>
+            <button class="btn btn-secondary btn-sm" onclick="addSepItem()" title="Adicionar produto"><i class="fas fa-plus"></i> Adicionar</button>
+          </div>
+          <div id="sepItemsList">
+            <div class="sep-item" style="display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:8px;align-items:center;">
+              <select class="form-control" style="font-size:12px;">
+                <option value="">Selecionar produto...</option>
+                ${products.map((p: any) => `<option value="${p.code}">${p.name} (${p.code})</option>`).join('')}
+              </select>
+              <input class="form-control" type="number" placeholder="Qtd" min="1">
+              <input class="form-control" type="text" placeholder="Nº Série / Lote (obrig. se controlado)">
+              <button class="btn btn-danger btn-sm" onclick="this.closest('.sep-item').remove()" title="Remover item"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaSeparacaoModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveSeparacao()" class="btn btn-primary"><i class="fas fa-save"></i> Criar Separação</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nova Baixa Modal -->
+  <div class="modal-overlay" id="novaBaixaModal">
+    <div class="modal" style="max-width:560px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-minus-circle" style="margin-right:8px;"></i>Registrar Baixa de Estoque</h3>
+        <button onclick="closeModal('novaBaixaModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:20px 24px;max-height:80vh;overflow-y:auto;">
+        <div class="form-group">
+          <label class="form-label">Tipo de Baixa *</label>
+          <select class="form-control" id="baixa_tipo" onchange="onBaixaTipoChange()">
+            <option value="faturamento">Faturamento (saída com NF-e)</option>
+            <option value="requisicao">Requisição Interna (outra área)</option>
+            <option value="descarte">Descarte / Perda</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pedido / Referência</label>
+          <input class="form-control" id="baixa_pedido" type="text" placeholder="PV-2024-XXXX ou REQ-ENG-XXX">
+        </div>
+        <div class="form-group" id="baixa_nf_group">
+          <label class="form-label"><i class="fas fa-file-invoice" style="margin-right:4px;color:#27AE60;"></i>Número NF-e</label>
+          <input class="form-control" id="baixa_nf" type="text" placeholder="NF-00000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Item *</label>
+          <select class="form-control" id="baixa_item" onchange="updateBaixaSerialField()">
+            <option value="">Selecionar item...</option>
+            ${stockItems.map((s: any) => `<option value="${s.code}" data-serial="${s.serialControlled ? '1' : '0'}" data-control="${s.controlType||'serie'}" data-name="${s.name}">${s.name} (${s.code}) — Disponível: ${s.quantity} ${s.unit}</option>`).join('')}
+            ${products.map((p: any) => `<option value="${p.code}" data-serial="${p.serialControlled ? '1' : '0'}" data-control="${p.controlType||'serie'}" data-name="${p.name}">${p.name} (${p.code}) — Disponível: ${p.stockCurrent} ${p.unit}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Quantidade *</label>
+            <input class="form-control" id="baixa_qty" type="number" min="1" placeholder="0" oninput="updateBaixaSerialLines()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data</label>
+            <input class="form-control" id="baixa_data" type="date">
+          </div>
+        </div>
+        <!-- Linhas de Número de Série — aparece para itens controlados por série/lote -->
+        <div id="baixa_seriais_group" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <label class="form-label" style="margin:0;"><i class="fas fa-barcode" style="margin-right:5px;color:#7c3aed;"></i>Números de Série *</label>
+            <span id="baixa_seriais_badge" style="font-size:11px;background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:10px;font-weight:700;"></span>
+          </div>
+          <div id="baixa_seriais_lines" style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;padding-right:2px;"></div>
+          <div style="font-size:11px;color:#7c3aed;margin-top:6px;"><i class="fas fa-info-circle"></i> Informe um S/N por unidade baixada. Itens não controlados por série/lote não exigem preenchimento.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Responsável</label>
+          <select class="form-control" id="baixa_responsavel">
+            ${mockData.users.map((u: any) => `<option>${u.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observações</label>
+          <textarea class="form-control" id="baixa_obs" rows="2" placeholder="NF-e, número de documento, justificativa..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('novaBaixaModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="saveBaixa()" class="btn btn-warning" style="color:white;"><i class="fas fa-minus-circle"></i> Registrar Baixa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ajuste Modal -->
+  <div class="modal-overlay" id="ajusteModal">
+    <div class="modal" style="max-width:440px;">
+      <div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-balance-scale" style="margin-right:8px;"></i>Ajuste de Estoque</h3>
+        <button onclick="closeModal('ajusteModal')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>
+      </div>
+      <div style="padding:24px;">
+        <div class="form-group"><label class="form-label">Tipo de Ajuste</label>
+          <select class="form-control"><option>Entrada (aumentar)</option><option>Saída (diminuir)</option><option>Acerto de inventário</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Quantidade</label>
+          <input class="form-control" type="number" min="0" placeholder="0">
+        </div>
+        <div class="form-group"><label class="form-label">Motivo *</label>
+          <textarea class="form-control" rows="2" placeholder="Descreva o motivo do ajuste..."></textarea>
+        </div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeModal('ajusteModal')" class="btn btn-secondary">Cancelar</button>
+        <button onclick="alert('Ajuste aplicado!');closeModal('ajusteModal')" class="btn btn-primary"><i class="fas fa-save"></i> Aplicar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Serial Numbers Data (JSON for JS) -->
+  <script>
+  const serialNumbersData = ${JSON.stringify(serialNumbers)};
+  const kardexData = ${JSON.stringify(kardexMovements)};
+  const allAlmData = ${JSON.stringify(allAlm)};
+  const almoxarifadoLocationsData = ${JSON.stringify(almoxarifadoLocations)};
+
+  // Determine available stock items for the almoxarifadoEstoque modal
+  const allStockItemsData = ${JSON.stringify([
+    ...stockItems.map((s: any) => ({ ...s, _source: 'stock' })),
+    ...products.map((p: any) => ({ id: p.id, code: p.code, name: p.name, unit: p.unit, currentQty: p.stockCurrent, minQty: p.stockMin, stockStatus: p.stockStatus, almoxarifadoId: p.almoxarifadoId || 'alm1', _source: 'product' }))
+  ])};
+
+  // Filter estoque table
+  function filterEstoque() {
+    const search = document.getElementById('estoqueSearch').value.toLowerCase();
+    const status = document.getElementById('estoqueStatusFilter').value;
+    document.querySelectorAll('#estoqueBody tr').forEach(row => {
+      const matchSearch = !search || (row.dataset.search || '').includes(search);
+      const matchStatus = !status || row.dataset.status === status;
+      row.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    });
+  }
+
+  // ── Tamanho de etiqueta (padrão salvo em localStorage) ──────────────
+  function _loadEtqSize(prefix, defW, defH) {
+    const saved = JSON.parse(localStorage.getItem('etq_size_' + prefix) || 'null');
+    return saved || { w: defW, h: defH };
+  }
+  function salvarTamanhoEtiqueta() {
+    const w = document.getElementById('etq_largura').value;
+    const h = document.getElementById('etq_altura').value;
+    localStorage.setItem('etq_size_sn', JSON.stringify({ w: parseInt(w), h: parseInt(h) }));
+    showEstoqueToast('✅ Tamanho padrão salvo: ' + w + 'mm × ' + h + 'mm');
+  }
+  function salvarTamanhoEtiquetaFat() {
+    const w = document.getElementById('etqf_largura').value;
+    const h = document.getElementById('etqf_altura').value;
+    localStorage.setItem('etq_size_fat', JSON.stringify({ w: parseInt(w), h: parseInt(h) }));
+    showEstoqueToast('✅ Tamanho padrão salvo: ' + w + 'mm × ' + h + 'mm');
+  }
+
+  // ── Modal de etiquetas S/N ───────────────────────────────────────────
+  let _etqSnData = [];   // [{code, name, serial}]
+  let _etqFatData = [];  // [{code, name, serial, nf}]
+  let _etqSnCurrentCode = null;
+  let _etqSnCurrentName = null;
+
+  function openEtiquetaModal(source) {
+    // Carregar tamanho padrão salvo
+    const sz = _loadEtqSize('sn', 60, 30);
+    document.getElementById('etq_largura').value = sz.w;
+    document.getElementById('etq_altura').value = sz.h;
+
+    // Usar dados estruturados armazenados em openSerialList
+    const itemCode = _etqSnCurrentCode || '';
+    const itemName = _etqSnCurrentName || '';
+
+    // Pegar seriais exibidos no serialListBody (apenas S/Ns em estoque visíveis)
+    const tbody = document.getElementById('serialListBody');
+    const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+    _etqSnData = [];
+    rows.forEach(function(row) {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 1) {
+        const num = cells[0].textContent.trim();
+        if (num) {
+          _etqSnData.push({
+            code: itemCode,
+            name: itemName,
+            serial: num
+          });
+        }
+      }
+    });
+
+    // Fallback: se nenhuma linha visível, usar todos os S/Ns do item
+    if (_etqSnData.length === 0 && itemCode) {
+      const snData = serialNumbersData.filter(function(sn) { return sn.itemCode === itemCode; });
+      snData.forEach(function(sn) {
+        _etqSnData.push({ code: itemCode, name: itemName, serial: sn.number });
+      });
+    }
+
+    document.getElementById('etqCount').textContent = _etqSnData.length;
+    _renderEtqSnPreview();
+    atualizarPreviewEtq();
+    openModal('etiquetaSnModal');
+  }
+
+  function _renderEtqSnPreview() {
+    const preview = document.getElementById('etqPreviewList');
+    if (_etqSnData.length === 0) {
+      preview.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:#9ca3af;"><i class="fas fa-barcode" style="font-size:24px;margin-bottom:8px;opacity:0.3;display:block;"></i>Nenhum número de série disponível para este item.</td></tr>';
+    } else {
+      preview.innerHTML = _etqSnData.slice(0, 50).map(function(e, i) {
+        const bg = i % 2 === 0 ? 'white' : '#faf5ff';
+        return '<tr style="background:' + bg + ';">' +
+          '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#374151;font-weight:700;border-bottom:1px solid #f3e8ff;">' + (e.code||'—') + '</td>' +
+          '<td style="padding:7px 10px;font-size:12px;color:#374151;border-bottom:1px solid #f3e8ff;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (e.name||'—') + '</td>' +
+          '<td style="padding:7px 10px;font-family:monospace;font-size:12px;color:#7c3aed;font-weight:700;border-bottom:1px solid #f3e8ff;">' + (e.serial||'—') + '</td>' +
+        '</tr>';
+      }).join('') + (_etqSnData.length > 50 ? '<tr><td colspan="3" style="text-align:center;color:#9ca3af;font-size:11px;padding:6px;">…e mais ' + (_etqSnData.length-50) + ' etiqueta(s)</td></tr>' : '');
+    }
+  }
+
+  function atualizarPreviewEtq() {
+    const w = parseInt(document.getElementById('etq_largura').value) || 60;
+    const h = parseInt(document.getElementById('etq_altura').value) || 30;
+    const el = document.getElementById('etqSizePreview');
+    if (el) el.textContent = w + '×' + h + 'mm';
+  }
+
+  function executarImpressaoEtiquetas() {
+    const w = parseInt(document.getElementById('etq_largura').value) || 60;
+    const h = parseInt(document.getElementById('etq_altura').value) || 30;
+    if (_etqSnData.length === 0) { showEstoqueToast('Nenhuma etiqueta para imprimir', 'error'); return; }
+    _imprimirEtiquetas(_etqSnData.map(function(e) {
+      return { linhas: [e.code, e.name, e.serial], tipo: 'sn' };
+    }), w, h);
+    closeModal('etiquetaSnModal');
+  }
+
+  // ── Modal de etiquetas Faturamento ───────────────────────────────────
+  function openEtiquetaFatModal(exitCode, exitNf, serialItems) {
+    const sz = _loadEtqSize('fat', 80, 40);
+    document.getElementById('etqf_largura').value = sz.w;
+    document.getElementById('etqf_altura').value = sz.h;
+
+    _etqFatData = serialItems || [];
+    const nfDisplay = exitNf || '—';
+    document.getElementById('etqfBaixaInfo').innerHTML =
+      '<i class="fas fa-file-invoice" style="color:#27AE60;margin-right:6px;"></i>' +
+      '<strong>Baixa:</strong> ' + (exitCode||'—') + ' &nbsp;|&nbsp; ' +
+      '<strong>NF:</strong> ' + nfDisplay + ' &nbsp;|&nbsp; ' +
+      '<strong>' + _etqFatData.length + ' etiqueta(s)</strong>';
+
+    document.getElementById('etqfCount').textContent = _etqFatData.length;
+    _renderEtqFatPreview();
+    atualizarPreviewEtqFat();
+    openModal('etiquetaFatModal');
+  }
+
+  function _renderEtqFatPreview() {
+    const preview = document.getElementById('etqfPreviewList');
+    preview.innerHTML = _etqFatData.slice(0, 50).map(function(e, i) {
+      const bg = i % 2 === 0 ? 'white' : '#f0fdf4';
+      return '<tr style="background:' + bg + ';">' +
+        '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#374151;font-weight:700;border-bottom:1px solid #d1fae5;">' + (e.code||'—') + '</td>' +
+        '<td style="padding:7px 10px;font-size:12px;color:#374151;border-bottom:1px solid #d1fae5;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (e.name||'—') + '</td>' +
+        '<td style="padding:7px 10px;font-family:monospace;font-size:12px;color:#7c3aed;font-weight:700;border-bottom:1px solid #d1fae5;">' + (e.serial||'—') + '</td>' +
+        '<td style="padding:7px 10px;font-size:12px;color:#16a34a;font-weight:700;border-bottom:1px solid #d1fae5;">' + (e.nf||'—') + '</td>' +
+      '</tr>';
+    }).join('') + (_etqFatData.length > 50 ? '<tr><td colspan="4" style="text-align:center;color:#9ca3af;font-size:11px;padding:6px;">…e mais ' + (_etqFatData.length-50) + ' etiqueta(s)</td></tr>' : '');
+    // Fallback vazio
+    if (_etqFatData.length === 0) {
+      preview.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#9ca3af;">Nenhuma etiqueta.</td></tr>';
+    }
+  }
+
+  function atualizarPreviewEtqFat() {
+    const w = parseInt(document.getElementById('etqf_largura').value) || 80;
+    const h = parseInt(document.getElementById('etqf_altura').value) || 40;
+    const el = document.getElementById('etqfSizePreview');
+    if (el) el.textContent = w + '×' + h + 'mm';
+  }
+
+  function executarImpressaoEtiquetasFat() {
+    const w = parseInt(document.getElementById('etqf_largura').value) || 80;
+    const h = parseInt(document.getElementById('etqf_altura').value) || 40;
+    if (_etqFatData.length === 0) { showEstoqueToast('Nenhuma etiqueta para imprimir', 'error'); return; }
+    _imprimirEtiquetas(_etqFatData.map(function(e) {
+      return { linhas: [e.code, e.name, 'S/N: ' + (e.serial||'—'), 'NF: ' + (e.nf||'—')], tipo: 'fat' };
+    }), w, h);
+    closeModal('etiquetaFatModal');
+  }
+
+  // ── Motor de impressão de etiquetas ─────────────────────────────────
+  function _imprimirEtiquetas(etiquetas, largMm, altMm) {
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) { showEstoqueToast('Bloqueio de popup — permita popups para imprimir', 'error'); return; }
+    const etqCss = 'width:' + largMm + 'mm;height:' + altMm + 'mm;border:1px solid #333;padding:3mm 4mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;page-break-after:always;page-break-inside:avoid;overflow:hidden;';
+    const linhasCss = ['font-size:8pt;color:#555;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+      'font-size:9pt;font-weight:700;color:#1B4F72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+      'font-size:10pt;font-weight:800;color:#7c3aed;font-family:monospace;letter-spacing:1px;',
+      'font-size:9pt;font-weight:700;color:#27AE60;font-family:monospace;'];
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Etiquetas</title>' +
+      '<style>@page{size:' + largMm + 'mm ' + altMm + 'mm;margin:0;}body{margin:0;padding:0;}</style></head><body>' +
+      etiquetas.map(function(etq) {
+        return '<div style="' + etqCss + '">' +
+          etq.linhas.map(function(l, i) {
+            return '<div style="' + (linhasCss[i] || linhasCss[2]) + '">' + (l||'') + '</div>';
+          }).join('') +
+        '</div>';
+      }).join('') +
+      '<scr' + 'ipt>window.onload=function(){window.print();}<' + '/scr' + 'ipt></body></html>';
+    win.document.write(html);
+    win.document.close();
+  }
+
+  // ── Baixa Modal ──────────────────────────────────────────────────────
+  function onBaixaTipoChange() {
+    const tipo = document.getElementById('baixa_tipo').value;
+    const nfGroup = document.getElementById('baixa_nf_group');
+    if (nfGroup) nfGroup.style.display = tipo === 'faturamento' ? '' : 'none';
+  }
+  // Inicializar visibilidade NF
+  onBaixaTipoChange();
+
+  function openBaixaModal(code, name) {
+    const sel = document.getElementById('baixa_item');
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === code) { sel.selectedIndex = i; break; }
+    }
+    updateBaixaSerialField();
+    openModal('novaBaixaModal');
+  }
+
+  function updateBaixaSerialField() {
+    const sel = document.getElementById('baixa_item');
+    const opt = sel.options[sel.selectedIndex];
+    const isSerial = opt && opt.getAttribute('data-serial') === '1';
+    const group = document.getElementById('baixa_seriais_group');
+    const qtyInput = document.getElementById('baixa_qty');
+
+    if (isSerial) {
+      group.style.display = 'block';
+      updateBaixaSerialLines();
+    } else {
+      group.style.display = 'none';
+      qtyInput.readOnly = false;
+      qtyInput.style.background = '';
+    }
+  }
+
+  function updateBaixaSerialLines() {
+    const sel = document.getElementById('baixa_item');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const isSerial = opt && opt.getAttribute('data-serial') === '1';
+    if (!isSerial) return;
+
+    const qty = parseInt(document.getElementById('baixa_qty').value) || 1;
+    const itemCode = opt.value;
+    const badge = document.getElementById('baixa_seriais_badge');
+    const container = document.getElementById('baixa_seriais_lines');
+    if (badge) badge.textContent = qty + ' S/N necessário' + (qty !== 1 ? 's' : '');
+
+    // Obter S/Ns disponíveis para este item
+    const available = serialNumbersData.filter(function(sn) {
+      return sn.itemCode === itemCode && sn.status === 'em_estoque';
+    });
+
+    // Rebuildar linhas conforme quantidade
+    const existing = container.querySelectorAll('.baixa-sn-line');
+    const existingVals = Array.from(existing).map(function(el) {
+      const s = el.querySelector('select'); return s ? s.value : '';
+    });
+
+    container.innerHTML = '';
+    for (let i = 0; i < qty; i++) {
+      const div = document.createElement('div');
+      div.className = 'baixa-sn-line';
+      div.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;';
+      const badge2 = document.createElement('span');
+      badge2.style.cssText = 'width:22px;height:22px;background:#7c3aed;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;';
+      badge2.textContent = String(i + 1);
+      const sel2 = document.createElement('select');
+      sel2.className = 'form-control';
+      sel2.style.fontSize = '12px';
+      sel2.innerHTML = '<option value="">— S/N #' + (i+1) + ' (selecione ou deixe em branco se não controlado) —</option>';
+      available.forEach(function(sn) {
+        const o = document.createElement('option');
+        o.value = sn.id;
+        o.textContent = sn.number + (sn.location ? ' [' + sn.location + ']' : '');
+        o.setAttribute('data-number', sn.number);
+        if (existingVals[i] && sn.id === existingVals[i]) o.selected = true;
+        sel2.appendChild(o);
+      });
+      if (available.length === 0) {
+        const o = document.createElement('option'); o.value = ''; o.textContent = '— Nenhum S/N disponível —'; sel2.appendChild(o);
+      }
+      div.appendChild(badge2);
+      div.appendChild(sel2);
+      container.appendChild(div);
+    }
+  }
+
+  function openSeparacaoModal(code, name, unit) {
+    openModal('novaSeparacaoModal');
+    const sel = document.querySelector('#sepItemsList select');
+    if (sel) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === code) { sel.selectedIndex = i; break; }
+      }
+    }
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 2));
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 2));
+  }
+
+  function addSepItem() {
+    const container = document.getElementById('sepItemsList');
+    const div = document.createElement('div');
+    div.className = 'sep-item';
+    div.style.cssText = 'display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;"><option value="">Selecionar produto...</option></select>' +
+      '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
+      '<input class="form-control" type="text" placeholder="Nº Série / Lote">' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.sep-item\\').remove()" title="Remover"><i class="fas fa-trash"></i></button>';
+    container.appendChild(div);
+  }
+
+  async function saveSeparacao() {
+    const pedido = document.getElementById('sep_pedido').value.trim();
+    const cliente = document.getElementById('sep_cliente').value.trim();
+    const data_sep = document.getElementById('sep_data').value;
+    const responsavel = document.getElementById('sep_responsavel')?.value || '';
+    if (!pedido || !cliente) { showEstoqueToast('Preencha o Pedido de Venda e o Cliente!', 'error'); return; }
+
+    const rows = document.querySelectorAll('#sepItemsList .sep-item');
+    const items = [];
+    rows.forEach(row => {
+      const sels = row.querySelectorAll('select, input[type="number"], input[type="text"]');
+      const prodCode = sels[0]?.value || '';
+      const qty = parseInt(sels[1]?.value || '0') || 0;
+      const serial = sels[2]?.value || '';
+      if (prodCode && qty > 0) items.push({ productCode: prodCode, quantity: qty, serialNumber: serial });
+    });
+    if (items.length === 0) { showEstoqueToast('Adicione ao menos um produto!', 'error'); return; }
+
+    try {
+      const res = await fetch('/estoque/api/separation/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido, cliente, dataSeparacao: data_sep, responsavel, items })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        showEstoqueToast('✅ Ordem de Separação ' + d.separation.code + ' criada!');
+        closeModal('novaSeparacaoModal');
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(d.error || 'Erro ao criar separação', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  async function saveBaixa() {
+    const itemSel = document.getElementById('baixa_item');
+    const item = itemSel.value;
+    const qty = parseInt(document.getElementById('baixa_qty').value) || 0;
+    if (!item || qty <= 0) { showEstoqueToast('Selecione o item e informe a quantidade!', 'error'); return; }
+
+    // Coletar S/Ns das linhas (se item controlado)
+    const serialGroup = document.getElementById('baixa_seriais_group');
+    const isSerialItem = serialGroup && serialGroup.style.display !== 'none';
+    let serialIds = [];
+    let serialNumbers = [];
+    if (isSerialItem) {
+      const lines = document.querySelectorAll('#baixa_seriais_lines .baixa-sn-line select');
+      lines.forEach(function(sel) {
+        const opt = sel.options[sel.selectedIndex];
+        if (sel.value) {
+          serialIds.push(sel.value);
+          serialNumbers.push(opt ? opt.getAttribute('data-number') : sel.value);
+        }
+      });
+      // Não bloquear se S/N em branco — alguns itens podem ter controle parcial
+    }
+
+    const tipo = document.getElementById('baixa_tipo').value;
+    const pedido = document.getElementById('baixa_pedido').value;
+    const nf = document.getElementById('baixa_nf').value;
+    const data_b = document.getElementById('baixa_data').value;
+    const responsavel = document.getElementById('baixa_responsavel')?.value || '';
+    const notes = document.getElementById('baixa_obs').value;
+    const itemOpt = itemSel.options[itemSel.selectedIndex];
+    const itemName = itemOpt ? (itemOpt.getAttribute('data-name') || itemOpt.textContent.split(' (')[0]) : item;
+
+    try {
+      const res = await fetch('/estoque/api/exit/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: tipo, pedido, nf, dataBaixa: data_b, responsavel, notes,
+          items: [{ code: item, quantity: qty }],
+          serialId:     serialIds[0]     || undefined,
+          serialNumber: serialNumbers[0] || undefined,
+          serialIds:     serialIds.length > 0 ? serialIds : undefined,
+          serialNumbers: serialNumbers.length > 0 ? serialNumbers : undefined
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        const exitCode = d.exit?.code || '';
+        const snList = serialNumbers.filter(Boolean);
+        showEstoqueToast('✅ Baixa ' + exitCode + ' registrada!' + (snList.length ? ' S/Ns: ' + snList.join(', ') : ''));
+        closeModal('novaBaixaModal');
+
+        // Se faturamento com S/Ns, abrir modal de etiquetas
+        if (tipo === 'faturamento' && snList.length > 0) {
+          const etqItems = snList.map(function(sn) {
+            return { code: item, name: itemName, serial: sn, nf: nf || '—' };
+          });
+          setTimeout(function() { openEtiquetaFatModal(exitCode, nf || '—', etqItems); }, 400);
+        } else {
+          setTimeout(() => location.reload(), 900);
+        }
+      } else {
+        showEstoqueToast(d.error || 'Erro ao registrar baixa', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  function handlePlanilhaDrop(event) {
+    event.preventDefault();
+    // Redireciona para Produtos (importação centralizada)
+    window.location.href = '/produtos';
+  }
+
+  function handlePlanilhaSelect(event) {
+    window.location.href = '/produtos';
+  }
+
+  function showFileSelected(file) {
+    // Legado - não utilizado
+  }
+
+  function importarPlanilha() {
+    closeModal('uploadPlanilhaModal');
+    window.location.href = '/produtos';
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // LIBERAÇÃO DE SÉRIE / LOTE
+  // ══════════════════════════════════════════════════════════════════════
+  const _serialPendingData = ${JSON.stringify(serialPendingItems)};
+  let _srCurrentId = null;
+  let _srEntries = [];  // for lote type
+  let _srRows = [];     // for serie type: string[] length == totalQty
+
+  function openSerialRelease(pendingId) {
+    const item = _serialPendingData.find(p => p.id === pendingId);
+    if (!item) return;
+    _srCurrentId = pendingId;
+
+    const ctColor = item.controlType === 'serie' ? '#7c3aed' : '#d97706';
+    const ctIcon  = item.controlType === 'serie' ? 'fa-barcode' : 'fa-layer-group';
+    const ctLabel = item.controlType === 'serie' ? 'Número de Série' : 'Número de Lote';
+
+    document.getElementById('srModalTitle').innerHTML =
+      '<i class="fas ' + ctIcon + '" style="margin-right:8px;color:' + ctColor + ';"></i>Identificar ' + ctLabel;
+
+    const body = document.getElementById('srModalBody');
+
+    // ── Header: product info ────────────────────────────────────────────
+    const headerHtml = \`
+      <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <div style="font-size:13px;font-weight:700;color:#1B4F72;">\${item.productName}</div>
+          <div style="font-size:11px;color:#9ca3af;font-family:monospace;">\${item.productCode} · \${item.unit}</div>
+        </div>
+        <div style="text-align:center;padding:10px 16px;background:white;border-radius:8px;border:1px solid #e5e7eb;">
+          <div style="font-size:20px;font-weight:800;color:\${ctColor};">\${item.totalQty}</div>
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;">Total a identificar</div>
+        </div>
+      </div>\`;
+
+    if (item.controlType === 'serie') {
+      // ── Serie type: row-based inputs (one per totalQty) ───────────────
+      const existingNums = (item.entries || []).map(e => e.number);
+      _srRows = [];
+      for (let i = 0; i < item.totalQty; i++) {
+        _srRows.push(existingNums[i] || '');
+      }
+
+      body.innerHTML = headerHtml + \`
+        <!-- Bulk paste -->
+        <div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid #ddd6fe;">
+          <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
+            <i class="fas fa-paste" style="margin-right:4px;"></i> Colar em massa (um número por linha)
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;">
+            <textarea id="srBulkPaste" class="form-control" rows="3"
+              placeholder="SN-2024-0001&#10;SN-2024-0002&#10;SN-2024-0003"
+              style="font-family:monospace;font-size:12px;resize:vertical;flex:1;"></textarea>
+            <button class="btn btn-secondary" onclick="applyBulkPaste()" style="white-space:nowrap;">
+              <i class="fas fa-check"></i> Aplicar
+            </button>
+          </div>
+        </div>
+        <!-- Row-based inputs -->
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
+          <i class="fas fa-list-ol" style="margin-right:4px;color:\${ctColor};"></i>Números de Série (\${item.totalQty} \${item.unit})
+        </div>
+        <div id="srRowsList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;padding-right:2px;"></div>
+      \`;
+
+      renderSrRows(ctColor);
+      updateSrProgressSerie(item);
+    } else {
+      // ── Lote type: existing add-form UI ───────────────────────────────
+      _srEntries = JSON.parse(JSON.stringify(item.entries || []));
+
+      body.innerHTML = headerHtml + \`
+        <!-- Formulário de nova entrada -->
+        <div style="background:#f5f3ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid #ddd6fe;">
+          <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">
+            <i class="fas fa-plus-circle" style="margin-right:4px;"></i> Adicionar identificação
+          </div>
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Número de Lote *</label>
+              <input class="form-control" id="srNumberInput" type="text"
+                placeholder="Ex: LOTE-2024-A01"
+                style="font-family:monospace;font-size:13px;"
+                onkeydown="if(event.key==='Enter') addSerialEntry()">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Quantidade *</label>
+              <input class="form-control" id="srQtyInput" type="number" value="1" min="1" style="width:80px;text-align:center;font-weight:700;">
+            </div>
+            <button class="btn btn-primary" onclick="addSerialEntry()" style="white-space:nowrap;">
+              <i class="fas fa-plus"></i> Adicionar
+            </button>
+          </div>
+          <div id="srInputError" style="display:none;font-size:11px;color:#dc2626;margin-top:6px;"></div>
+        </div>
+        <!-- Lista de entradas -->
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
+          <i class="fas fa-list-ul" style="margin-right:4px;color:\${ctColor};"></i>Lotes identificados
+        </div>
+        <div id="srEntriesList" style="min-height:60px;max-height:200px;overflow-y:auto;"></div>
+      \`;
+
+      renderSrEntries(item);
+      updateSrProgress(item);
+    }
+
+    openModal('serialReleaseModal');
+  }
+
+  // ── Serie: render row inputs ──────────────────────────────────────────
+  function renderSrRows(ctColor) {
+    const list = document.getElementById('srRowsList');
+    if (!list) return;
+    list.innerHTML = _srRows.map((val, i) => {
+      const safe = val.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      return \`<div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;color:#9ca3af;font-weight:600;min-width:28px;text-align:right;">\${i + 1}.</span>
+        <input type="text" class="form-control sr-row-input" value="\${safe}"
+          data-idx="\${i}"
+          placeholder="Ex: SN-\${String(i + 1).padStart(4, '0')}"
+          style="font-family:monospace;font-size:13px;"
+          oninput="_srRows[\${i}]=this.value.trim();_srRowChanged()">
+      </div>\`;
+    }).join('');
+  }
+
+  function _srRowChanged() {
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    if (item) updateSrProgressSerie(item);
+  }
+
+  function updateSrProgressSerie(item) {
+    const filled = _srRows.filter(r => r.trim().length > 0).length;
+    const total = item.totalQty;
+    const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
+    const bar = document.getElementById('srProgressBar');
+    const label = document.getElementById('srProgressLabel');
+    const pctEl = document.getElementById('srProgressPct');
+    if (bar) { bar.style.width = pct + '%'; bar.style.background = pct >= 100 ? '#16a34a' : '#7c3aed'; }
+    if (label) label.textContent = filled + ' / ' + total + ' ' + item.unit + ' preenchido(s)';
+    if (pctEl) pctEl.textContent = pct + '%';
+  }
+
+  // ── Serie: bulk paste ─────────────────────────────────────────────────
+  function applyBulkPaste() {
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    if (!item) return;
+    const pasteEl = document.getElementById('srBulkPaste');
+    if (!pasteEl) return;
+    const lines = pasteEl.value.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+    for (let i = 0; i < _srRows.length && i < lines.length; i++) {
+      _srRows[i] = lines[i];
+    }
+    renderSrRows('#7c3aed');
+    updateSrProgressSerie(item);
+    pasteEl.value = '';
+    // Sync inputs
+    document.querySelectorAll('.sr-row-input').forEach(inp => {
+      const idx = parseInt(inp.getAttribute('data-idx'));
+      if (!isNaN(idx)) inp.value = _srRows[idx] || '';
+    });
+  }
+
+  // ── Lote: add / remove / render entries ──────────────────────────────
+  function addSerialEntry() {
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    if (!item) return;
+    const numInput = document.getElementById('srNumberInput');
+    const qtyInput = document.getElementById('srQtyInput');
+    const errEl = document.getElementById('srInputError');
+    const number = numInput.value.trim();
+    const qty = parseInt(qtyInput.value) || 1;
+
+    errEl.style.display = 'none';
+    if (!number) { errEl.textContent = 'Informe o número!'; errEl.style.display = ''; return; }
+    if (qty < 1)  { errEl.textContent = 'Quantidade deve ser ≥ 1.'; errEl.style.display = ''; return; }
+
+    // Checar duplicados (case-insensitive)
+    if (_srEntries.find(e => e.number.trim().toLowerCase() === number.trim().toLowerCase())) {
+      errEl.textContent = 'Este número já foi adicionado.'; errEl.style.display = ''; return;
+    }
+
+    // Checar se excede totalQty
+    const identifiedSoFar = _srEntries.reduce((s, e) => s + (e.qty || 1), 0);
+    const remaining = item.totalQty - identifiedSoFar;
+    if (qty > remaining) {
+      errEl.textContent = 'Quantidade excede o restante (' + remaining + ' ' + item.unit + ').';
+      errEl.style.display = ''; return;
+    }
+
+    _srEntries.push({ number, qty, addedAt: new Date().toISOString() });
+    numInput.value = '';
+    qtyInput.value = '1';
+    numInput.focus();
+    renderSrEntries(item);
+    updateSrProgress(item);
+  }
+
+  function removeSrEntry(number) {
+    _srEntries = _srEntries.filter(e => e.number !== number);
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    renderSrEntries(item);
+    updateSrProgress(item);
+  }
+
+  function renderSrEntries(item) {
+    const list = document.getElementById('srEntriesList');
+    if (!list) return;
+    const ctColor = '#d97706';
+    const ctBg    = '#fef3c7';
+    if (_srEntries.length === 0) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px;border:1px dashed #e5e7eb;border-radius:8px;">Nenhum lote identificado ainda.</div>';
+      return;
+    }
+    list.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;">' +
+      _srEntries.map(e => \`
+      <div style="display:flex;align-items:center;justify-content:space-between;background:\${ctBg};border-radius:8px;padding:8px 12px;">
+        <span style="font-family:monospace;font-size:13px;font-weight:700;color:\${ctColor};">\${e.number}</span>
+        <span style="font-size:11px;color:#6c757d;margin-left:8px;">\${e.qty} \${item.unit}</span>
+        <button onclick="removeSrEntry('\${e.number.replace(/'/g,\"\\\\'\")}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:15px;line-height:1;padding:0 4px;">×</button>
+      </div>\`).join('') + '</div>';
+  }
+
+  function updateSrProgress(item) {
+    const identifiedQty = _srEntries.reduce((s, e) => s + (e.qty || 1), 0);
+    const total = item.totalQty;
+    const pct = total > 0 ? Math.round((identifiedQty / total) * 100) : 0;
+    const bar = document.getElementById('srProgressBar');
+    const label = document.getElementById('srProgressLabel');
+    const pctEl = document.getElementById('srProgressPct');
+    if (bar) { bar.style.width = pct + '%'; bar.style.background = pct >= 100 ? '#16a34a' : '#d97706'; }
+    if (label) label.textContent = identifiedQty + ' / ' + total + ' ' + item.unit + ' identificado(s)';
+    if (pctEl) pctEl.textContent = pct + '%';
+  }
+
+  // ── Save handler ──────────────────────────────────────────────────────
+  async function salvarLiberacao() {
+    if (!_srCurrentId) return;
+    const item = _serialPendingData.find(p => p.id === _srCurrentId);
+    if (!item) return;
+
+    let entries;
+
+    if (item.controlType === 'serie') {
+      // Sync any unsaved input values from DOM
+      document.querySelectorAll('.sr-row-input').forEach(inp => {
+        const idx = parseInt(inp.getAttribute('data-idx'));
+        if (!isNaN(idx)) _srRows[idx] = inp.value.trim();
+      });
+
+      // Validate: no blanks
+      const blankCount = _srRows.filter(r => !r.trim()).length;
+      if (blankCount > 0) {
+        showEstoqueToast('Preencha todos os ' + blankCount + ' número(s) de série em branco.', 'error');
+        return;
+      }
+
+      // Validate: no duplicates (case-insensitive)
+      const seen = new Set();
+      for (const r of _srRows) {
+        const key = r.trim().toLowerCase();
+        if (seen.has(key)) {
+          showEstoqueToast('Número de série duplicado detectado: "' + r.trim() + '". Corrija antes de salvar.', 'error');
+          return;
+        }
+        seen.add(key);
+      }
+
+      entries = _srRows.map(number => ({ number: number.trim(), qty: 1 }));
+    } else {
+      if (_srEntries.length === 0) {
+        showEstoqueToast('Adicione ao menos um número de lote antes de salvar.', 'error');
+        return;
+      }
+      entries = _srEntries;
+    }
+
+    const btn = document.getElementById('srSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+    try {
+      const res = await fetch('/estoque/api/serial-release', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingId: _srCurrentId, entries })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        closeModal('serialReleaseModal');
+        const status = data.status;
+        const msg = status === 'complete'
+          ? '✅ Todos os itens identificados! Liberação concluída.'
+          : '📋 Identificações salvas (' + data.identifiedQty + '/' + data.totalQty + '). Liberação parcial.';
+        showEstoqueToast(msg, status === 'complete' ? 'success' : 'info');
+        setTimeout(() => location.reload(), 1400);
+      } else {
+        showEstoqueToast(data.error || 'Erro ao salvar', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Salvar Identificações';
+      }
+    } catch(e) {
+      showEstoqueToast('Erro de conexão', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save"></i> Salvar Identificações';
+    }
+  }
+
+  function viewAlmoxarifadoEstoque(almId, almName, almCode) {
+    const items = allStockItemsData.filter(s => {
+      // alm1 is the default warehouse — items without almoxarifadoId belong to it
+      const itemAlm = s.almoxarifadoId || 'alm1';
+      return itemAlm === almId;
+    });
+
+    document.getElementById('almEstoqueTitle').innerHTML =
+      '<i class="fas fa-warehouse" style="margin-right:8px;color:#1B4F72;"></i>' +
+      (almCode ? almCode + ' — ' : '') + almName;
+    document.getElementById('almEstoqueSubtitle').textContent =
+      items.length + ' item(s) de estoque neste almoxarifado';
+
+    const tbody = document.getElementById('almEstoqueBody');
+    const empty = document.getElementById('almEstoqueEmpty');
+
+    if (items.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      const statusColors = { critical: '#dc2626', normal: '#16a34a', purchase_needed: '#d97706', manufacture_needed: '#7c3aed' };
+      const statusLabels = { critical: 'Crítico', normal: 'Normal', purchase_needed: 'Nec. Compra', manufacture_needed: 'Nec. Manufatura' };
+      tbody.innerHTML = items.map(s => {
+        const snCount = serialNumbersData.filter(sn => sn.itemCode === s.code).length;
+        const sc = statusColors[s.stockStatus] || '#6c757d';
+        const sl = statusLabels[s.stockStatus] || s.stockStatus || '—';
+        return '<tr>' +
+          '<td style="font-family:monospace;font-size:12px;font-weight:700;color:#1B4F72;">' + (s.code || '—') + '</td>' +
+          '<td style="font-weight:600;color:#374151;">' + s.name + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (s.unit || 'un') + '</td>' +
+          '<td style="font-weight:700;color:#1B4F72;">' + (s.currentQty !== undefined ? s.currentQty : s.quantity || 0) + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (s.minQty || 0) + '</td>' +
+          '<td><span style="font-size:11px;font-weight:700;color:' + sc + ';">' + sl + '</span></td>' +
+          '<td style="font-size:12px;color:#7c3aed;">' + (snCount > 0 ? snCount + ' S/N' : '—') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    openModal('almoxarifadoEstoqueModal');
+  }
+
+  function editarAlmoxarifado(almId) {
+    const alm = allAlmData.find(function(a) { return a.id === almId; });
+    if (!alm) { showEstoqueToast('Almoxarifado não encontrado', 'error'); return; }
+    const modal = document.getElementById('editAlmoxarifadoModal');
+    if (!modal) return;
+    const idField = modal.querySelector('.almEdit-id');
+    if (idField) idField.value = alm.id;
+    const nameField = modal.querySelector('[data-field="name"]') || modal.querySelector('input[type="text"]');
+    if (nameField) nameField.value = alm.name || '';
+    modal.setAttribute('data-alm-id', almId);
+    openModal('editAlmoxarifadoModal');
+  }
+
+  // ── Almoxarifado Locations ─────────────────────────────────────────────────
+  let _currentAlmId = null;
+  let _currentAlmName = null;
+  let _almLocationsCache = almoxarifadoLocationsData.slice();
+
+  function openAlmLocationsModal(almId, almName) {
+    _currentAlmId = almId;
+    _currentAlmName = almName;
+    document.getElementById('almLocationsTitle').innerHTML =
+      '<i class="fas fa-map-marker-alt" style="margin-right:8px;color:#7c3aed;"></i>Endereços — ' + almName;
+    document.getElementById('newLocCode').value = '';
+    document.getElementById('newLocDesc').value = '';
+    renderAlmLocationsList();
+    openModal('almLocationsModal');
+  }
+
+  function renderAlmLocationsList() {
+    const locs = _almLocationsCache.filter(l => l.almoxarifadoId === _currentAlmId);
+    const container = document.getElementById('almLocationsList');
+    if (locs.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;"><i class="fas fa-map-marker-alt" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.3;"></i>Nenhum endereço cadastrado.</div>';
+      return;
+    }
+    container.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;">' +
+      locs.map(l => '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;">' +
+        '<div>' +
+          '<span style="font-family:monospace;font-weight:700;color:#1B4F72;margin-right:10px;">' + l.code + '</span>' +
+          '<span style="font-size:13px;color:#374151;">' + (l.description || '—') + '</span>' +
+        '</div>' +
+        '<span style="font-size:11px;color:' + (l.status === 'active' ? '#16a34a' : '#6c757d') + ';font-weight:600;">' + (l.status === 'active' ? 'Ativo' : 'Inativo') + '</span>' +
+      '</div>').join('') + '</div>';
+  }
+
+  async function salvarAlmLocation() {
+    const code = document.getElementById('newLocCode')?.value?.trim();
+    const description = document.getElementById('newLocDesc')?.value?.trim() || '';
+    if (!code) { showEstoqueToast('Informe o código do endereço!', 'error'); return; }
+    if (!_currentAlmId) { showEstoqueToast('Almoxarifado não selecionado!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/warehouse-location/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ almoxarifadoId: _currentAlmId, code, description })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        _almLocationsCache.push(data.location);
+        document.getElementById('newLocCode').value = '';
+        document.getElementById('newLocDesc').value = '';
+        renderAlmLocationsList();
+        showEstoqueToast('✅ Endereço cadastrado!');
+      } else {
+        showEstoqueToast(data.error || 'Erro ao salvar endereço', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Transfer address population ────────────────────────────────────────────
+  function loadTrfAddresses(side) {
+    const almSel = document.getElementById(side === 'origem' ? 'trfOrigem' : 'trfDestino');
+    const addrSel = document.getElementById(side === 'origem' ? 'trfEnderecoOrigem' : 'trfEnderecoDestino');
+    if (!almSel || !addrSel) return;
+    const almId = almSel.value;
+    const locs = _almLocationsCache.filter(l => l.almoxarifadoId === almId && l.status !== 'inactive');
+    addrSel.innerHTML = '<option value="">— Sem endereço específico —</option>' +
+      locs.map(l => '<option value="' + l.id + '">' + l.code + (l.description ? ' — ' + l.description : '') + '</option>').join('');
+  }
+
+
+  // Abrir liberação S/N baseado no estoque atual — para produtos com controle de série/lote
+  const _allSerialItems = ${JSON.stringify([
+    ...stockItems.filter((s: any) => s.serialControlled).map((s: any) => ({ code: s.code, name: s.name, qty: s.quantity, unit: s.unit, controlType: s.controlType })),
+    ...products.filter((p: any) => p.serialControlled).map((p: any) => ({ code: p.code, name: p.name, qty: p.stockCurrent, unit: p.unit, controlType: p.controlType }))
+  ])};
+
+  function openSerialReleaseByStock() {
+    // Check if there are incomplete serial-controlled items in the queue
+    const incompleteItems = _serialPendingData.filter(p => p.status !== 'complete');
+    if (incompleteItems.length > 0) {
+      const names = incompleteItems.map(p => p.productName + ' (' + p.productCode + ')').join(', ');
+      showEstoqueToast('Conclua a identificação dos itens pendentes antes de liberar mais: ' + names, 'error');
+      return;
+    }
+    if (_allSerialItems.length === 0) {
+      showEstoqueToast('Nenhum item com controle de série/lote encontrado.', 'info');
+      return;
+    }
+    // Build a quick modal or use the existing pending modal
+    const opts = _allSerialItems.map(i => '<option value="' + i.code + '">' + i.name + ' (' + i.code + ') — ' + i.qty + ' ' + i.unit + '</option>').join('');
+    // Create a simple prompt-like modal
+    const existing = document.getElementById('_snByStockModal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = '_snByStockModal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:500px;">' +
+      '<div style="padding:20px 24px;border-bottom:1px solid #f1f3f5;display:flex;align-items:center;justify-content:space-between;">' +
+        '<h3 style="margin:0;font-size:17px;font-weight:700;color:#1B4F72;"><i class="fas fa-barcode" style="margin-right:8px;color:#7c3aed;"></i>Liberar S/N por Estoque</h3>' +
+        '<button onclick="document.getElementById(\\'_snByStockModal\\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">×</button>' +
+      '</div>' +
+      '<div style="padding:24px;">' +
+        '<div class="form-group"><label class="form-label">Produto *</label>' +
+          '<select class="form-control" id="_snByStockProd">' +
+            '<option value="">Selecionar produto...</option>' + opts +
+          '</select>' +
+        '</div>' +
+        '<div style="background:#f5f3ff;border-radius:8px;padding:12px;font-size:12px;color:#6d28d9;">' +
+          '<i class="fas fa-info-circle" style="margin-right:4px;"></i>' +
+          'Serão geradas linhas para cada unidade em estoque do produto selecionado.' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:10px;">' +
+        '<button onclick="document.getElementById(\\'_snByStockModal\\').remove()" class="btn btn-secondary">Cancelar</button>' +
+        '<button onclick="criarPendingPorEstoque()" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Criar Fila de Liberação</button>' +
+      '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  }
+
+  async function criarPendingPorEstoque() {
+    const sel = document.getElementById('_snByStockProd');
+    const code = sel?.value;
+    if (!code) { showEstoqueToast('Selecione um produto!', 'error'); return; }
+    const item = _allSerialItems.find(i => i.code === code);
+    if (!item || item.qty <= 0) { showEstoqueToast('Produto sem estoque!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/pending-serial/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productCode: item.code, productName: item.name, totalQty: item.qty, unit: item.unit, controlType: item.controlType || 'serie' })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        document.getElementById('_snByStockModal')?.remove();
+        showEstoqueToast('✅ Fila criada para ' + item.name + ' (' + item.qty + ' itens)!');
+        // Switch to liberation tab (index 7)
+        document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 7));
+        document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 7));
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(d.error || 'Erro ao criar fila', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  function showEstoqueToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;color:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);display:flex;align-items:center;gap:8px;max-width:380px;transition:opacity 0.3s;';
+    t.style.background = type === 'success' ? '#27AE60' : type === 'error' ? '#E74C3C' : '#2980B9';
+    t.innerHTML = (type === 'success' ? '<i class="fas fa-check-circle"></i>' : type === 'error' ? '<i class="fas fa-exclamation-circle"></i>' : '<i class="fas fa-info-circle"></i>') + ' ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4000);
+  }
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Inline location edit for Liberação S/N table ─────────────────────────
+  function startSnLocationEdit(cell) {
+    if (cell.querySelector('input')) return; // already editing
+    const tr = cell.closest('tr');
+    const snId = tr.dataset.snId;
+    const almId = tr.dataset.almId;
+    const origText = cell.textContent.trim();
+    // Extract the raw location code (strip almoxarifado prefix if present)
+    const dashIdx = origText.indexOf(' - ');
+    const currentCode = (dashIdx >= 0 ? origText.slice(dashIdx + 3) : (origText === '—' ? '' : origText));
+    const alm = allAlmData.find(a => a.id === almId);
+    const almCode = alm ? alm.code : '';
+    const validLocs = _almLocationsCache.filter(l => l.almoxarifadoId === almId && l.status !== 'inactive');
+    const listId = '_snLocList_' + snId;
+    const datalist = document.createElement('datalist');
+    datalist.id = listId;
+    datalist.innerHTML = validLocs.map(l =>
+      '<option value="' + l.code + '">' + (l.description ? l.code + ' — ' + l.description : l.code) + '</option>'
+    ).join('');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentCode;
+    input.setAttribute('list', listId);
+    input.className = 'form-control';
+    input.style.cssText = 'width:160px;font-size:12px;padding:3px 8px;';
+    input.placeholder = 'Ex: A-01-01';
+    cell.textContent = '';
+    cell.style.padding = '6px 16px';
+    cell.appendChild(datalist);
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    // Reset the cell to its original read-only display text
+    function cancelEdit() {
+      _done = true;
+      cell.innerHTML = '';
+      cell.style.padding = '12px 16px';
+      cell.textContent = origText;
+    }
+    // Restore the input so the user can retry after an error (does NOT re-arm blur)
+    function restoreInput() {
+      cell.textContent = '';
+      cell.style.padding = '6px 16px';
+      cell.appendChild(datalist);
+      cell.appendChild(input);
+      input.focus();
+    }
+
+    let _done = false;
+    async function saveSnEdit() {
+      if (_done) return;
+      _done = true;
+      const newCode = input.value.trim();
+      if (newCode.toUpperCase() === currentCode.toUpperCase()) {
+        cancelEdit();
+        return;
+      }
+      // Client-side validation: address must exist in the almoxarifado
+      if (newCode !== '') {
+        const exists = validLocs.some(l => l.code.trim().toUpperCase() === newCode.toUpperCase());
+        if (!exists) {
+          showEstoqueToast('Endereço "' + newCode + '" não encontrado no almoxarifado. Cadastre-o antes de salvar.', 'error');
+          _done = false;
+          restoreInput();
+          return;
+        }
+      }
+      try {
+        const res = await fetch('/estoque/api/serial-location/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ snId, almoxarifadoId: almId, locationCode: newCode }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showEstoqueToast(data.error || 'Erro ao salvar endereço', 'error');
+          _done = false;
+          restoreInput();
+          return;
+        }
+        // Update in-memory cache
+        const sn = serialNumbersData.find(s => s.id === snId);
+        if (sn) sn.location = newCode;
+        const displayVal = newCode === '' ? '—' : (allAlmData.length > 1 ? almCode + ' - ' + newCode : newCode);
+        cell.innerHTML = '';
+        cell.style.padding = '12px 16px';
+        cell.textContent = displayVal;
+        showEstoqueToast('✅ Endereço atualizado!');
+      } catch(e) {
+        showEstoqueToast('Erro de conexão', 'error');
+        _done = false;
+        restoreInput();
+      }
+    }
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveSnEdit();
+      }
+      if (e.key === 'Escape') {
+        cancelEdit();
+      }
+    });
+    input.addEventListener('blur', function() { if (!_done) saveSnEdit(); });
+  }
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ---- SERIAL LIST ----
+  let _serialListCurrentCode = null;
+
+  function openSerialList(itemCode, itemName, controlType) {
+    _serialListCurrentCode = itemCode;
+    _etqSnCurrentCode = itemCode;
+    _etqSnCurrentName = itemName;
+    const serials = serialNumbersData.filter(sn => sn.itemCode === itemCode);
+    document.getElementById('serialListTitle').innerHTML =
+      '<i class="fas ' + (controlType==='lote'?'fa-layer-group':'fa-barcode') + '" style="margin-right:8px;color:#7c3aed;"></i>' +
+      'Lista de ' + (controlType==='lote'?'Números de Lote':'Números de Série');
+    document.getElementById('serialListSubtitle').textContent = itemName + ' (' + itemCode + ') — ' + serials.length + ' registro(s) liberado(s)';
+
+    // ── Pending items section (release queue) ─────────────────────────────
+    const pendingForItem = _serialPendingData.filter(p => p.productCode === itemCode && p.status !== 'complete');
+    const pendingSection = document.getElementById('serialListPendingSection');
+    const pendingBody = document.getElementById('serialListPendingBody');
+    const releaseBtn = document.getElementById('serialListReleaseBtn');
+
+    if (pendingForItem.length > 0) {
+      pendingSection.style.display = 'block';
+      releaseBtn.style.display = 'inline-flex';
+      releaseBtn.setAttribute('data-pending-id', pendingForItem[0].id);
+      const stColor = { complete: '#16a34a', partial: '#2563eb', pending: '#d97706' };
+      const stBg    = { complete: '#f0fdf4', partial: '#eff6ff', pending: '#fffbeb' };
+      const stLabel = { complete: 'Completo', partial: 'Parcial', pending: 'Pendente' };
+      pendingBody.innerHTML = pendingForItem.map(pi => '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;margin-bottom:6px;">' +
+        '<div>' +
+          '<span style="font-size:12px;font-weight:700;color:#1B4F72;">' + pi.productName + '</span>' +
+          '<span style="margin-left:8px;background:' + (stBg[pi.status]||'#fffbeb') + ';color:' + (stColor[pi.status]||'#d97706') + ';padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">' +
+            (stLabel[pi.status]||pi.status) + ' · ' + pi.identifiedQty + '/' + pi.totalQty +
+          '</span>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="openSerialRelease(\\\'' + pi.id + '\\\')">' +
+          '<i class="fas fa-barcode" style="margin-right:4px;"></i>Identificar' +
+        '</button>' +
+      '</div>').join('');
+    } else {
+      pendingSection.style.display = 'none';
+      releaseBtn.removeAttribute('data-pending-id');
+      const stockItem = _allSerialItems.find(i => i.code === itemCode);
+      releaseBtn.style.display = ((stockItem?.qty ?? 0) > 0) ? 'inline-flex' : 'none';
+    }
+
+    // ── Released serials section ──────────────────────────────────────────
+    const tbody = document.getElementById('serialListBody');
+    const empty = document.getElementById('serialListEmpty');
+
+    if (serials.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      const statusLabel = {
+        em_estoque: '<span class="badge badge-success">Em Estoque</span>',
+        separado: '<span class="badge badge-warning">Separado</span>',
+        baixado: '<span class="badge badge-danger">Baixado</span>',
+        em_producao: '<span class="badge" style="background:#eff6ff;color:#2563eb;">Em Produção</span>',
+        pendente_enderecamento: '<span class="badge" style="background:#fffbeb;color:#d97706;" title="Item já em estoque, falta apenas endereçar"><i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>Pendente Endereçamento</span>',
+      };
+      const originLabel = { apontamento: '🔧 Apontamento', planilha: '📋 Planilha', producao: '⚙️ Produção (OP)' };
+      tbody.innerHTML = serials.map(sn => {
+        const dt = new Date(sn.createdAt + 'T00:00:00').toLocaleDateString('pt-BR');
+        return '<tr>' +
+          '<td style="font-family:monospace;font-size:12px;font-weight:700;color:#7c3aed;">' + sn.number + '</td>' +
+          '<td><span class="badge" style="background:' + (sn.type==='serie'||sn.controlType==='serie'?'#ede9fe':'#fef3c7') + ';color:' + (sn.type==='serie'||sn.controlType==='serie'?'#7c3aed':'#d97706') + ';">' + (sn.type==='serie'||sn.controlType==='serie'?'Série':'Lote') + '</span></td>' +
+          '<td style="font-weight:700;color:#374151;">' + (sn.quantity || sn.qty || 1) + '</td>' +
+          '<td>' + (statusLabel[sn.status] || sn.status) + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (originLabel[sn.origin] || sn.origin || '—') + '</td>' +
+          '<td style="font-family:monospace;font-size:11px;color:#1B4F72;">' + (sn.orderCode || '—') + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + dt + '</td>' +
+          '<td style="font-size:12px;color:#6c757d;">' + (sn.createdBy || '—') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    openModal('serialListModal');
+  }
+
+  function openSerialReleaseFromList() {
+    const btn = document.getElementById('serialListReleaseBtn');
+    const pendingId = btn?.getAttribute('data-pending-id');
+    if (pendingId) {
+      closeModal('serialListModal');
+      openSerialRelease(pendingId);
+    } else if (_serialListCurrentCode) {
+      // No pending item — create one from stock
+      const item = _allSerialItems.find(i => i.code === _serialListCurrentCode);
+      if (item) {
+        closeModal('serialListModal');
+        fetch('/estoque/api/pending-serial/create', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productCode: item.code, productName: item.name, totalQty: item.qty, unit: item.unit, controlType: item.controlType || 'serie' })
+        }).then(r => r.json()).then(d => {
+          if (d.ok) { showEstoqueToast('Fila criada!'); setTimeout(() => location.reload(), 600); }
+          else showEstoqueToast(d.error || 'Erro', 'error');
+        }).catch(() => showEstoqueToast('Erro de conexão', 'error'));
+      }
+    }
+  }
+
+  // ---- KARDEX ----
+  function filterKardex() {
+    const search = document.getElementById('kardexSearch').value.toLowerCase();
+    const movType = document.getElementById('kardexTypeFilter').value;
+    const itemCode = document.getElementById('kardexItemFilter').value;
+    document.querySelectorAll('#kardexBody tr').forEach(row => {
+      const matchSearch = !search || (row.dataset.search || '').includes(search);
+      const matchType = !movType || row.dataset.movtype === movType;
+      const matchItem = !itemCode || row.dataset.itemcode === itemCode;
+      row.style.display = (matchSearch && matchType && matchItem) ? '' : 'none';
+    });
+  }
+
+  function filterKardexByItem(itemCode, itemName) {
+    // Switch to kardex tab
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 4));
+    document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 4));
+    // Set filter
+    const sel = document.getElementById('kardexItemFilter');
+    if (sel) { for (let i=0; i<sel.options.length; i++) { if (sel.options[i].value===itemCode) { sel.selectedIndex=i; break; } } }
+    // Show banner
+    document.getElementById('kardexFilterBanner').style.display = 'block';
+    document.getElementById('kardexFilterLabel').textContent = itemName + ' (' + itemCode + ')';
+    filterKardex();
+    document.getElementById('tabKardex')?.scrollIntoView({ behavior:'smooth' });
+  }
+
+  function clearKardexFilters() {
+    document.getElementById('kardexSearch').value = '';
+    document.getElementById('kardexTypeFilter').value = '';
+    document.getElementById('kardexItemFilter').value = '';
+    document.getElementById('kardexFilterBanner').style.display = 'none';
+    filterKardex();
+  }
+
+  function openKardexDetail(jsonStr) {
+    let k;
+    try { k = JSON.parse(jsonStr); } catch(e) { return; }
+    const isEntrada = k.movType === 'entrada';
+    const dt = new Date(k.date);
+    const dtStr = dt.toLocaleDateString('pt-BR') + ' às ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const body = document.getElementById('kardexDetailBody');
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+      '<div style="grid-column:span 2;background:' + (isEntrada?'#f0fdf4':'#fef2f2') + ';border-radius:8px;padding:12px;text-align:center;border-left:4px solid ' + (isEntrada?'#16a34a':'#dc2626') + ';">' +
+        '<div style="font-size:28px;font-weight:800;color:' + (isEntrada?'#16a34a':'#dc2626') + ';">' + (isEntrada?'+':'-') + k.quantity + '</div>' +
+        '<div style="font-size:13px;color:' + (isEntrada?'#16a34a':'#dc2626') + ';font-weight:600;">' + (isEntrada?'ENTRADA':'SAÍDA') + '</div>' +
+      '</div>' +
+      row('Nº Série / Lote', '<span style="font-family:monospace;font-weight:700;color:#7c3aed;">' + k.serialNumber + '</span>') +
+      row('Item', k.itemName + ' <span style="font-family:monospace;font-size:11px;color:#9ca3af;">(' + k.itemCode + ')</span>') +
+      row('Data / Hora', dtStr) +
+      row('Usuário', '<i class="fas fa-user" style="margin-right:4px;color:#6c757d;"></i>' + k.user) +
+      row('Descrição', k.description) +
+      (k.orderCode ? row('Ordem de Produção', '<span style="font-family:monospace;font-size:12px;background:#e8f4fd;padding:2px 8px;border-radius:4px;color:#1B4F72;">' + k.orderCode + '</span>') : '') +
+      (k.pedido ? row('Pedido de Venda', '<span style="font-weight:600;color:#2980B9;">' + k.pedido + '</span>') : '') +
+      (k.nf ? row('Nota Fiscal', '<span style="font-weight:600;color:#27AE60;">' + k.nf + '</span>') : '') +
+      '</div>';
+    openModal('kardexDetailModal');
+  }
+
+  function row(label, value) {
+    return '<div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;">' +
+      '<div style="font-size:11px;color:#9ca3af;font-weight:600;margin-bottom:3px;">' + label.toUpperCase() + '</div>' +
+      '<div style="font-size:13px;color:#374151;">' + value + '</div>' +
+    '</div>';
+  }
+
+  // ---- TRANSFERÊNCIAS ----
+  function addTrfItem() {
+    const list = document.getElementById('trfItemsList');
+    const div = document.createElement('div');
+    div.className = 'trf-item';
+    div.style.cssText = 'display:grid;grid-template-columns:3fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+    div.innerHTML = '<select class="form-control" style="font-size:12px;">' +
+      '<option value="">Selecionar item...</option>' +
+      '</select>' +
+      '<input class="form-control" type="number" placeholder="Qtd" min="1">' +
+      '<input class="form-control" type="text" placeholder="Nº Série / Lote">' +
+      '<button class="btn btn-danger btn-sm" onclick="this.closest(\\'.trf-item\\').remove()"><i class="fas fa-trash"></i></button>';
+    list.appendChild(div);
+  }
+
+  async function saveTransferencia() {
+    const origemId = document.getElementById('trfOrigem')?.value;
+    const destinoId = document.getElementById('trfDestino')?.value;
+    const enderecoOrigemId = document.getElementById('trfEnderecoOrigem')?.value || '';
+    const enderecoDestinoId = document.getElementById('trfEnderecoDestino')?.value || '';
+    const solicitante = document.getElementById('trfSolicitante')?.value || '';
+    const separador = document.getElementById('trfSeparador')?.value || '';
+    const custodio = document.getElementById('trfCustodio')?.value || '';
+    const dataPrevista = document.getElementById('trfDataPrevista')?.value || '';
+    const obs = document.getElementById('trfObs')?.value || '';
+
+    if (!origemId) { showEstoqueToast('Selecione o almoxarifado de origem!', 'error'); return; }
+    if (!destinoId) { showEstoqueToast('Selecione o almoxarifado de destino!', 'error'); return; }
+    if (origemId === destinoId) { showEstoqueToast('Origem e destino não podem ser o mesmo almoxarifado!', 'error'); return; }
+
+    const itemRows = document.querySelectorAll('#trfItemsList .trf-item');
+    const items = [];
+    for (const row of itemRows) {
+      const sel = row.querySelector('select');
+      const qtyInput = row.querySelector('input[type="number"]');
+      const snInput = row.querySelector('input[type="text"]');
+      const code = sel?.value;
+      const qty = parseInt(qtyInput?.value || '0') || 0;
+      const serial = snInput?.value?.trim() || '';
+      if (code && qty > 0) items.push({ code, qty, serial });
+    }
+    if (items.length === 0) { showEstoqueToast('Adicione ao menos um item!', 'error'); return; }
+
+    const origemName = allAlmData.find(a => a.id === origemId)?.name || origemId;
+    const destinoName = allAlmData.find(a => a.id === destinoId)?.name || destinoId;
+
+    try {
+      const res = await fetch('/estoque/api/transferencia/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origemId, destinoId, origemName, destinoName, enderecoOrigemId, enderecoDestinoId, solicitante, separador, custodio, dataPrevista, obs, items })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showEstoqueToast('✅ Transferência criada com sucesso!');
+        closeModal('novaTransferenciaModal');
+        setTimeout(() => location.reload(), 900);
+      } else {
+        showEstoqueToast(data.error || 'Erro ao criar transferência', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  function openTransfDetail(id) {
+    alert('Detalhes da transferência ' + id + '\\n\\nEm uma implementação completa, abrirá um modal com:\\n- Itens detalhados\\n- Histórico de status\\n- Documentos anexos\\n- Assinatura digital do custodiante');
+  }
+
+
+  async function salvarItemEstoque() {
+    const name = document.getElementById('item_nome')?.value || '';
+    const code = document.getElementById('item_codigo')?.value || '';
+    const unit = document.getElementById('item_unidade')?.value || 'un';
+    const category = document.getElementById('item_categoria')?.value || '';
+    const currentQty = document.getElementById('item_qty_atual')?.value || 0;
+    const minQty = document.getElementById('item_qty_min')?.value || 0;
+    const location = document.getElementById('item_localizacao')?.value || '';
+    if (!name) { showEstoqueToast('Informe o nome!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/item/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, code, unit, category, currentQty, minQty, location })
+      });
+      const data = await res.json();
+      if (data.ok) { showEstoqueToast('✅ Item cadastrado!'); closeModal('novoItemModal'); setTimeout(() => location.reload(), 800); }
+      else showEstoqueToast(data.error || 'Erro ao cadastrar', 'error');
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+  async function deleteItemEstoque(id) {
+    if (!confirm('Excluir este item do estoque?')) return;
+    try {
+      const res = await fetch('/estoque/api/item/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) { showEstoqueToast('Item excluído!'); setTimeout(() => location.reload(), 500); }
+      else showEstoqueToast(data.error || 'Erro ao excluir', 'error');
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Toast alias ───────────────────────────────────────────────────────────
+  function showToast(msg, type) { showEstoqueToast(msg, type || 'success'); }
+
+  async function salvarAlmoxarifado() {
+    const name = document.getElementById('alm_nome')?.value?.trim() || '';
+    const code = document.getElementById('alm_codigo')?.value?.trim() || '';
+    const city = document.getElementById('alm_cidade')?.value?.trim() || '';
+    const state = document.getElementById('alm_estado')?.value?.trim() || '';
+    const responsible = document.getElementById('alm_responsavel')?.value || '';
+    const custodian = document.getElementById('alm_custodiante')?.value || '';
+    const notes = document.getElementById('alm_obs')?.value?.trim() || '';
+    if (!name) { showEstoqueToast('Informe o nome do almoxarifado!', 'error'); return; }
+    if (!code) { showEstoqueToast('Informe o código do almoxarifado!', 'error'); return; }
+    try {
+      const res = await fetch('/estoque/api/warehouse/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, code, city, state, responsible, custodian, notes })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showEstoqueToast('✅ Almoxarifado criado com sucesso!');
+        closeModal('novoAlmoxarifadoModal');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showEstoqueToast(data.error || 'Erro ao criar almoxarifado', 'error');
+      }
+    } catch(e) { showEstoqueToast('Erro de conexão', 'error'); }
+  }
+
+  // ── Abertura automática via querystring (?tab=liberacao_sn&code=...) ───────
+  function openSerialListFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const code = params.get('code');
+    if (tab === 'liberacao_sn') {
+      document.querySelectorAll('[data-tab-group="estoque"] .tab-btn').forEach((b, i) => b.classList.toggle('active', i === 7));
+      document.querySelectorAll('[data-tab-group="estoque"] .tab-content').forEach((c, i) => c.classList.toggle('active', i === 7));
+      if (code) {
+        const pending = _serialPendingData.find(p => p.productCode === code && p.status !== 'complete');
+        if (pending) {
+          // Direct path: open release modal when a pending item already exists
+          setTimeout(() => openSerialRelease(pending.id), 50);
+        } else {
+          const item = _allSerialItems.find(i => i.code === code);
+          if (item) {
+            // Small delay so DOM tab switch is applied before modal opens
+            setTimeout(() => openSerialList(item.code, item.name, item.controlType || 'serie'), 50);
+          }
+        }
+      }
+    }
+  }
+  openSerialListFromUrl();
+
+  // ── Inline edit: Endereço no Estoque (duplo clique) ─────────────────────────
+  function snStartEditLocation(td) {
+    // Prevent opening multiple editors at once
+    if (td.querySelector('input')) return;
+    const snId  = td.dataset.snId;
+    const almId = td.dataset.snAlm || 'alm1';
+    const curLoc = td.dataset.snLoc || '';
+
+    // Determine hint: if multiple warehouses, show expected format
+    const alm = allAlmData.find(function(a) { return a.id === almId; });
+    const almCode = alm ? (alm.code || almId) : almId;
+    const multiAlm = allAlmData.length > 1;
+    const placeholder = multiAlm ? almCode + ' - A-01-01' : 'Ex: A-01-01';
+
+    // Store context in data attributes — no JSON.stringify in onclick handlers
+    td.innerHTML =
+      '<div class="sn-loc-edit" data-sn-id="' + _escAttr(snId) + '" data-sn-alm="' + _escAttr(almId) + '" data-sn-alm-code="' + _escAttr(almCode) + '" style="display:flex;gap:6px;align-items:center;">' +
+        '<input id="snLocInput_' + _escAttr(snId) + '" type="text" value="' + _escAttr(curLoc) + '"' +
+          ' placeholder="' + _escAttr(placeholder) + '"' +
+          ' style="font-size:12px;border:1px solid #7c3aed;border-radius:4px;padding:3px 7px;min-width:120px;outline:none;"' +
+          ' onkeydown="snLocKeydown(event, this)"' +
+        '>' +
+        '<button onclick="snConfirmLocationBtn(this)" title="Salvar"' +
+          ' style="background:#7c3aed;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✓</button>' +
+        '<button onclick="snCancelEditBtn(this)" title="Cancelar"' +
+          ' style="background:#e9ecef;color:#374151;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✕</button>' +
+      '</div>';
+
+    const input = document.getElementById('snLocInput_' + snId);
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function _escAttr(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function _snGetEditCtx(el) {
+    const container = el.closest('.sn-loc-edit');
+    if (!container) return null;
+    return {
+      snId:    container.dataset.snId,
+      almId:   container.dataset.snAlm,
+      almCode: container.dataset.snAlmCode,
+      td:      container.parentElement,
+      input:   container.querySelector('input'),
+    };
+  }
+
+  function snLocKeydown(e, input) {
+    if (e.key === 'Enter')  { e.preventDefault(); snConfirmLocationBtn(input); }
+    if (e.key === 'Escape') { e.preventDefault(); snCancelEditBtn(input); }
+  }
+
+  function snCancelEditBtn(el) {
+    const ctx = _snGetEditCtx(el);
+    if (!ctx) return;
+    const td = ctx.td;
+    if (!td) return;
+    const curLoc = td.dataset.snLoc || '';
+    const almId  = td.dataset.snAlm  || 'alm1';
+    const alm    = allAlmData.find(function(a) { return a.id === almId; });
+    const almCode = alm ? (alm.code || almId) : almId;
+    const multiAlm = allAlmData.length > 1;
+    td.innerHTML = curLoc ? (multiAlm ? almCode + ' - ' + curLoc : curLoc) : '—';
+  }
+
+  async function snConfirmLocationBtn(el) {
+    const ctx = _snGetEditCtx(el);
+    if (!ctx) return;
+    const { snId, almId, almCode, td, input } = ctx;
+    if (!td || !input) return;
+
+    let raw = input.value.trim();
+    // Support both "ALM_001 - A-01-01" and plain "A-01-01"
+    const sep = raw.indexOf(' - ');
+    const locationCode = sep >= 0 ? raw.substring(sep + 3).trim() : raw;
+
+    if (!locationCode) {
+      showEstoqueToast('Informe o código do endereço.', 'error');
+      input.focus(); return;
+    }
+
+    // Validate against server (almoxarifado locations)
+    try {
+      const vRes = await fetch(
+        '/estoque/api/validate-location?almoxarifadoId=' + encodeURIComponent(almId) +
+        '&code=' + encodeURIComponent(locationCode)
+      );
+      const vData = await vRes.json().catch(() => ({}));
+      if (!vRes.ok || !vData.valid) {
+        const msg = vData.error ||
+          'Endereço "' + locationCode + '" não encontrado no almoxarifado "' + almCode + '". ' +
+          'Cadastre-o primeiro em Almoxarifados → Endereços.';
+        showEstoqueToast(msg, 'error');
+        input.focus(); return;
+      }
+    } catch {
+      showEstoqueToast('Erro ao validar endereço. Tente novamente.', 'error');
+      input.focus(); return;
+    }
+
+    // Persist the new location
+    try {
+      const pRes = await fetch('/estoque/api/serial-number/' + encodeURIComponent(snId) + '/location', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ almoxarifadoId: almId, location: locationCode })
+      });
+      const pData = await pRes.json().catch(() => ({}));
+      if (!pRes.ok || !pData.ok) {
+        showEstoqueToast(pData.error || 'Erro ao salvar endereço.', 'error');
+        input.focus(); return;
+      }
+    } catch {
+      showEstoqueToast('Erro de conexão ao salvar endereço.', 'error');
+      input.focus(); return;
+    }
+
+    // Update DOM state
+    const multiAlm = allAlmData.length > 1;
+    td.dataset.snLoc = locationCode;
+    td.innerHTML = multiAlm ? almCode + ' - ' + locationCode : locationCode;
+    showEstoqueToast('✅ Endereço atualizado!', 'success');
+  }
+  </script>
+  `
+  return c.html(layout('Estoque', content, 'estoque', userInfo))
+})
+
+
+// ── API: POST /estoque/api/item/create ───────────────────────────────────────
+app.post('/api/item/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name) return err(c, 'Nome obrigatório')
+  const id = genId('stk')
+  const currentQty = parseFloat(body.currentQty) || 0
+  const minQty     = parseFloat(body.minQty) || 0
+  const maxQty     = parseFloat(body.maxQty) || 0
+
+  const item = {
+    id, name: body.name, code: body.code || id.slice(-6).toUpperCase(),
+    unit: body.unit || 'un', category: body.category || '',
+    quantity: currentQty,     // coluna canônica do schema original
+    currentQty,               // alias mantido em memória para compatibilidade
+    minQty,
+    maxQty,
+    min_quantity: minQty,     // coluna canônica do schema original
+    location: body.location || '',
+    status: 'normal',
+    stockStatus: 'normal',
+    almoxarifadoId: body.almoxarifadoId || '',
+    createdAt: new Date().toISOString(),
+  }
+
+  // D1-first: inserir antes de atualizar memória (produção)
+  if (db && userId !== 'demo-tenant') {
+    // ── Auto-migração defensiva: garante colunas que o código precisa ──────
+    // Lê as colunas existentes e adiciona as faltantes, retornando o set atual
+    let existingCols: Set<string> = new Set()
+    try {
+      const tableInfo = await db.prepare('PRAGMA table_info(stock_items)').all()
+      const colsList = ((tableInfo.results ?? []) as any[]).map((r: any) => r.name as string)
+      existingCols = new Set(colsList)
+
+      const colsToAdd: [string, string][] = [
+        ['user_id',     'TEXT'],
+        ['current_qty', 'REAL DEFAULT 0'],
+        ['min_qty',     'REAL DEFAULT 0'],
+        ['max_qty',     'REAL DEFAULT 0'],
+      ]
+      for (const [col, def] of colsToAdd) {
+        if (!existingCols.has(col)) {
+          try {
+            await db.prepare(`ALTER TABLE stock_items ADD COLUMN ${col} ${def}`).run()
+            existingCols.add(col)
+            console.log(`[ESTOQUE][ITEMS] Coluna ${col} adicionada à stock_items`)
+          } catch (ae: any) {
+            if (ae.message?.includes('duplicate column')) {
+              existingCols.add(col) // já existia, ignorar
+            } else {
+              console.warn(`[ESTOQUE][ITEMS] Aviso ao adicionar ${col}:`, ae.message)
+            }
+          }
+        }
+      }
+    } catch (migrErr: any) {
+      console.warn('[ESTOQUE][ITEMS] Auto-migração falhou (continuando):', migrErr.message)
+    }
+
+    // ── Montar payload de INSERT apenas com colunas que existem no schema ─
+    // Sempre inclui as colunas do schema original (0001):
+    //   id, empresa_id, name, code, unit, category, location, status, quantity, min_quantity
+    // Inclui colunas extras apenas se confirmadas na tabela:
+    const insertData: Record<string, any> = {
+      id,
+      empresa_id:   empresaId,
+      name:         item.name,
+      code:         item.code,
+      unit:         item.unit,
+      category:     item.category,
+      location:     item.location,
+      status:       'normal',
+      // Colunas canônicas (schema original migration 0001)
+      quantity:     currentQty,
+      min_quantity: minQty,
+    }
+    // Colunas opcionais — incluir somente se existirem
+    if (existingCols.has('user_id'))     insertData['user_id']     = userId
+    if (existingCols.has('current_qty')) insertData['current_qty'] = currentQty
+    if (existingCols.has('min_qty'))     insertData['min_qty']     = minQty
+    if (existingCols.has('max_qty'))     insertData['max_qty']     = maxQty
+
+    const inserted = await dbInsert(db, 'stock_items', insertData)
+
+    if (!inserted) {
+      console.error(`[ESTOQUE][ITEMS][CRÍTICO] Falha ao persistir item ${id} em D1`)
+      return err(c, 'Erro ao salvar item de estoque no banco de dados.', 500)
+    }
+    console.log(`[ESTOQUE][ITEMS] Item ${id} persistido em D1 com sucesso`)
+  }
+
+  // Atualizar memória apenas após sucesso do D1 (ou modo demo/sem db)
+  tenant.stockItems.push(item)
+  markTenantModified(userId)
+  return ok(c, { item })
+})
+
+app.put('/api/item/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id'); const body = await c.req.json().catch(() => null)
+  if (!body) return err(c, 'Dados inválidos')
+  const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
+  if (idx === -1) return err(c, 'Item não encontrado', 404)
+  if (db && userId !== 'demo-tenant') {
+    const currentQty = body.currentQty !== undefined ? parseFloat(body.currentQty) : undefined
+    const minQty     = body.minQty     !== undefined ? parseFloat(body.minQty)     : undefined
+    const maxQty     = body.maxQty     !== undefined ? parseFloat(body.maxQty)     : undefined
+
+    // Verificar colunas existentes antes de atualizar (resiliente a schema drift)
+    let existingCols: Set<string> = new Set()
+    try {
+      const tableInfo = await db.prepare('PRAGMA table_info(stock_items)').all()
+      existingCols = new Set(((tableInfo.results ?? []) as any[]).map((r: any) => r.name as string))
+    } catch { /* ignorar — dbUpdate filtra undefined */ }
+
+    await dbUpdate(db, 'stock_items', id, userId, {
+      name:         body.name,
+      location:     body.location,
+      // Colunas canônicas — sempre existem
+      quantity:     currentQty,
+      min_quantity: minQty,
+      // Colunas alias — incluir somente se existirem
+      current_qty:  existingCols.has('current_qty') ? currentQty : undefined,
+      min_qty:      existingCols.has('min_qty')     ? minQty     : undefined,
+      max_qty:      existingCols.has('max_qty')     ? maxQty     : undefined,
+    })
+  }
+  Object.assign(tenant.stockItems[idx], body)
+  markTenantModified(userId)
+  return ok(c, { item: tenant.stockItems[idx] })
+})
+
+app.delete('/api/item/:id', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const id = c.req.param('id')
+  const idx = tenant.stockItems.findIndex((s: any) => s.id === id)
+  if (idx === -1) return err(c, 'Item não encontrado', 404)
+  if (db && userId !== 'demo-tenant') await dbDelete(db, 'stock_items', id, userId)
+  tenant.stockItems.splice(idx, 1)
+  markTenantModified(userId)
+  return ok(c)
+})
+
+app.get('/api/items', (c) => ok(c, { items: getCtxTenant(c).stockItems }))
+
+// Kardex / Movimentação
+app.post('/api/movement', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.itemId) return err(c, 'Dados inválidos')
+  const item = tenant.stockItems.find((s: any) => s.id === body.itemId)
+  if (!item) return err(c, 'Item não encontrado', 404)
+  const qty = parseFloat(body.qty) || 0
+  if (body.type === 'entrada') { item.currentQty = (item.currentQty || 0) + qty }
+  else if (body.type === 'saida') { item.currentQty = Math.max(0, (item.currentQty || 0) - qty) }
+  const movement = {
+    id: genId('mv'), itemId: body.itemId, itemName: item.name,
+    type: body.type, qty, reason: body.reason || '', user: body.user || '',
+    createdAt: new Date().toISOString(),
+  }
+  if (!tenant.stockMovements) (tenant as any).stockMovements = []
+  ;(tenant as any).stockMovements.push(movement)
+  return ok(c, { movement, newQty: item.currentQty })
+})
+
+// ── API: POST /estoque/api/serial-release ────────────────────────────────────
+// Recebe entries (número + qty) para um serialPendingItem e atualiza seu status
+app.post('/api/serial-release', async (c) => {
+  const tenant = getCtxTenant(c)
+  const userId = getCtxUserId(c)
+  const empresaId = getCtxEmpresaId(c)
+  const db = getCtxDB(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.pendingId || !Array.isArray(body.entries)) return err(c, 'Dados inválidos')
+
+  // Garantir arrays existem
+  if (!Array.isArray((tenant as any).serialPendingItems)) (tenant as any).serialPendingItems = []
+  if (!Array.isArray((tenant as any).serialNumbers))     (tenant as any).serialNumbers = []
+
+  const idx = (tenant as any).serialPendingItems.findIndex((p: any) => p.id === body.pendingId)
+  if (idx === -1) return err(c, 'Item de liberação não encontrado', 404)
+
+  const pi = (tenant as any).serialPendingItems[idx]
+
+  // ── Server-side validation ────────────────────────────────────────────────
+  // Reject blank serial numbers
+  const blankEntry = body.entries.find((e: any) => !e.number || !String(e.number).trim())
+  if (blankEntry) return err(c, 'Número de série em branco não é permitido')
+
+  // Reject duplicates within the submitted entries (case-insensitive)
+  const submittedNums = body.entries.map((e: any) => String(e.number).trim().toLowerCase())
+  const submittedOriginal = body.entries.map((e: any) => String(e.number).trim())
+  const submittedSet = new Set<string>()
+  for (let i = 0; i < submittedNums.length; i++) {
+    const n = submittedNums[i]
+    if (submittedSet.has(n)) return err(c, `Número de série duplicado nos dados enviados: "${submittedOriginal[i]}"`)
+    submittedSet.add(n)
+  }
+
+  // Reject duplicates against existing queue (cross-item, optional but low-effort)
+  const allExistingNums = new Set<string>(
+    ((tenant as any).serialPendingItems as any[])
+      .filter((_p: any, i: number) => i !== idx)
+      .flatMap((p: any) => (p.entries || []).map((e: any) => String(e.number).trim().toLowerCase()))
+  )
+  for (let i = 0; i < submittedNums.length; i++) {
+    if (allExistingNums.has(submittedNums[i])) return err(c, `Número de série já em uso em outro item da fila: "${submittedOriginal[i]}"`)
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Merge entries — não duplicar numbers (replace all for serie type to support re-saves)
+  const existingNumbers = new Set((pi.entries || []).map((e: any) => String(e.number).trim().toLowerCase()))
+  const newEntries: any[] = []
+  for (const entry of body.entries) {
+    const normalizedNum = String(entry.number).trim()
+    const normalizedKey = normalizedNum.toLowerCase()
+    if (existingNumbers.has(normalizedKey)) continue
+    newEntries.push({ number: normalizedNum, qty: parseInt(entry.qty) || 1, addedAt: new Date().toISOString() })
+    existingNumbers.add(normalizedKey)
+
+    // Registrar no serialNumbers do tenant (tenant-aware + location-aware)
+    // almoxarifadoId falls back to 'alm1' (default warehouse) if not set on pending item
+    const snId = genId('sn')
+    const snQty = parseInt(entry.qty) || 1
+    const snAlmox = pi.almoxarifadoId || 'alm1'
+    const snLocation = pi.location || ''
+    const snCreatedAt = new Date().toISOString()
+    ;(tenant as any).serialNumbers.push({
+      id: snId,
+      itemCode: pi.productCode,
+      number: normalizedNum,
+      qty: snQty,
+      controlType: pi.controlType,
+      status: 'em_estoque',
+      origin: 'manual',
+      createdAt: snCreatedAt,
+      userId,
+      empresaId,
+      almoxarifadoId: snAlmox,
+      location: snLocation,
+    })
+    // Persist each serial number to D1 so it survives worker restarts
+    if (db && userId !== 'demo-tenant') {
+      try {
+        await db.prepare(
+          `INSERT OR IGNORE INTO serial_numbers (id, item_code, item_name, number, type, quantity, status, origin, created_at, created_by, user_id, empresa_id, almoxarifado_id, location)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        ).bind(
+          snId, pi.productCode, pi.productName || null, normalizedNum,
+          pi.controlType, snQty, 'em_estoque', 'manual',
+          snCreatedAt, userId, userId, empresaId, snAlmox, snLocation
+        ).run()
+      } catch (e) {
+        console.warn('[ESTOQUE][SERIAL-RELEASE] D1 insert serial_numbers failed:', (e as any).message)
+      }
+    }
+  }
+
+  pi.entries = [...(pi.entries || []), ...newEntries]
+  pi.identifiedQty = pi.entries.reduce((s: number, e: any) => s + (parseInt(e.qty) || 1), 0)
+
+  // Atualizar status
+  if (pi.identifiedQty >= pi.totalQty) {
+    pi.status = 'done'
+  } else if (pi.identifiedQty > 0) {
+    pi.status = 'partial'
+  } else {
+    pi.status = 'pending'
+  }
+
+  // Persist serial_pending_items progress to D1 so it survives worker restarts
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `UPDATE serial_pending_items SET entries_json = ?, identified_qty = ?, status = ? WHERE id = ? AND user_id = ?`
+      ).bind(
+        JSON.stringify(pi.entries), pi.identifiedQty, pi.status, pi.id, userId
+      ).run()
+    } catch (e) {
+      console.warn('[ESTOQUE][SERIAL-RELEASE] D1 update serial_pending_items failed:', (e as any).message)
+    }
+  }
+
+  return ok(c, {
+    status: pi.status,
+    identifiedQty: pi.identifiedQty,
+    totalQty: pi.totalQty,
+    newAdded: newEntries.length,
+  })
+})
+
+// ── API: GET /estoque/api/pending-serial ─────────────────────────────────────
+// Lista itens aguardando liberação de série/lote
+app.get('/api/pending-serial', (c) => {
+  const tenant = getCtxTenant(c)
+  return ok(c, { items: (tenant as any).serialPendingItems || [] })
+})
+
+// ── API: POST /estoque/api/warehouse-location/create ─────────────────────────
+app.post('/api/warehouse-location/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.almoxarifadoId || !body.code) return err(c, 'Almoxarifado e código são obrigatórios')
+  if (!Array.isArray((tenant as any).almoxarifadoLocations)) (tenant as any).almoxarifadoLocations = []
+  // Reject duplicate code within same warehouse
+  const codeNorm = String(body.code).trim().toUpperCase()
+  const duplicate = ((tenant as any).almoxarifadoLocations as any[]).find(
+    (l: any) => l.almoxarifadoId === body.almoxarifadoId && String(l.code).trim().toUpperCase() === codeNorm
+  )
+  if (duplicate) return err(c, `Código de endereço já existe neste almoxarifado: "${body.code}"`)
+  const id = genId('loc')
+  const location = {
+    id, almoxarifadoId: body.almoxarifadoId, code: body.code,
+    description: body.description || '', status: 'active',
+    createdAt: new Date().toISOString(),
+  }
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`INSERT INTO almoxarifado_locations (id, user_id, empresa_id, almoxarifado_id, code, description, status) VALUES (?,?,?,?,?,?,?)`)
+        .bind(id, userId, empresaId, body.almoxarifadoId, body.code, body.description || '', 'active').run()
+      console.log(`[ESTOQUE][LOCATIONS] Endereço ${id} persistido em D1`)
+    } catch (e) {
+      console.error(`[ESTOQUE][LOCATIONS] [CRÍTICO] D1 insert failed for location ${id}: ${(e as Error).message}`)
+      return err(c, 'Falha ao persistir endereço no banco de dados', 500)
+    }
+  }
+  // Insert in memory only if not already present (avoid duplicates after D1 hydration)
+  if (((tenant as any).almoxarifadoLocations as any[]).findIndex((l: any) => l.id === id) === -1) {
+    ;(tenant as any).almoxarifadoLocations.push(location)
+  }
+  return ok(c, { location })
+})
+
+// ── API: POST /estoque/api/serial-location/update ────────────────────────────
+// Atualiza o endereço (location) de um número de série liberado.
+// Valida se o código informado existe nos registros do almoxarifado correspondente.
+app.post('/api/serial-location/update', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.snId || body.almoxarifadoId === undefined) return err(c, 'snId e almoxarifadoId são obrigatórios')
+  const locationCode = body.locationCode !== undefined ? String(body.locationCode).trim() : ''
+  // If a non-empty location code was provided, validate it against the almoxarifado's registered addresses
+  if (locationCode !== '') {
+    const locs = ((tenant as any).almoxarifadoLocations || []) as any[]
+    const exists = locs.some(
+      (l: any) => l.almoxarifadoId === body.almoxarifadoId &&
+                  String(l.code).trim().toUpperCase() === locationCode.toUpperCase() &&
+                  l.status !== 'inactive'
+    )
+    if (!exists) {
+      return err(c, `Endereço "${locationCode}" não encontrado no almoxarifado. Realize o cadastro do endereço antes de salvar.`)
+    }
+  }
+  const serialNumbers = ((tenant as any).serialNumbers || []) as any[]
+  const sn = serialNumbers.find((s: any) => s.id === body.snId)
+  if (!sn) return err(c, 'Número de série não encontrado')
+  sn.location = locationCode
+
+  // Serial nascido em produção: ao receber endereço, sai de "pendente_enderecamento"
+  // (já contava como estoque) e passa a "em_estoque" — endereçamento concluído.
+  let statusChanged = false
+  if (locationCode && sn.status === 'pendente_enderecamento') {
+    sn.status = 'em_estoque'
+    statusChanged = true
+  }
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      if (statusChanged) {
+        await db.prepare(`UPDATE serial_numbers SET location = ?, status = 'em_estoque' WHERE id = ? AND user_id = ?`)
+          .bind(locationCode, body.snId, userId).run()
+      } else {
+        await db.prepare(`UPDATE serial_numbers SET location = ? WHERE id = ? AND user_id = ?`)
+          .bind(locationCode, body.snId, userId).run()
+      }
+    } catch (e) {
+      console.warn('[ESTOQUE][SERIAL-LOCATION] D1 update failed:', (e as any).message)
+    }
+  }
+  return ok(c, { location: locationCode, status: sn.status })
+})
+
+// ── API: POST /estoque/api/transferencia/create ──────────────────────────────
+app.post('/api/transferencia/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const empresaId = getCtxEmpresaId(c); const tenant = getCtxTenant(c)
+  const userInfo = getCtxUserInfo(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.origemId || !body.destinoId) return err(c, 'Origem e destino são obrigatórios')
+  if (!Array.isArray(body.items) || body.items.length === 0) return err(c, 'Adicione ao menos um item')
+  if (body.origemId === body.destinoId) return err(c, 'Origem e destino não podem ser iguais')
+
+  if (!Array.isArray((tenant as any).transferencias)) (tenant as any).transferencias = []
+  const seqNum = (tenant as any).transferencias.length + 1
+  const id = 'TRF-' + new Date().getFullYear() + '-' + String(seqNum).padStart(4, '0')
+  const date = new Date().toISOString().split('T')[0]
+
+  // Build readable Origem/Destino names
+  const origemName = body.origemName || body.origemId
+  const destinoName = body.destinoName || body.destinoId
+
+  const transferencia: any = {
+    id, origemId: body.origemId, destinoId: body.destinoId,
+    origem: origemName, destino: destinoName,
+    enderecoOrigemId: body.enderecoOrigemId || '',
+    enderecoDestinoId: body.enderecoDestinoId || '',
+    solicitante: body.solicitante || userInfo.nome,
+    separador: body.separador || '',
+    custodio: body.custodio || '',
+    dataPrevista: body.dataPrevista || '',
+    obs: body.obs || '',
+    status: 'pendente',
+    date,
+    sb: '#fff7ed', sc: '#d97706',
+    items: body.items,
+    item: body.items.map((it: any) => it.code).join(', '),
+    code: body.items[0]?.code || '',
+    qty: body.items.reduce((s: number, it: any) => s + (parseInt(it.qty) || 0), 0),
+    unit: 'un',
+    createdAt: new Date().toISOString(),
+  }
+  ;(tenant as any).transferencias.push(transferencia)
+
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`INSERT INTO transferencias (id, origem_id, destino_id, solicitante_id, separador_id, custodio_id, status, data_prevista, notes, endereco_origem_id, endereco_destino_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(id, body.origemId, body.destinoId, body.solicitante || userId, body.separador || '', body.custodio || '', 'pendente', body.dataPrevista || null, body.obs || '', body.enderecoOrigemId || null, body.enderecoDestinoId || null).run()
+      console.log(`[ESTOQUE][TRANSFERENCIA] Transferência ${id} persistida em D1`)
+    } catch (e) {
+      console.warn(`[ESTOQUE][TRANSFERENCIA] D1 insert failed for transferencia ${id}: ${(e as Error).message}. Migration may not be applied yet.`)
+    }
+  }
+
+  return ok(c, { transferencia })
+})
+
+
+
+// ── API: POST /estoque/api/warehouse/create ──────────────────────────────────
+app.post('/api/warehouse/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.name || !body.code) return err(c, 'Nome e código obrigatórios')
+  const id = genId('alm')
+  const warehouse = {
+    id, name: body.name, code: body.code, city: body.city || '',
+    state: body.state || '', responsible: body.responsible || '',
+    custodian: body.custodian || '', notes: body.notes || '',
+    active: true, createdAt: new Date().toISOString(),
+  }
+  if (!tenant.warehouses) tenant.warehouses = []
+  tenant.warehouses.push(warehouse)
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(`INSERT INTO warehouses (id, user_id, name, code, city, state, notes) VALUES (?,?,?,?,?,?,?)`)
+        .bind(id, userId, warehouse.name, warehouse.code, warehouse.city, warehouse.state, warehouse.notes).run()
+    } catch { /* D1 table may not exist yet */ }
+  }
+  return ok(c, { warehouse })
+})
+
+// ── API: POST /estoque/api/separation/create ────────────────────────────────
+app.post('/api/separation/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.pedido || !body.cliente) return err(c, 'Pedido e cliente obrigatórios')
+  if (!Array.isArray(body.items) || body.items.length === 0) return err(c, 'Adicione ao menos um produto')
+
+  if (!Array.isArray(tenant.separationOrders)) tenant.separationOrders = []
+  const seqNum = tenant.separationOrders.length + 1
+  const code = 'OS-' + new Date().getFullYear() + '-' + String(seqNum).padStart(3, '0')
+  const id = genId('sep')
+  const separation = {
+    id, code, pedido: body.pedido, cliente: body.cliente,
+    dataSeparacao: body.dataSeparacao || new Date().toISOString().split('T')[0],
+    responsavel: body.responsavel || '', status: 'pending',
+    items: body.items.map((it: any) => ({
+      productCode: it.productCode, productName: it.productName || it.productCode,
+      quantity: parseInt(it.quantity) || 1, serialNumber: it.serialNumber || null,
+    })),
+    createdAt: new Date().toISOString(),
+  }
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'separation_orders', {
+      id, user_id: userId, code: separation.code, pedido: separation.pedido,
+      cliente: separation.cliente, data_separacao: separation.dataSeparacao,
+      responsavel: separation.responsavel, status: separation.status,
+    })
+  }
+  tenant.separationOrders.push(separation)
+  return ok(c, { separation })
+})
+
+// ── API: POST /estoque/api/exit/create ──────────────────────────────────────
+app.post('/api/exit/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !Array.isArray(body.items) || body.items.length === 0) return err(c, 'Dados inválidos')
+
+  if (!Array.isArray(tenant.stockExits)) tenant.stockExits = []
+  const seqNum = tenant.stockExits.length + 1
+  const code = 'BX-' + new Date().getFullYear() + '-' + String(seqNum).padStart(3, '0')
+  const id = genId('bx')
+  const exit = {
+    id, code, type: body.type || 'requisicao',
+    pedido: body.pedido || '', nf: body.nf || '',
+    date: body.dataBaixa || new Date().toISOString().split('T')[0],
+    responsavel: body.responsavel || '', notes: body.notes || '',
+    items: body.items.map((it: any) => ({ code: it.code, name: it.name || it.code, quantity: parseInt(it.quantity) || 1 })),
+    createdAt: new Date().toISOString(),
+  }
+  if (db && userId !== 'demo-tenant') {
+    await dbInsert(db, 'stock_exits', {
+      id, user_id: userId, code: exit.code, type: exit.type,
+      pedido: exit.pedido, nf: exit.nf, date: exit.date,
+      responsavel: exit.responsavel, notes: exit.notes,
+    })
+  }
+  tenant.stockExits.push(exit)
+  // Decrease stock quantities
+  for (const it of exit.items) {
+    const stockItem = tenant.stockItems?.find((s: any) => s.code === it.code)
+    if (stockItem) stockItem.quantity = Math.max(0, (stockItem.quantity || 0) - (parseInt(it.quantity) || 1))
+    const product = tenant.products?.find((p: any) => p.code === it.code)
+    if (product) product.stockCurrent = Math.max(0, (product.stockCurrent || 0) - (parseInt(it.quantity) || 1))
+  }
+
+  // ── Baixa com Número de Série ────────────────────────────────────────────
+  if (body.serialId && body.serialNumber) {
+    if (!Array.isArray((tenant as any).serialNumbers)) (tenant as any).serialNumbers = []
+    if (!Array.isArray((tenant as any).kardexMovements)) (tenant as any).kardexMovements = []
+
+    // 1. Mark serial as 'baixado'
+    const sn = (tenant as any).serialNumbers.find((s: any) => s.id === body.serialId)
+    if (sn) {
+      sn.status = 'baixado'
+      sn.baixaCode = exit.code
+      sn.baixaDate = exit.date
+      if (db && userId !== 'demo-tenant') {
+        try {
+          await db.prepare(
+            `UPDATE serial_numbers SET status = 'baixado' WHERE id = ? AND user_id = ?`
+          ).bind(body.serialId, userId).run()
+        } catch (e) { console.warn('[ESTOQUE][EXIT] D1 update serial_numbers status failed:', (e as any).message) }
+      }
+    }
+
+    // 2. Create kardex 'saida' movement
+    const itemForKardex = exit.items[0]
+    const kmId = genId('kx')
+    const km = {
+      id: kmId,
+      serialNumber: body.serialNumber,
+      itemCode: itemForKardex?.code || '',
+      itemName: itemForKardex?.name || itemForKardex?.code || '',
+      movType: 'saida',
+      quantity: 1,
+      description: 'Baixa de estoque ' + exit.code + (exit.pedido ? ' — ' + exit.pedido : ''),
+      orderCode: null,
+      pedido: exit.pedido || null,
+      nf: exit.nf || null,
+      date: exit.createdAt,
+      user: exit.responsavel || userId,
+    }
+    ;(tenant as any).kardexMovements.push(km)
+
+    // 3. Persist to D1 kardex table
+    if (db && userId !== 'demo-tenant') {
+      try {
+        await db.prepare(
+          `INSERT OR IGNORE INTO kardex (id, item_code, item_name, mov_type, quantity, serial_number, description, pedido, nf, user_name, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+        ).bind(
+          kmId, km.itemCode, km.itemName, km.movType, km.quantity,
+          km.serialNumber, km.description, km.pedido, km.nf,
+          km.user, km.date
+        ).run()
+      } catch (e) { console.warn('[ESTOQUE][EXIT] D1 insert kardex failed:', (e as any).message) }
+    }
+  }
+
+  return ok(c, { exit })
+})
+
+// ── API: POST /estoque/api/pending-serial/create ─────────────────────────────
+// Cria uma fila de liberação de S/N baseada no estoque atual de um produto
+app.post('/api/pending-serial/create', async (c) => {
+  const db = getCtxDB(c); const userId = getCtxUserId(c); const tenant = getCtxTenant(c)
+  const body = await c.req.json().catch(() => null)
+  if (!body || !body.productCode || !body.totalQty) return err(c, 'Dados inválidos')
+
+  if (!Array.isArray((tenant as any).serialPendingItems)) (tenant as any).serialPendingItems = []
+  // Remove pending anterior do mesmo produto, se houver
+  ;(tenant as any).serialPendingItems = (tenant as any).serialPendingItems.filter((p: any) => p.productCode !== body.productCode)
+  const id = genId('spi')
+  const pi = {
+    id, productCode: body.productCode, productName: body.productName || body.productCode,
+    totalQty: parseInt(body.totalQty) || 1, identifiedQty: 0,
+    unit: body.unit || 'un', controlType: body.controlType || 'serie',
+    status: 'pending', entries: [],
+    importedAt: new Date().toISOString(),
+  }
+  ;(tenant as any).serialPendingItems.push(pi)
+
+  // Persist to D1 so data survives worker restart
+  if (db && userId !== 'demo-tenant') {
+    try {
+      await db.prepare(
+        `INSERT INTO serial_pending_items (id, user_id, product_code, product_name, total_qty, identified_qty, unit, control_type, status, entries_json, imported_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        pi.id, userId, pi.productCode, pi.productName, pi.totalQty, 0,
+        pi.unit, pi.controlType, pi.status, '[]', pi.importedAt
+      ).run()
+    } catch (e) { console.warn('[ESTOQUE][SERIAL-PENDING] D1 insert failed (table may not exist yet):', (e as any).message) }
+  }
+
+  return ok(c, { item: pi })
+})
+
+export default app

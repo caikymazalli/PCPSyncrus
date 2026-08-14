@@ -1,131 +1,46 @@
-# PCP Planner — Sistema de Planejamento e Controle de Produção
+# pcpsyncrus-support-consumer
 
-## Visão Geral
-Sistema SaaS multi-tenant para gestão industrial: PCP, qualidade, estoque, compras e fornecedores.
+Worker Cloudflare responsável por consumir a fila `pcpsyncrus` e persistir tickets de suporte no D1.
 
-## URLs
-- **Produção**: https://pcpsyncrus.pages.dev
-- **Demo local**: https://3000-isf4rr7azmizxqtz6aq2n-583b4d74.sandbox.novita.ai
+## Arquitetura
 
-## Credenciais Demo
-| E-mail | Cargo |
-|--------|-------|
-| carlos@empresa.com | Admin |
-| ana@empresa.com | Gestor PCP |
-| joao@empresa.com | Operador |
-_(qualquer senha funciona para contas demo)_
-
-## Módulos Implementados
-
-### ✅ Dashboard `/`
-- KPIs de produção, gráficos de ordens/semana, qualidade e status
-
-### ✅ Ordens de Produção `/ordens`
-- CRUD completo de ordens (criar, editar, iniciar, concluir, cancelar)
-- Apontamento de produção com quantidade produzida/rejeitada
-
-### ✅ Recursos `/recursos`
-- Gestão de plantas, máquinas e bancadas de trabalho
-
-### ✅ Engenharia `/engenharia`
-- BOM (Lista de Materiais), roteiros de produção, instruções de trabalho
-
-### ✅ Qualidade `/qualidade`
-- **NC (Não Conformidades)**: criar, analisar, encerrar, deletar
-- Filtros por status/severidade, evidências fotográficas
-- API: `POST /qualidade/api/create`, `PUT /qualidade/api/:id`, `DELETE /qualidade/api/:id`
-
-### ✅ Estoque `/estoque`
-- Itens de estoque com controle de série/lote
-- **Separação de Pedidos**: `POST /estoque/api/separation/create`
-- **Baixas de Estoque**: `POST /estoque/api/exit/create`
-- **4 Almoxarifados**: Principal, Matérias-Primas, Produtos Acabados, Filial Sul
-- Kardex de rastreabilidade, transferências entre almoxarifados
-- Liberação de S/N por estoque atual
-
-### ✅ Cadastros/Fornecedores `/cadastros`
-- CRUD de fornecedores (nacionais e importados)
-- Vinculação fornecedor ↔ produto
-- API: `POST /cadastros/api/supplier/create`, `PUT /cadastros/api/supplier/:id`, `DELETE /cadastros/api/supplier/:id`
-- Botões: Visualizar, Editar, Solicitar Cotação, Inativar/Ativar
-
-### ✅ Suprimentos `/suprimentos`
-- Cotações, pedidos de compra, importações com landed cost
-
-### ✅ Planejamento `/planejamento`
-- MRP, capacidade de produção, análise de demanda
-
-### ✅ Apontamento `/apontamento`
-- Registro de produção por operador/máquina
-
-## Arquitetura de Dados
-- **Banco**: Cloudflare D1 (SQLite) — `pcpsyncrus-production`
-- **Sessões**: Persistidas no D1 para funcionar em Workers stateless
-- **Demo**: Dados em memória via `data.ts`, sessão salva no D1
-- **Multi-tenant**: Todos os dados isolados por `user_id`
-
-## Migrations (6 aplicadas)
-| Arquivo | Conteúdo |
-|---------|----------|
-| 0001 | Schema inicial completo |
-| 0002 | Usuários registrados + sessões |
-| 0003 | Convites por e-mail + resets de senha |
-| 0004 | Suporte a owner_id (contas convidadas) |
-| 0005 | Colunas adicionais em products/suppliers |
-| 0006 | Tabelas separation_orders e stock_exits |
-
-## Stack Técnica
-- **Runtime**: Cloudflare Workers (edge)
-- **Framework**: Hono v4
-- **Frontend**: TailwindCSS CDN + FontAwesome + vanilla JS
-- **Build**: Vite + @hono/vite-cloudflare-pages
-- **DB**: Cloudflare D1 (SQLite)
-
-## Deploy
-```bash
-npm run build
-npx wrangler pages deploy dist --project-name pcpsyncrus
-npx wrangler d1 migrations apply pcpsyncrus-production --remote
+```
+Pages (pcpsyncrus)           Cloudflare Queue          Worker (este)
+POST /suporte/api/tickets  →  queue: pcpsyncrus     →  consume → INSERT support_tickets (D1)
+                               ↓ falhas repetidas
+                               DLQ: pcpsyncrus-support-dlq
 ```
 
-## Cloudflare Queues — Arquitetura Producer/Consumer
+- **Pages**: apenas producer — enfileira quando D1 falha, retorna 202
+- **Este Worker**: consumer — processa em batch (até 10 mensagens) e persiste no D1
 
-O projeto usa Cloudflare Queues para resiliência no módulo de Suporte. A separação é obrigatória
-porque **Cloudflare Pages não suporta `queues.consumers`** — somente Workers normais podem consumir filas.
+## Pré-requisitos
 
-### Pages (este projeto) — apenas Producer
+1. Crie a fila principal (se ainda não existir):
+   ```bash
+   npx wrangler queues create pcpsyncrus
+   ```
 
-O `wrangler.jsonc` expõe somente o binding producer `pcpsyncrus`.  
-Quando o D1 falha, `POST /suporte/api/tickets` enfileira o ticket e retorna **202**.
+2. Crie a Dead Letter Queue:
+   ```bash
+   npx wrangler queues create pcpsyncrus-support-dlq
+   ```
 
-### Worker consumer separado
+3. Aplique as migrations D1 (tabela `support_tickets`):
+   ```bash
+   npx wrangler d1 migrations apply pcpsyncrus-production --remote
+   ```
 
-O Worker `pcpsyncrus-support-consumer` (pasta `workers/support-consumer/`) consome a fila em
-batch e persiste os tickets no D1.
+## Deploy
 
 ```bash
-# Deploy do consumer
 cd workers/support-consumer
 npx wrangler deploy
 ```
 
-### Criar a Dead Letter Queue (DLQ)
+## Variáveis / Bindings
 
-Mensagens que falham repetidamente são movidas para a DLQ.
-Crie-a antes de fazer o primeiro deploy do consumer:
-
-```bash
-npx wrangler queues create pcpsyncrus-support-dlq
-```
-
-## Desenvolvimento Local
-```bash
-npm run build
-pm2 start ecosystem.config.cjs
-# Acesse: http://localhost:3000
-```
-
-## Status
-- **Produção**: ✅ Ativa em https://pcpsyncrus.pages.dev
-- **Última atualização**: 27/02/2026
-- **Versão**: 1.6.0
+| Binding | Tipo       | Nome                    |
+|---------|-----------|-------------------------|
+| `DB`    | D1         | `pcpsyncrus-production` |
+| —       | Queue consumer | `pcpsyncrus`        |
